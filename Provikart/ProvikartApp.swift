@@ -9,9 +9,15 @@ import SwiftUI
 
 @main
 struct ProvikartApp: App {
+    @State private var showLaunchScreen = true
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            if showLaunchScreen {
+                LaunchView(onFinish: { showLaunchScreen = false })
+            } else {
+                ContentView()
+            }
         }
     }
 }
