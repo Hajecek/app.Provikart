@@ -7,9 +7,12 @@
 
 import SwiftUI
 
+private let onboardingCompletedKey = "Provikart.hasCompletedOnboarding"
+
 @main
 struct ProvikartApp: App {
     @StateObject private var authState = AuthState()
+    @AppStorage(onboardingCompletedKey) private var hasCompletedOnboarding = false
     @State private var showLaunchScreen = true
     @State private var showBiometricVerification = false
     @State private var backgroundedAt: Date?
@@ -20,6 +23,8 @@ struct ProvikartApp: App {
             ZStack {
                 if showLaunchScreen {
                     LaunchView(onFinish: { showLaunchScreen = false })
+                } else if !hasCompletedOnboarding {
+                    OnboardingView(onFinish: { hasCompletedOnboarding = true })
                 } else if authState.isLoggedIn {
                     ContentView()
                 } else {
