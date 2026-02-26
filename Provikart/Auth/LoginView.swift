@@ -105,21 +105,28 @@ struct LoginView: View {
     }
 
     private func performLogin() {
-        guard !email.isEmpty, !password.isEmpty else { return }
+        print("[Login] Stisknuto Přihlásit se")
+        guard !email.isEmpty, !password.isEmpty else {
+            print("[Login] Přerušeno – prázdný e-mail nebo heslo")
+            return
+        }
+        print("[Login] E-mail: \(email), odesílám požadavek na API…")
         isLoading = true
         errorMessage = nil
 
         Task {
             do {
-                _ = try await authService.login(email: email, password: password)
+                let response = try await authService.login(email: email, password: password)
                 await MainActor.run {
                     isLoading = false
                     loginSuccess = true
+                    print("[Login] Úspěch – přihlášení dokončeno, token: \(response.token ?? "není")")
                 }
             } catch {
                 await MainActor.run {
                     isLoading = false
                     errorMessage = error.localizedDescription
+                    print("[Login] Chyba: \(error.localizedDescription)")
                 }
             }
         }

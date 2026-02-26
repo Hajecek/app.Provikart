@@ -37,7 +37,7 @@ enum AuthError: LocalizedError {
 
 final class AuthService {
     /// Základní URL API – nastav na adresu svého backendu.
-    private let baseURL = "https://provikart.cz/api/auth/login"
+    private let baseURL = "https://provikart.cz/api"
 
     func login(email: String, password: String) async throws -> LoginResponse {
         guard let url = URL(string: "\(baseURL)/auth/login") else {
@@ -71,8 +71,19 @@ final class AuthService {
         case 401:
             throw AuthError.invalidCredentials
         default:
-            let message = String(data: data, encoding: .utf8) ?? "Chyba serveru (\(httpResponse.statusCode))"
-            throw AuthError.serverError(message)
+            let rawBody = String(data: data, encoding: .utf8) ?? ""
+            // Pro debugging: celá odpověď do konzole
+            print("[AuthService] HTTP \(httpResponse.statusCode), tělo: \(rawBody.prefix(500))\(rawBody.count > 500 ? "…" : "")")
+            // Uživateli neukazujeme HTML – jen srozumitelnou zprávu
+            let userMessage: String
+            if rawBody.lowercased().contains("<!doctype") || rawBody.lowercased().contains("<html") {
+                userMessage = "Chyba serveru (\(httpResponse.statusCode)). Zkuste to později nebo kontaktujte podporu."
+            } else if !rawBody.isEmpty, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let msg = json["message"] as? String {
+                userMessage = msg
+            } else {
+                userMessage = "Chyba serveru (\(httpResponse.statusCode)). Zkuste to později."
+            }
+            throw AuthError.serverError(userMessage)
         }
     }
 }
