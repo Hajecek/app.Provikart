@@ -31,6 +31,14 @@ struct ProfileView: View {
             .navigationTitle("Profil")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        isShowingEdit = true
+                    } label: {
+                        avatarInToolbar
+                    }
+                    .accessibilityLabel("Profil")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         isShowingSettings = true
@@ -193,6 +201,27 @@ struct ProfileView: View {
     }
 
     // MARK: - Helpers
+
+    private var avatarInToolbar: some View {
+        Group {
+            if let url = authState.currentUser?.profileImageURL {
+                AuthenticatedProfileImageView(
+                    url: url,
+                    token: authState.authToken
+                )
+                .frame(width: 28, height: 28)
+                .clipShape(Circle())
+                .contentShape(Circle())
+            } else {
+                Image(systemName: "person.circle.fill")
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundStyle(.secondary)
+                    .frame(width: 28, height: 28)
+            }
+        }
+        .accessibilityHidden(true)
+    }
 
     private var smallAvatar: some View {
         Group {
