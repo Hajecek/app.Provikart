@@ -39,10 +39,10 @@ struct LoginView: View {
 
                     // Form
                     VStack(spacing: 14) {
-                        TextField("E‑mail", text: $email)
+                        TextField("E-mail nebo uživatelské jméno", text: $email)
                             .textContentType(.username)
                             .textInputAutocapitalization(.never)
-                            .keyboardType(.emailAddress)
+                            .keyboardType(.default)
                             .autocorrectionDisabled()
                             .padding(14)
                             .background(RoundedRectangle(cornerRadius: 12).fill(Color(.secondarySystemBackground)))
@@ -110,7 +110,7 @@ struct LoginView: View {
             print("[Login] Přerušeno – prázdný e-mail nebo heslo")
             return
         }
-        print("[Login] E-mail: \(email), odesílám požadavek na API…")
+        print("[Login] Přihlašovací údaj: \(email), odesílám požadavek na API…")
         isLoading = true
         errorMessage = nil
 
