@@ -18,6 +18,7 @@ struct UserInfo: Codable {
     let email: String?
     let name: String?
     let username: String?
+    let personal_number: String?
     let firstname: String?
     let lastname: String?
     let profile_image: String?
@@ -27,7 +28,7 @@ struct UserInfo: Codable {
     var profileImageURL: URL? {
         guard let name = profile_image, !name.isEmpty else { return nil }
         let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name
-        return URL(string: "https://provikart.cz/auth/serve_image.php?file=\(encoded)")
+        return URL(string: "https://provikart.cz/auth/serve_image?file=\(encoded)")
     }
 }
 

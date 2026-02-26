@@ -23,6 +23,7 @@ struct ProfileView: View {
             // iOS-like Profile: Form with sections
             Form {
                 accountSection
+                contactSection
                 quickActionsSection
                 listsSection
                 paymentsAddressesSection
@@ -112,6 +113,27 @@ struct ProfileView: View {
             .padding(.vertical, 4)
         } header: {
             Text("Účet")
+        }
+    }
+
+    private var contactSection: some View {
+        Section("Kontakt") {
+            HStack {
+                Label("E‑mail", systemImage: "envelope")
+                    .labelStyle(.titleAndIcon)
+                Spacer()
+                Text(authState.currentUser?.email?.isEmpty == false ? (authState.currentUser?.email ?? "") : "Neznámý")
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            HStack {
+                Label("Osobní číslo", systemImage: "person.text.rectangle")
+                    .labelStyle(.titleAndIcon)
+                Spacer()
+                Text(personalNumberDisplay)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
         }
     }
 
@@ -287,7 +309,7 @@ struct ProfileView: View {
 
     private func shareProfile() {
         // Zde případně vytvořte skutečné sdílení profilu
-        print("[Profile] Share tapped")
+        print("[Profile] Share tapped]")
     }
 
     private var displayName: String {
@@ -302,6 +324,13 @@ struct ProfileView: View {
             return "@\(username)"
         }
         return "Uživatel"
+    }
+
+    private var personalNumberDisplay: String {
+        if let pn = authState.currentUser?.personal_number, !pn.isEmpty {
+            return pn
+        }
+        return "Nenastaveno"
     }
 
     private var userBio: String? {

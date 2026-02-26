@@ -128,6 +128,7 @@ struct LoginView: View {
                         print("  email: \(u.email ?? "—")")
                         print("  name: \(u.name ?? "—")")
                         print("  username: \(u.username ?? "—")")
+                        print("  personal_number: \(u.personal_number ?? "—")")
                         print("  firstname: \(u.firstname ?? "—")")
                         print("  lastname: \(u.lastname ?? "—")")
                         print("  profile_image: \(u.profile_image ?? "—")")
