@@ -37,7 +37,7 @@ enum AuthError: LocalizedError {
 
 final class AuthService {
     /// Základní URL API – nastav na adresu svého backendu.
-    private let baseURL = "https://api.example.com"
+    private let baseURL = "https://provikart.cz/api/auth/login"
 
     func login(email: String, password: String) async throws -> LoginResponse {
         guard let url = URL(string: "\(baseURL)/auth/login") else {
