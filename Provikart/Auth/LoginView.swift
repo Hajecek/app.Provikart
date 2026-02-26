@@ -120,7 +120,21 @@ struct LoginView: View {
                 await MainActor.run {
                     isLoading = false
                     loginSuccess = true
-                    print("[Login] Úspěch – přihlášení dokončeno, token: \(response.token ?? "není")")
+                    print("[Login] Úspěch – přihlášení dokončeno")
+                    print("[Login] Token: \(response.token ?? "—")")
+                    if let u = response.user {
+                        print("[Login] Uživatel:")
+                        print("  id: \(u.id ?? 0)")
+                        print("  email: \(u.email ?? "—")")
+                        print("  name: \(u.name ?? "—")")
+                        print("  username: \(u.username ?? "—")")
+                        print("  firstname: \(u.firstname ?? "—")")
+                        print("  lastname: \(u.lastname ?? "—")")
+                        print("  profile_image: \(u.profile_image ?? "—")")
+                        print("  role: \(u.role ?? "—")")
+                    } else {
+                        print("[Login] Uživatel: (API nevrátilo objekt user)")
+                    }
                 }
             } catch {
                 await MainActor.run {

@@ -17,6 +17,11 @@ struct UserInfo: Codable {
     let id: Int?
     let email: String?
     let name: String?
+    let username: String?
+    let firstname: String?
+    let lastname: String?
+    let profile_image: String?
+    let role: String?
 }
 
 enum AuthError: LocalizedError {
