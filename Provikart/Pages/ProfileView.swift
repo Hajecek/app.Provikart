@@ -75,12 +75,14 @@ struct ProfileView: View {
                     }
             }
         }
-        // Logout confirmation
-        .confirmationDialog("Opravdu se chcete odhlásit?", isPresented: $showLogoutConfirm, titleVisibility: .visible) {
+        // Logout alert
+        .alert("Opravdu se chcete odhlásit?", isPresented: $showLogoutConfirm) {
+            Button("Zrušit", role: .cancel) { }
             Button("Odhlásit", role: .destructive) {
                 authState.logOut()
             }
-            Button("Zrušit", role: .cancel) {}
+        } message: {
+            Text("Budete odhlášeni z vašeho účtu.")
         }
     }
 
