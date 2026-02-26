@@ -11,7 +11,7 @@ struct ProfileView: View {
     var body: some View {
         NavigationStack {
             LargeTitleHeaderView(title: "Profil") {
-                Color.orange.ignoresSafeArea()
+                Color(uiColor: .systemBackground).ignoresSafeArea()
             }
         }
         .ignoresSafeArea(edges: .bottom)

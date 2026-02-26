@@ -10,9 +10,11 @@ import SwiftUI
 struct HomeView: View {
     var body: some View {
         NavigationStack {
-            LargeTitleHeaderView(title: "Domů") {
-                Color.green.ignoresSafeArea()
-            }
+            Color(uiColor: .systemBackground).ignoresSafeArea()
+                .toolbar(.hidden, for: .navigationBar)
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            PageHeaderBar(title: "Domů")
         }
         .ignoresSafeArea(edges: .bottom)
     }

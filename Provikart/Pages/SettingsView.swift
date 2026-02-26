@@ -10,9 +10,11 @@ import SwiftUI
 struct SettingsView: View {
     var body: some View {
         NavigationStack {
-            LargeTitleHeaderView(title: "Nastavení") {
-                Color.blue.ignoresSafeArea()
-            }
+            Color(uiColor: .systemBackground).ignoresSafeArea()
+                .toolbar(.hidden, for: .navigationBar)
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            PageHeaderBar(title: "Nastavení")
         }
         .ignoresSafeArea(edges: .bottom)
     }
