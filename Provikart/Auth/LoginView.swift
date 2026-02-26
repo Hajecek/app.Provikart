@@ -9,11 +9,11 @@ import SwiftUI
 
 struct LoginView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject private var authState: AuthState
     @State private var email: String = ""
     @State private var password: String = ""
     @State private var isLoading: Bool = false
     @State private var errorMessage: String?
-    @State private var loginSuccess = false
 
     private let authService = AuthService()
 
@@ -119,7 +119,7 @@ struct LoginView: View {
                 let response = try await authService.login(email: email, password: password)
                 await MainActor.run {
                     isLoading = false
-                    loginSuccess = true
+                    authState.setLoggedIn(true)
                     print("[Login] Úspěch – přihlášení dokončeno")
                     print("[Login] Token: \(response.token ?? "—")")
                     if let u = response.user {
@@ -149,4 +149,5 @@ struct LoginView: View {
 
 #Preview {
     LoginView()
+        .environmentObject(AuthState())
 }

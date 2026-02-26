@@ -8,10 +8,20 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @EnvironmentObject private var authState: AuthState
+
     var body: some View {
         NavigationStack {
             Color(uiColor: .systemBackground).ignoresSafeArea()
                 .toolbar(.hidden, for: .navigationBar)
+                .overlay(alignment: .bottom) {
+                    Button("Odhlásit") {
+                        authState.logOut()
+                    }
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.red)
+                    .padding(.bottom, 32)
+                }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             PageHeaderBar(title: "Nastavení")
@@ -22,4 +32,5 @@ struct SettingsView: View {
 
 #Preview {
     SettingsView()
+        .environmentObject(AuthState())
 }
