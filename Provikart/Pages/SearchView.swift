@@ -12,12 +12,14 @@ struct SearchView: View {
     
     var body: some View {
         NavigationStack {
-            List {
-                Text("Search screen")
+            LargeTitleHeaderView(title: "Vyhledávání") {
+                List {
+                    Text("Search screen")
+                }
+                .searchable(text: $searchString)
             }
-            .navigationTitle("Search")
-            .searchable(text: $searchString)
         }
+        .ignoresSafeArea(edges: .bottom)
     }
 }
 

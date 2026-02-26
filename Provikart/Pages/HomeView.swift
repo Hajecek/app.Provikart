@@ -9,7 +9,12 @@ import SwiftUI
 
 struct HomeView: View {
     var body: some View {
-        Color.green.ignoresSafeArea()
+        NavigationStack {
+            LargeTitleHeaderView(title: "Domů") {
+                Color.green.ignoresSafeArea()
+            }
+        }
+        .ignoresSafeArea(edges: .bottom)
     }
 }
 

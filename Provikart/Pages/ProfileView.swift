@@ -9,7 +9,12 @@ import SwiftUI
 
 struct ProfileView: View {
     var body: some View {
-        Color.orange.ignoresSafeArea()
+        NavigationStack {
+            LargeTitleHeaderView(title: "Profil") {
+                Color.orange.ignoresSafeArea()
+            }
+        }
+        .ignoresSafeArea(edges: .bottom)
     }
 }
 

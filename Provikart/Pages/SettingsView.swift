@@ -9,7 +9,12 @@ import SwiftUI
 
 struct SettingsView: View {
     var body: some View {
-        Color.blue.ignoresSafeArea()
+        NavigationStack {
+            LargeTitleHeaderView(title: "Nastavení") {
+                Color.blue.ignoresSafeArea()
+            }
+        }
+        .ignoresSafeArea(edges: .bottom)
     }
 }
 
