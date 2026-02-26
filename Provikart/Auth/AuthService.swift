@@ -22,6 +22,13 @@ struct UserInfo: Codable {
     let lastname: String?
     let profile_image: String?
     let role: String?
+
+    /// URL profilového obrázku – přes serve_image.php (složka images/ je zakázaná pro přímý přístup).
+    var profileImageURL: URL? {
+        guard let name = profile_image, !name.isEmpty else { return nil }
+        let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name
+        return URL(string: "https://provikart.cz/auth/serve_image.php?file=\(encoded)")
+    }
 }
 
 enum AuthError: LocalizedError {

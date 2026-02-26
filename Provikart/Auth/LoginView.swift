@@ -119,7 +119,7 @@ struct LoginView: View {
                 let response = try await authService.login(email: email, password: password)
                 await MainActor.run {
                     isLoading = false
-                    authState.setLoggedIn(true)
+                    authState.setLoggedIn(true, user: response.user, token: response.token)
                     print("[Login] Úspěch – přihlášení dokončeno")
                     print("[Login] Token: \(response.token ?? "—")")
                     if let u = response.user {
