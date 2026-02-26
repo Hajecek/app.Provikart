@@ -1,5 +1,5 @@
 //
-//  ContentView.swift
+//  HomeView.swift
 //  Provikart
 //
 //  Created by Michal Hájek on 03.07.2025.
@@ -7,12 +7,12 @@
 
 import SwiftUI
 
-struct ContentView: View {
+struct HomeView: View {
     var body: some View {
-        TabMenuView()
+        Color.green.ignoresSafeArea()
     }
 }
 
 #Preview {
-    ContentView()
+    HomeView()
 }
