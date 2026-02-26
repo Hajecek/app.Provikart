@@ -10,13 +10,21 @@ import SwiftUI
 @main
 struct ProvikartApp: App {
     @State private var showLaunchScreen = true
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
-            if showLaunchScreen {
-                LaunchView(onFinish: { showLaunchScreen = false })
-            } else {
-                ContentView()
+            ZStack {
+                if showLaunchScreen {
+                    LaunchView(onFinish: { showLaunchScreen = false })
+                } else {
+                    ContentView()
+                }
+                if scenePhase != .active {
+                    PrivacyScreen()
+                        .ignoresSafeArea()
+                        .zIndex(1)
+                }
             }
         }
     }
