@@ -10,7 +10,7 @@ struct AuthenticatedProfileImageView: View {
     let url: URL
     var fallbackURL: URL? = nil
     var token: String?
-    let size: CGFloat = 32
+    let size: CGFloat = 44
 
     @State private var image: UIImage?
     @State private var loadFailed = false
@@ -23,7 +23,7 @@ struct AuthenticatedProfileImageView: View {
                     .aspectRatio(contentMode: .fill)
             } else if loadFailed {
                 Image(systemName: "person.circle.fill")
-                    .font(.title)
+                    .font(.title2)
             } else {
                 ProgressView()
                     .frame(width: size, height: size)
@@ -104,11 +104,11 @@ struct PageHeaderBar: View {
                 url: url,
                 token: authState.authToken
             )
-            .frame(width: 32, height: 32)
+            .frame(width: 44, height: 44)
         } else {
             let _ = print("[Avatar] Žádný currentUser nebo profileImageURL – currentUser: \(authState.currentUser != nil), profile_image: \(authState.currentUser?.profile_image ?? "nil")")
             Image(systemName: "person.circle.fill")
-                .font(.title)
+                .font(.title2)
         }
     }
 }
@@ -127,7 +127,7 @@ struct LargeTitleHeaderView<Content: View>: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: { onProfileTap?() }) {
                         Image(systemName: "person.circle.fill")
-                            .font(.title)
+                            .font(.title2)
                     }
                 }
             }
