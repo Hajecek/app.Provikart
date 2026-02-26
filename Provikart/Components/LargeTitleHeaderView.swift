@@ -47,6 +47,6 @@ struct LargeTitleHeaderView<Content: View>: View {
                     }
                 }
             }
-            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
     }
 }

@@ -10,9 +10,16 @@ import SwiftUI
 struct ProfileView: View {
     var body: some View {
         NavigationStack {
-            LargeTitleHeaderView(title: "Profil") {
+            ZStack {
                 Color(uiColor: .systemBackground).ignoresSafeArea()
+                VStack {}
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(32)
             }
+            .toolbar(.hidden, for: .navigationBar)
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            PageHeaderBar(title: "Profil")
         }
         .ignoresSafeArea(edges: .bottom)
     }
