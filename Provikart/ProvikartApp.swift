@@ -15,8 +15,16 @@ struct ProvikartApp: App {
     @AppStorage(onboardingCompletedKey) private var hasCompletedOnboarding = false
     @State private var showLaunchScreen = true
     @State private var showBiometricVerification = false
+    @State private var hasVerifiedBiometricThisSession = false
     @State private var backgroundedAt: Date?
     @Environment(\.scenePhase) private var scenePhase
+
+    private var shouldShowBiometricOverlay: Bool {
+        guard authState.isLoggedIn else { return false }
+        if showBiometricVerification { return true }
+        if !showLaunchScreen, hasCompletedOnboarding, !hasVerifiedBiometricThisSession { return true }
+        return false
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -35,10 +43,13 @@ struct ProvikartApp: App {
                         .ignoresSafeArea()
                         .zIndex(2)
                 }
-                if showBiometricVerification {
-                    BiometricVerificationView(onSuccess: { showBiometricVerification = false })
-                        .ignoresSafeArea()
-                        .zIndex(3)
+                if shouldShowBiometricOverlay {
+                    BiometricVerificationView(onSuccess: {
+                        showBiometricVerification = false
+                        hasVerifiedBiometricThisSession = true
+                    })
+                    .ignoresSafeArea()
+                    .zIndex(3)
                 }
             }
             .environmentObject(authState)
@@ -46,12 +57,13 @@ struct ProvikartApp: App {
                 switch newPhase {
                 case .background:
                     backgroundedAt = Date()
-                case .active:
-                    if let at = backgroundedAt, Date().timeIntervalSince(at) >= 5 {
-                        if authState.isLoggedIn {
-                            showBiometricVerification = true
-                        }
+                case .inactive:
+                    // Při návratu z pozadí (.inactive máme jen když backgroundedAt != nil) zobrazíme
+                    // biometrické ověření hned, aby se neukázala domovská obrazovka.
+                    if let at = backgroundedAt, Date().timeIntervalSince(at) >= 5, authState.isLoggedIn {
+                        showBiometricVerification = true
                     }
+                case .active:
                     backgroundedAt = nil
                 default:
                     break
