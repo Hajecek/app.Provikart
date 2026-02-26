@@ -25,7 +25,8 @@ struct PageHeaderBar: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity)
-        .background(.ultraThinMaterial)
+        // Odstraněno pozadí pro plnou transparentnost
+        // .background(.ultraThinMaterial)
     }
 }
 
@@ -50,3 +51,4 @@ struct LargeTitleHeaderView<Content: View>: View {
             .toolbarBackground(.hidden, for: .navigationBar)
     }
 }
+
