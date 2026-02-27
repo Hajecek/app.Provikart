@@ -12,6 +12,7 @@ private let onboardingCompletedKey = "Provikart.hasCompletedOnboarding"
 @main
 struct ProvikartApp: App {
     @StateObject private var authState = AuthState()
+    @StateObject private var appLoginApprovalState = AppLoginApprovalState()
     @AppStorage(onboardingCompletedKey) private var hasCompletedOnboarding = false
     @State private var showLaunchScreen = true
     @State private var showBiometricVerification = false
@@ -53,20 +54,38 @@ struct ProvikartApp: App {
                 }
             }
             .environmentObject(authState)
+            .environmentObject(appLoginApprovalState)
+            .sheet(item: Binding(
+                get: { appLoginApprovalState.presentedRequest },
+                set: { appLoginApprovalState.presentedRequest = $0 }
+            )) { request in
+                AppLoginApprovalSheetView(approvalState: appLoginApprovalState, request: request)
+                    .environmentObject(authState)
+            }
             .onChange(of: scenePhase) { _, newPhase in
                 switch newPhase {
                 case .background:
                     backgroundedAt = Date()
+                    appLoginApprovalState.stopPolling()
                 case .inactive:
-                    // Při návratu z pozadí (.inactive máme jen když backgroundedAt != nil) zobrazíme
-                    // biometrické ověření hned, aby se neukázala domovská obrazovka.
                     if let at = backgroundedAt, Date().timeIntervalSince(at) >= 5, authState.isLoggedIn {
                         showBiometricVerification = true
                     }
+                    appLoginApprovalState.stopPolling()
                 case .active:
                     backgroundedAt = nil
+                    if authState.isLoggedIn, !showLaunchScreen, hasCompletedOnboarding,
+                       let username = authState.currentUser?.username {
+                        appLoginApprovalState.startPolling(username: username, token: authState.authToken, interval: 8)
+                    }
                 default:
                     break
+                }
+            }
+            .onAppear {
+                if authState.isLoggedIn, !showLaunchScreen, hasCompletedOnboarding,
+                   scenePhase == .active, let username = authState.currentUser?.username {
+                    appLoginApprovalState.startPolling(username: username, token: authState.authToken, interval: 8)
                 }
             }
         }
