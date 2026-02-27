@@ -9,6 +9,8 @@ struct AddView: View {
     @Binding var selectedTab: Tabs
     @EnvironmentObject private var authState: AuthState
     @State private var searchText = ""
+    @State private var isRecording = false
+    @StateObject private var audioMeter = AudioLevelMeter()
 
     var body: some View {
         NavigationStack {
@@ -21,28 +23,51 @@ struct AddView: View {
                         .foregroundStyle(.primary)
                         .multilineTextAlignment(.center)
 
-                    HStack(spacing: 12) {
-                        TextField("Zeptej se na cokoli", text: $searchText)
-                            .textFieldStyle(.plain)
-                            .foregroundStyle(.white)
-                        Button {
-                            // TODO: hlasové vyhledávání
-                        } label: {
-                            Image(systemName: "mic.fill")
-                                .font(.body.weight(.medium))
-                                .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                    if isRecording {
+                        VoiceRecordingBarView(
+                            levels: audioMeter.levels,
+                            onStop: {
+                                audioMeter.stop()
+                                isRecording = false
+                            },
+                            onSend: {
+                                audioMeter.stop()
+                                isRecording = false
+                                // TODO: odeslat nahrávku / převést na text
+                            }
+                        )
+                        .padding(.horizontal, 8)
+                    } else {
+                        HStack(spacing: 12) {
+                            TextField("Zeptej se na cokoli", text: $searchText)
+                                .textFieldStyle(.plain)
+                                .foregroundStyle(.white)
+                            Button {
+                                audioMeter.start()
+                                isRecording = true
+                            } label: {
+                                Image(systemName: "mic.fill")
+                                    .font(.body.weight(.medium))
+                                    .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                        .frame(height: 52)
+                        .background(Color(red: 38/255, green: 38/255, blue: 38/255))
+                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
-                    .background(Color(red: 38/255, green: 38/255, blue: 38/255))
-                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(32)
             }
             .navigationBarTitleDisplayMode(.inline)
+            .alert("Mikrofon nepovolen", isPresented: $audioMeter.permissionDenied) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Pro hlasové vyhledávání povolte přístup k mikrofonu v Nastavení.")
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
@@ -85,6 +110,60 @@ struct AddView: View {
             return "\(timeGreeting), co dnes vymyslíme?"
         }
         return "\(timeGreeting), \(userName), co dnes vymyslíme?"
+    }
+}
+
+// MARK: - Nahrávací lišta (jen vlny) + tlačítka Stop a Odeslat v jedné linii vedle sebe
+
+private struct VoiceRecordingBarView: View {
+    let levels: [CGFloat]
+    let onStop: () -> Void
+    let onSend: () -> Void
+
+    private let barCount = AudioLevelMeter.barCount
+    private let barWidth: CGFloat = 2.5
+    private let barSpacing: CGFloat = 2
+    private let maxBarHeight: CGFloat = 18
+    private let rowHeight: CGFloat = 52
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Button(action: onStop) {
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                    .frame(width: rowHeight, height: rowHeight)
+                    .background(Color(uiColor: .tertiarySystemFill))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+
+            HStack(spacing: barSpacing) {
+                ForEach(0..<barCount, id: \.self) { i in
+                    RoundedRectangle(cornerRadius: barWidth / 2)
+                        .fill(Color(uiColor: .tertiaryLabel))
+                        .frame(width: barWidth, height: max(3, maxBarHeight * levels[i]))
+                }
+            }
+            .frame(height: maxBarHeight)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .frame(height: rowHeight)
+            .background(Color(red: 38/255, green: 38/255, blue: 38/255))
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+
+            Button(action: onSend) {
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.black)
+                    .frame(width: rowHeight, height: rowHeight)
+                    .background(Color.white)
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(height: rowHeight)
     }
 }
 
