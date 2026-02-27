@@ -55,8 +55,8 @@ struct HomeView: View {
     @ViewBuilder
     private var profileBarButton: some View {
         if let url = authState.currentUser?.profileImageURL {
-            Button {
-                // Přepnutí na profil přes tab lze doplnit přes callback
+            NavigationLink {
+                ProfileView()
             } label: {
                 AuthenticatedProfileImageView(
                     url: url,
@@ -66,7 +66,8 @@ struct HomeView: View {
             }
             .buttonStyle(.plain)
         } else {
-            Button {
+            NavigationLink {
+                ProfileView()
             } label: {
                 Image(systemName: "person.circle.fill")
                     .font(.title2)

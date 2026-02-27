@@ -9,7 +9,7 @@ import SwiftUI
 
 enum Tabs: Hashable {
     case home
-    case profile
+    case calendar
     case add
 }
 
@@ -22,12 +22,12 @@ struct TabMenuView: View {
                 HomeView()
             }
 
-            Tab("Přidat", systemImage: "plus", value: .add) {
-                AddView()
+            Tab("Kalendář", systemImage: "calendar", value: .calendar) {
+                CalendarView()
             }
 
-            Tab("Profil", systemImage: "person", value: .profile) {
-                ProfileView()
+            Tab("Přidat", systemImage: "plus", value: .add) {
+                AddView()
             }
         }
     }
