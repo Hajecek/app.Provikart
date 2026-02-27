@@ -32,7 +32,8 @@ struct ProfileView: View {
             .navigationTitle("Profil")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                // Skupina vlevo: avatar + úpravy profilu
+                ToolbarItemGroup(placement: .topBarLeading) {
                     Button {
                         isShowingEdit = true
                     } label: {
@@ -40,13 +41,39 @@ struct ProfileView: View {
                     }
                     .accessibilityLabel("Profil")
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                // Skupina vpravo: nastavení a sdílení
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button {
+                        shareProfile()
+                    } label: {
+                        Label("Sdílet", systemImage: "square.and.arrow.up")
+                    }
+                    .accessibilityLabel("Sdílet profil")
                     Button {
                         isShowingSettings = true
                     } label: {
-                        Image(systemName: "gearshape")
+                        Label("Nastavení", systemImage: "gearshape")
                     }
                     .accessibilityLabel("Nastavení")
+                }
+                // Spodní toolbar (Liquid Glass) – časté akce s grupováním
+                ToolbarItemGroup(placement: .bottomBar) {
+                    Button {
+                        isShowingEdit = true
+                    } label: {
+                        Label("Upravit", systemImage: "pencil")
+                    }
+                    Button {
+                        shareProfile()
+                    } label: {
+                        Label("Sdílet", systemImage: "square.and.arrow.up")
+                    }
+                    Spacer()
+                    Button {
+                        isShowingSettings = true
+                    } label: {
+                        Label("Nastavení", systemImage: "gearshape")
+                    }
                 }
             }
             .toolbar(.hidden, for: .tabBar)
@@ -110,6 +137,20 @@ struct ProfileView: View {
                     .buttonStyle(.bordered)
             }
             .padding(.vertical, 4)
+            .contextMenu {
+                Button {
+                    isShowingEdit = true
+                } label: {
+                    Label("Upravit profil", systemImage: "pencil")
+                }
+            }
+            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                Button {
+                    isShowingEdit = true
+                } label: {
+                    Label("Upravit", systemImage: "pencil")
+                }
+            }
         } header: {
             Text("Účet")
         }
@@ -212,11 +253,39 @@ struct ProfileView: View {
             } label: {
                 rowLabel(icon: "square.and.arrow.up", title: "Sdílet profil", subtitle: nil)
             }
+            .contextMenu {
+                Button {
+                    shareProfile()
+                } label: {
+                    Label("Sdílet profil", systemImage: "square.and.arrow.up")
+                }
+            }
+            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                Button {
+                    shareProfile()
+                } label: {
+                    Label("Sdílet", systemImage: "square.and.arrow.up")
+                }
+            }
 
             Button(role: .destructive) {
                 showLogoutConfirm = true
             } label: {
                 rowLabel(icon: "rectangle.portrait.and.arrow.right", title: "Odhlásit se", subtitle: nil, destructive: true)
+            }
+            .contextMenu {
+                Button(role: .destructive) {
+                    showLogoutConfirm = true
+                } label: {
+                    Label("Odhlásit se", systemImage: "rectangle.portrait.and.arrow.right")
+                }
+            }
+            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                Button(role: .destructive) {
+                    showLogoutConfirm = true
+                } label: {
+                    Label("Odhlásit", systemImage: "rectangle.portrait.and.arrow.right")
+                }
             }
         } header: {
             Text("Ostatní")
