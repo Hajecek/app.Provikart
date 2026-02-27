@@ -27,15 +27,23 @@ struct AddView: View {
                         VoiceRecordingBarView(
                             levels: audioMeter.levels,
                             onStop: {
-                                audioMeter.stop()
-                                isRecording = false
+                                withAnimation(.easeInOut(duration: 0.25)) {
+                                    audioMeter.stop()
+                                    isRecording = false
+                                }
                             },
                             onSend: {
-                                audioMeter.stop()
-                                isRecording = false
+                                withAnimation(.easeInOut(duration: 0.25)) {
+                                    audioMeter.stop()
+                                    isRecording = false
+                                }
                                 // TODO: odeslat nahrávku / převést na text
                             }
                         )
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 0.96)),
+                            removal: .opacity.combined(with: .scale(scale: 0.96))
+                        ))
                     } else {
                         HStack(spacing: 10) {
                             HStack(spacing: 12) {
@@ -43,8 +51,10 @@ struct AddView: View {
                                     .textFieldStyle(.plain)
                                     .foregroundStyle(.white)
                                 Button {
-                                    audioMeter.start()
-                                    isRecording = true
+                                    withAnimation(.easeInOut(duration: 0.25)) {
+                                        audioMeter.start()
+                                        isRecording = true
+                                    }
                                 } label: {
                                     Image(systemName: "mic.fill")
                                         .font(.body.weight(.medium))
@@ -72,8 +82,13 @@ struct AddView: View {
                             .buttonStyle(.plain)
                         }
                         .frame(height: 52)
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 0.96)),
+                            removal: .opacity.combined(with: .scale(scale: 0.96))
+                        ))
                     }
                 }
+                .animation(.easeInOut(duration: 0.25), value: isRecording)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(32)
             }
@@ -166,6 +181,7 @@ private struct VoiceRecordingBarView: View {
                     RoundedRectangle(cornerRadius: barWidth / 2)
                         .fill(Color(uiColor: .tertiaryLabel))
                         .frame(width: barWidth, height: max(3, maxBarHeight * levels[i]))
+                        .animation(.easeOut(duration: 0.06), value: levels[i])
                 }
             }
             .frame(height: maxBarHeight)
