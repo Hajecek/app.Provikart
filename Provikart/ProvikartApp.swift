@@ -7,20 +7,142 @@
 
 import SwiftUI
 import FirebaseCore
+import FirebaseMessaging
+import UserNotifications
 
 private let onboardingCompletedKey = "Provikart.hasCompletedOnboarding"
 
-class AppDelegate: NSObject, UIApplicationDelegate {
+/// URL endpointu pro odeslání FCM tokenu na backend (uprav podle API).
+private let updateFCMTokenURL = "https://provikart.cz/api/update_fcm_token"
+
+class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate, MessagingDelegate, ObservableObject {
+  private var currentUserId: Int?
+  private var currentUserRole: String?
+
   func application(_ application: UIApplication,
-                   didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+                    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
     FirebaseApp.configure()
 
+    Messaging.messaging().delegate = self
+    UNUserNotificationCenter.current().delegate = self
+
+    UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
+      DispatchQueue.main.async {
+        if granted {
+          UserDefaults.standard.set(true, forKey: "Provikart.notificationsEnabled")
+          application.registerForRemoteNotifications()
+          print("[FCM] Notifikace povoleny, registruji na APNS…")
+        } else {
+          UserDefaults.standard.set(false, forKey: "Provikart.notificationsEnabled")
+          print("[FCM] Notifikace zamítnuty")
+        }
+      }
+    }
+
     return true
+  }
+
+  func application(_ application: UIApplication,
+                    didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+    print("[FCM] APNS token přijat (\(deviceToken.count) B), předávám FCM…")
+    Messaging.messaging().apnsToken = deviceToken
+
+    Messaging.messaging().token { [weak self] token, error in
+      DispatchQueue.main.async {
+        if let error = error {
+          print("[FCM] Chyba při načtení tokenu: \(error.localizedDescription)")
+          return
+        }
+        if let token = token {
+          print("[FCM] ✅ FCM token: \(token)")
+        }
+        self?.subscribeToAllUsers()
+      }
+    }
+  }
+
+  /// Na simulátoru se volá místo didRegister… – APNS tam není k dispozici.
+  func application(_ application: UIApplication,
+                    didFailToRegisterForRemoteNotificationsWithError error: Error) {
+    print("[FCM] ⚠️ APNS registrace selhala (pravděpodobně simulátor): \(error.localizedDescription)")
+    print("[FCM] FCM token získaš jen na reálném zařízení (iPhone/iPad).")
+  }
+
+  func subscribeToAllUsers() {
+    Messaging.messaging().subscribe(toTopic: "all_users") { error in
+      if let error = error {
+        print("[FCM] Odběr tématu all_users selhal: \(error.localizedDescription)")
+      } else {
+        print("[FCM] Přihlášení k tématu all_users")
+      }
+    }
+  }
+
+  func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+    let userInfo = notification.request.content.userInfo
+    print("[FCM] Notifikace při běhu aplikace: \(userInfo)")
+    completionHandler([.banner, .list, .sound])
+  }
+
+  func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+    let userInfo = response.notification.request.content.userInfo
+    print("[FCM] Reakce na notifikaci: \(userInfo)")
+    NotificationCenter.default.post(name: Notification.Name("didReceiveRemoteNotification"), object: nil, userInfo: userInfo as? [String: Any])
+    completionHandler()
+  }
+
+  func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
+    if let token = fcmToken {
+      print("[FCM] Registration token: \(token)")
+      if currentUserId != nil, currentUserRole != nil {
+        sendFCMTokenToBackend(token: token)
+      }
+    } else {
+      print("[FCM] Registration token je nil")
+    }
+  }
+
+  func sendFCMTokenToBackend(token: String) {
+    guard let userId = currentUserId, let userRole = currentUserRole else { return }
+    guard let url = URL(string: updateFCMTokenURL) else { return }
+
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.httpBody = try? JSONSerialization.data(withJSONObject: [
+      "token": token,
+      "user_id": userId,
+      "role": userRole
+    ])
+
+    URLSession.shared.dataTask(with: request) { _, response, error in
+      if let error = error {
+        print("[FCM] Chyba odeslání tokenu na backend: \(error.localizedDescription)")
+        return
+      }
+      if let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) {
+        print("[FCM] Token odeslán na backend (user_id: \(userId), role: \(userRole))")
+      }
+    }.resume()
+  }
+
+  func updateUserInfo(userId: Int, role: String) {
+    currentUserId = userId
+    currentUserRole = role
+    // Token na backend neposíláme tady – čtení .fcmToken by vyvolalo žádost o token před APNS.
+    // Odešle se v messaging(didReceiveRegistrationToken:), až bude token k dispozici.
+  }
+
+  func clearUserInfo() {
+    currentUserId = nil
+    currentUserRole = nil
+    print("[FCM] Údaje uživatele v AppDelegate vymazány")
   }
 }
 
 @main
 struct ProvikartApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var authState = AuthState()
     @StateObject private var appLoginApprovalState = AppLoginApprovalState()
     @StateObject private var networkMonitor = NetworkMonitor()
@@ -66,8 +188,21 @@ struct ProvikartApp: App {
                 }
             }
             .environmentObject(authState)
+            .environmentObject(appDelegate)
             .environmentObject(appLoginApprovalState)
             .environmentObject(networkMonitor)
+            .onChange(of: authState.isLoggedIn) { _, isLoggedIn in
+              if isLoggedIn, let user = authState.currentUser {
+                appDelegate.updateUserInfo(userId: user.id ?? 0, role: user.role ?? "")
+              } else {
+                appDelegate.clearUserInfo()
+              }
+            }
+            .onAppear {
+              if authState.isLoggedIn, let user = authState.currentUser {
+                appDelegate.updateUserInfo(userId: user.id ?? 0, role: user.role ?? "")
+              }
+            }
             .sheet(item: Binding(
                 get: { appLoginApprovalState.presentedRequest },
                 set: { appLoginApprovalState.presentedRequest = $0 }
@@ -96,6 +231,9 @@ struct ProvikartApp: App {
                 }
             }
             .onAppear {
+                if authState.isLoggedIn, let user = authState.currentUser {
+                    appDelegate.updateUserInfo(userId: user.id ?? 0, role: user.role ?? "")
+                }
                 if authState.isLoggedIn, !showLaunchScreen, hasCompletedOnboarding,
                    scenePhase == .active, let username = authState.currentUser?.username {
                     appLoginApprovalState.startPolling(username: username, token: authState.authToken, interval: 8)
