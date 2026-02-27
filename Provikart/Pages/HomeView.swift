@@ -17,109 +17,115 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    commissionBanner
-                        .padding(.horizontal, 20)
+            List {
+                Section {
+                    commissionRow
+                } header: {
+                    Text("Provize")
+                        .textCase(nil)
                 }
-                .padding(.top, 16)
             }
-            .background(Color(uiColor: .systemBackground))
-            .toolbar(.hidden, for: .navigationBar)
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.visible)
+            .background(Color(uiColor: .systemGroupedBackground))
+            .navigationTitle("Domů")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    profileBarButton
+                }
+            }
         }
-        .task(id: authState.authToken) {
+        .task {
+            await loadCommission()
+            // Periodické obnovení provize na pozadí (každých 30 s), dokud je obrazovka viditelná
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 5_000_000_000) // 30 sekund
+                if Task.isCancelled { break }
+                await loadCommission(silent: true)
+            }
+        }
+        .refreshable {
             await loadCommission()
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            PageHeaderBar(title: "Domů")
-        }
-        .ignoresSafeArea(edges: .bottom)
     }
 
-    // MARK: - iOS-like Commission Banner
+    // MARK: - Toolbar
 
-    private var commissionBanner: some View {
+    @ViewBuilder
+    private var profileBarButton: some View {
+        if let url = authState.currentUser?.profileImageURL {
+            Button {
+                // Přepnutí na profil přes tab lze doplnit přes callback
+            } label: {
+                AuthenticatedProfileImageView(
+                    url: url,
+                    token: authState.authToken
+                )
+                .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+        } else {
+            Button {
+            } label: {
+                Image(systemName: "person.circle.fill")
+                    .font(.title2)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    // MARK: - Commission Row (iOS List style)
+
+    private var commissionRow: some View {
         Button {
             UIImpactFeedbackGenerator(style: .soft).impactOccurred()
-            // TODO: případná navigace na detail provizí
         } label: {
-            HStack(alignment: .top, spacing: 14) {
-                // Leading badge icon
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.accentColor.opacity(0.12))
-                    Image(systemName: "creditcard")
-                        .font(.system(size: 20, weight: .semibold))
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center, spacing: 12) {
+                    Image(systemName: "creditcard.fill")
+                        .font(.title2)
                         .foregroundStyle(Color.accentColor)
-                }
-                .frame(width: 44, height: 44)
-                .accessibilityHidden(true)
+                        .frame(width: 28, alignment: .center)
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Provize za aktuální měsíc")
-                        .font(.title3.weight(.semibold))
+                    Text("Aktuální měsíc")
+                        .font(.body.weight(.medium))
                         .foregroundStyle(.primary)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.9)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                }
 
-                    Group {
-                        if isLoadingCommission {
-                            loadingSkeleton
-                        } else if let err = commissionError {
-                            errorRow(message: err)
-                        } else if let c = commission {
-                            valueRow(commission: c)
-                        } else {
-                            // Default placeholder
-                            Text("Přihlaste se pro zobrazení provize.")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    Divider()
-                        .opacity(0.2)
-
-                    HStack(spacing: 6) {
-                        Image(systemName: "calendar")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                        Text(periodText)
-                            .font(.footnote)
+                Group {
+                    if isLoadingCommission {
+                        loadingSkeleton
+                    } else if let err = commissionError {
+                        errorRow(message: err)
+                    } else if let c = commission {
+                        valueRow(commission: c)
+                    } else {
+                        Text("Přihlaste se pro zobrazení provize.")
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-                Spacer(minLength: 0)
-
-                Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(Color(uiColor: .tertiaryLabel))
-                    .accessibilityHidden(true)
+                HStack(spacing: 4) {
+                    Image(systemName: "calendar")
+                        .font(.caption2)
+                    Text(periodText)
+                        .font(.caption2)
+                }
+                .foregroundStyle(.secondary)
             }
-            .padding(16)
-            .background(bannerBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.06))
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(.vertical, 4)
         }
         .buttonStyle(.plain)
+        .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityBannerLabel)
-    }
-
-    private var bannerBackground: some View {
-        Group {
-            if #available(iOS 15.0, *) {
-                Color.clear
-                    .background(.ultraThinMaterial)
-            } else {
-                Color(uiColor: .secondarySystemBackground)
-            }
-        }
     }
 
     private var periodText: String {
@@ -169,22 +175,22 @@ struct HomeView: View {
 
     @ViewBuilder
     private func errorRow(message: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-            Text(message)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .lineLimit(3)
-            Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+            }
             Button {
                 Task { await loadCommission() }
             } label: {
                 Text("Zkusit znovu")
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.accentColor)
-            .controlSize(.mini)
+            .buttonStyle(.bordered)
+            .controlSize(.small)
         }
     }
 
@@ -204,7 +210,8 @@ struct HomeView: View {
 
     // MARK: - Data Loading
 
-    private func loadCommission() async {
+    /// Načte provizi z API. Při `silent: true` se nespouští loading stav – vhodné pro periodické obnovení na pozadí.
+    private func loadCommission(silent: Bool = false) async {
         let token = await MainActor.run { authState.authToken }
         guard let token else {
             await MainActor.run {
@@ -213,10 +220,12 @@ struct HomeView: View {
             }
             return
         }
-        await MainActor.run {
-            isLoadingCommission = true
-            commissionError = nil
-            commission = nil
+        if !silent {
+            await MainActor.run {
+                isLoadingCommission = true
+                commissionError = nil
+                commission = nil
+            }
         }
 
         do {
@@ -227,7 +236,9 @@ struct HomeView: View {
             }
         } catch {
             await MainActor.run {
-                commissionError = error.localizedDescription
+                if !silent {
+                    commissionError = error.localizedDescription
+                }
                 isLoadingCommission = false
             }
         }
@@ -279,4 +290,5 @@ private extension View {
 
 #Preview {
     HomeView()
+        .environmentObject(AuthState())
 }
