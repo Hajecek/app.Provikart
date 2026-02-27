@@ -328,6 +328,207 @@ private struct StatementsTimelineView: View {
     }
 }
 
+// MARK: - Fotky reportu
+
+private let reportImagesBaseURL = "https://provikart.cz/"
+
+private struct ReportImagesView: View {
+    let imagePaths: [String]
+
+    @State private var fullScreenURL: IdentifiableURL?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(Array(imagePaths.enumerated()), id: \.offset) { _, path in
+                if let url = URL(string: path.hasPrefix("http") ? path : reportImagesBaseURL + path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))) {
+                    ReportImageView(url: url) {
+                        fullScreenURL = IdentifiableURL(url: url)
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 4)
+        .fullScreenCover(item: $fullScreenURL) { item in
+            FullScreenReportImageView(url: item.url) {
+                fullScreenURL = nil
+            }
+        }
+    }
+}
+
+private struct IdentifiableURL: Identifiable {
+    let id: String
+    let url: URL
+    init(url: URL) {
+        self.url = url
+        self.id = url.absoluteString
+    }
+}
+
+private struct ReportImageView: View {
+    let url: URL
+    var onTap: (() -> Void)?
+
+    var body: some View {
+        AsyncImage(url: url) { phase in
+            switch phase {
+            case .empty:
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color(uiColor: .tertiarySystemFill))
+                    .frame(height: 160)
+                    .overlay { ProgressView() }
+            case .success(let image):
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity)
+                    .frame(maxHeight: 300)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            case .failure:
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color(uiColor: .tertiarySystemFill))
+                    .frame(height: 80)
+                    .overlay {
+                        Label("Obrázek se nepodařilo načíst", systemImage: "photo")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+            @unknown default:
+                EmptyView()
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onTap?()
+        }
+    }
+}
+
+private struct FullScreenReportImageView: View {
+    let url: URL
+    let onDismiss: () -> Void
+
+    @State private var scale: CGFloat = 1
+    @State private var lastScale: CGFloat = 1
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+    @State private var loadedImage: UIImage?
+    @State private var showShareSheet = false
+    private let minScale: CGFloat = 1
+    private let maxScale: CGFloat = 5
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
+
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .empty:
+                        ProgressView()
+                            .tint(.white)
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .scaleEffect(scale)
+                            .offset(offset)
+                            .gesture(
+                                MagnificationGesture()
+                                    .onChanged { value in
+                                        let newScale = lastScale * value
+                                        scale = min(max(newScale, minScale), maxScale)
+                                    }
+                                    .onEnded { _ in
+                                        lastScale = scale
+                                    }
+                            )
+                            .simultaneousGesture(
+                                DragGesture()
+                                    .onChanged { value in
+                                        offset = CGSize(
+                                            width: lastOffset.width + value.translation.width,
+                                            height: lastOffset.height + value.translation.height
+                                        )
+                                    }
+                                    .onEnded { _ in
+                                        lastOffset = offset
+                                    }
+                            )
+                            .onTapGesture(count: 2) {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    scale = 1
+                                    lastScale = 1
+                                    offset = .zero
+                                    lastOffset = .zero
+                                }
+                            }
+                    case .failure:
+                        Image(systemName: "photo")
+                            .font(.largeTitle)
+                            .foregroundStyle(.white.opacity(0.5))
+                    @unknown default:
+                        EmptyView()
+                    }
+                }
+                .padding()
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.black, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        showShareSheet = true
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.title2)
+                            .foregroundStyle(.white)
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        onDismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title2)
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(.white)
+                    }
+                }
+            }
+            .task(id: url) {
+                await loadImageForShare()
+            }
+            .sheet(isPresented: $showShareSheet) {
+                ShareSheetView(items: loadedImage != nil ? [loadedImage!] : [url])
+            }
+        }
+    }
+
+    private func loadImageForShare() async {
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            if let img = UIImage(data: data) {
+                await MainActor.run { loadedImage = img }
+            }
+        } catch {
+            await MainActor.run { loadedImage = nil }
+        }
+    }
+}
+
+/// Otevře nativní iOS menu pro sdílení (uložit do Fotek, zkopírovat, atd.).
+private struct ShareSheetView: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
 // MARK: - Detail reportu
 
 struct ReportDetailView: View {
@@ -369,6 +570,11 @@ struct ReportDetailView: View {
             if let statements = report.statements, !statements.isEmpty {
                 Section("Výroky") {
                     StatementsTimelineView(statements: statements, formatDate: formatDate)
+                }
+            }
+            if let images = report.images, !images.isEmpty {
+                Section("Fotky") {
+                    ReportImagesView(imagePaths: images)
                 }
             }
             if let result = report.result, !result.isEmpty {
