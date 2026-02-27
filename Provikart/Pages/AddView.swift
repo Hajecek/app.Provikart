@@ -36,27 +36,42 @@ struct AddView: View {
                                 // TODO: odeslat nahrávku / převést na text
                             }
                         )
-                        .padding(.horizontal, 8)
                     } else {
-                        HStack(spacing: 12) {
-                            TextField("Zeptej se na cokoli", text: $searchText)
-                                .textFieldStyle(.plain)
-                                .foregroundStyle(.white)
+                        HStack(spacing: 10) {
+                            HStack(spacing: 12) {
+                                TextField("Zeptej se na cokoli", text: $searchText)
+                                    .textFieldStyle(.plain)
+                                    .foregroundStyle(.white)
+                                Button {
+                                    audioMeter.start()
+                                    isRecording = true
+                                } label: {
+                                    Image(systemName: "mic.fill")
+                                        .font(.body.weight(.medium))
+                                        .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+                            .frame(height: 52)
+                            .background(Color(red: 38/255, green: 38/255, blue: 38/255))
+                            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+
                             Button {
-                                audioMeter.start()
-                                isRecording = true
+                                submitSearch()
                             } label: {
-                                Image(systemName: "mic.fill")
-                                    .font(.body.weight(.medium))
-                                    .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                                Image(systemName: "arrow.up")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(.black)
+                                    .frame(width: 52, height: 52)
+                                    .background(Color.white)
+                                    .clipShape(Circle())
                             }
                             .buttonStyle(.plain)
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 14)
                         .frame(height: 52)
-                        .background(Color(red: 38/255, green: 38/255, blue: 38/255))
-                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -111,6 +126,13 @@ struct AddView: View {
         }
         return "\(timeGreeting), \(userName), co dnes vymyslíme?"
     }
+
+    private func submitSearch() {
+        // TODO: odeslat searchText (vyhledat / poslat na AI)
+        let text = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        // Zatím jen příprava – napojíš odeslání / API
+    }
 }
 
 // MARK: - Nahrávací lišta (jen vlny) + tlačítka Stop a Odeslat v jedné linii vedle sebe
@@ -125,14 +147,15 @@ private struct VoiceRecordingBarView: View {
     private let barSpacing: CGFloat = 2
     private let maxBarHeight: CGFloat = 18
     private let rowHeight: CGFloat = 52
+    private let buttonSize: CGFloat = 52
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Button(action: onStop) {
                 Image(systemName: "stop.fill")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(Color(uiColor: .tertiaryLabel))
-                    .frame(width: rowHeight, height: rowHeight)
+                    .frame(width: buttonSize, height: buttonSize)
                     .background(Color(uiColor: .tertiarySystemFill))
                     .clipShape(Circle())
             }
@@ -155,9 +178,9 @@ private struct VoiceRecordingBarView: View {
 
             Button(action: onSend) {
                 Image(systemName: "arrow.up")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.black)
-                    .frame(width: rowHeight, height: rowHeight)
+                    .frame(width: buttonSize, height: buttonSize)
                     .background(Color.white)
                     .clipShape(Circle())
             }
