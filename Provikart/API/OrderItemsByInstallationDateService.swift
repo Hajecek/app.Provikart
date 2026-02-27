@@ -12,6 +12,8 @@ import Foundation
 struct OrderItemByInstallationDate: Decodable, Identifiable {
     let id: Int
     let order_id: Int
+    /// Skutečné číslo objednávky pro zákazníka (z tabulky orders). Pokud API nevrátí, zobrazí se order_id.
+    let order_number: String?
     let item_name: String
     let installation_date: String
     let base_price: Double
@@ -20,19 +22,28 @@ struct OrderItemByInstallationDate: Decodable, Identifiable {
     let status: String
 
     enum CodingKeys: String, CodingKey {
-        case id, order_id, item_name, installation_date, base_price, discount, commission, status
+        case id, order_id, order_number, item_name, installation_date, base_price, discount, commission, status
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeIntOrString(forKey: .id)
         order_id = try c.decodeIntOrString(forKey: .order_id)
+        order_number = try? c.decodeIfPresent(String.self, forKey: .order_number)
         item_name = (try c.decodeIfPresent(String.self, forKey: .item_name)) ?? ""
         installation_date = (try c.decodeIfPresent(String.self, forKey: .installation_date)) ?? ""
         base_price = try c.decodeDoubleOrString(forKey: .base_price)
         discount = try c.decodeDoubleOrString(forKey: .discount)
         commission = try c.decodeDoubleOrString(forKey: .commission)
         status = (try c.decodeIfPresent(String.self, forKey: .status)) ?? ""
+    }
+
+    /// Zobrazované číslo objednávky: order_number z API, jinak order_id.
+    var displayOrderNumber: String {
+        if let num = order_number, !num.trimmingCharacters(in: .whitespaces).isEmpty {
+            return num.trimmingCharacters(in: .whitespaces)
+        }
+        return "\(order_id)"
     }
 }
 
