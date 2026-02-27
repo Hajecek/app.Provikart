@@ -12,12 +12,14 @@ import UserNotifications
 
 private let onboardingCompletedKey = "Provikart.hasCompletedOnboarding"
 
-/// URL endpointu pro odeslání FCM tokenu na backend (uprav podle API).
-private let updateFCMTokenURL = "https://provikart.cz/api/update_fcm_token"
+/// API: POST s Authorization: Bearer <api_token>, body { "token": "<FCM token>" }
+private let updateFCMTokenURL = "https://provikart.cz/api/update_fcm_token.php"
 
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate, MessagingDelegate, ObservableObject {
   private var currentUserId: Int?
   private var currentUserRole: String?
+  /// API token z přihlášení – pro hlavičku Authorization při odeslání FCM tokenu
+  private var authToken: String?
 
   func application(_ application: UIApplication,
                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
@@ -94,48 +96,58 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
   func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
     if let token = fcmToken {
       print("[FCM] Registration token: \(token)")
-      if currentUserId != nil, currentUserRole != nil {
-        sendFCMTokenToBackend(token: token)
+      if authToken != nil {
+        sendFCMTokenToBackend(fcmToken: token)
       }
     } else {
       print("[FCM] Registration token je nil")
     }
   }
 
-  func sendFCMTokenToBackend(token: String) {
-    guard let userId = currentUserId, let userRole = currentUserRole else { return }
+  /// Odešle FCM token na API. Vyžaduje přihlášení (authToken v hlavičce), body jen { "token": "<fcm>" }.
+  func sendFCMTokenToBackend(fcmToken: String) {
+    guard let apiToken = authToken, !apiToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      print("[FCM] Přeskočeno – uživatel není přihlášen (chybí API token)")
+      return
+    }
     guard let url = URL(string: updateFCMTokenURL) else { return }
 
+    let cleanApiToken = apiToken.trimmingCharacters(in: .whitespacesAndNewlines)
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue("Bearer \(cleanApiToken)", forHTTPHeaderField: "Authorization")
+    // token_api v těle – PHP často nedostane hlavičku Authorization (Apache/nginx ji nepředá)
     request.httpBody = try? JSONSerialization.data(withJSONObject: [
-      "token": token,
-      "user_id": userId,
-      "role": userRole
+      "token": fcmToken,
+      "token_api": cleanApiToken
     ])
 
-    URLSession.shared.dataTask(with: request) { _, response, error in
+    URLSession.shared.dataTask(with: request) { data, response, error in
       if let error = error {
         print("[FCM] Chyba odeslání tokenu na backend: \(error.localizedDescription)")
         return
       }
-      if let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) {
-        print("[FCM] Token odeslán na backend (user_id: \(userId), role: \(userRole))")
+      let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+      if (200...299).contains(code) {
+        print("[FCM] FCM token odeslán na backend (OK)")
+      } else if let data = data, let body = String(data: data, encoding: .utf8) {
+        print("[FCM] Backend odpověděl \(code): \(body.prefix(200))")
       }
     }.resume()
   }
 
-  func updateUserInfo(userId: Int, role: String) {
+  func updateUserInfo(userId: Int, role: String, authToken: String?) {
     currentUserId = userId
     currentUserRole = role
-    // Token na backend neposíláme tady – čtení .fcmToken by vyvolalo žádost o token před APNS.
-    // Odešle se v messaging(didReceiveRegistrationToken:), až bude token k dispozici.
+    self.authToken = authToken
+    // FCM token se odešle v messaging(didReceiveRegistrationToken:), až bude k dispozici.
   }
 
   func clearUserInfo() {
     currentUserId = nil
     currentUserRole = nil
+    authToken = nil
     print("[FCM] Údaje uživatele v AppDelegate vymazány")
   }
 }
@@ -193,14 +205,14 @@ struct ProvikartApp: App {
             .environmentObject(networkMonitor)
             .onChange(of: authState.isLoggedIn) { _, isLoggedIn in
               if isLoggedIn, let user = authState.currentUser {
-                appDelegate.updateUserInfo(userId: user.id ?? 0, role: user.role ?? "")
+                appDelegate.updateUserInfo(userId: user.id ?? 0, role: user.role ?? "", authToken: authState.authToken)
               } else {
                 appDelegate.clearUserInfo()
               }
             }
             .onAppear {
               if authState.isLoggedIn, let user = authState.currentUser {
-                appDelegate.updateUserInfo(userId: user.id ?? 0, role: user.role ?? "")
+                appDelegate.updateUserInfo(userId: user.id ?? 0, role: user.role ?? "", authToken: authState.authToken)
               }
             }
             .sheet(item: Binding(
@@ -232,7 +244,7 @@ struct ProvikartApp: App {
             }
             .onAppear {
                 if authState.isLoggedIn, let user = authState.currentUser {
-                    appDelegate.updateUserInfo(userId: user.id ?? 0, role: user.role ?? "")
+                    appDelegate.updateUserInfo(userId: user.id ?? 0, role: user.role ?? "", authToken: authState.authToken)
                 }
                 if authState.isLoggedIn, !showLaunchScreen, hasCompletedOnboarding,
                    scenePhase == .active, let username = authState.currentUser?.username {
