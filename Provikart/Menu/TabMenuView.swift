@@ -16,6 +16,10 @@ enum Tabs: Hashable {
 
 struct TabMenuView: View {
     @State var selectedTab: Tabs = .home
+    @State private var previousTab: Tabs = .home
+    @State private var showAddSheet = false
+    /// Když true, přepnutí na .add přišlo z výběru „AI objednávka“, ne z tapu na Plus – neotevíráme sheet.
+    @State private var navigatingToAddFromSheet = false
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -32,8 +36,27 @@ struct TabMenuView: View {
             }
 
             Tab("Přidat", systemImage: "plus", value: .add) {
-                AddView()
+                AddView(selectedTab: $selectedTab)
             }
+        }
+        .onChange(of: selectedTab) { _, newValue in
+            if newValue == .add {
+                if navigatingToAddFromSheet {
+                    navigatingToAddFromSheet = false
+                } else {
+                    selectedTab = previousTab
+                    showAddSheet = true
+                }
+            } else {
+                previousTab = newValue
+            }
+        }
+        .sheet(isPresented: $showAddSheet) {
+            AddTypeSheetView(
+                isPresented: $showAddSheet,
+                selectedTab: $selectedTab,
+                navigatingToAddFromSheet: $navigatingToAddFromSheet
+            )
         }
     }
 }
