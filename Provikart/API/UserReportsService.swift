@@ -7,6 +7,13 @@
 
 import Foundation
 
+/// Jeden výrok v reportu (objekt z API: text, created_at, is_result).
+struct ReportStatement: Codable {
+    let text: String
+    let created_at: String?
+    let is_result: Bool?
+}
+
 /// Jeden report z API user_reports.
 struct UserReport: Codable, Identifiable, Hashable {
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
@@ -17,14 +24,13 @@ struct UserReport: Codable, Identifiable, Hashable {
     let note: String?
     let user_note: String?
     let statement: String?
-    /// Pole výroků (JSON z DB) – může být pole řetězců nebo objektů.
-    let statements: [String]?
+    /// Pole výroků – API vrací objekty { "text": "...", "created_at": "...", "is_result": bool }.
+    let statements: [ReportStatement]?
     let status: String?
     let created_at: String?
     let updated_at: String?
     let statement_updated_at: String?
     let result: String?
-    /// Pole URL obrázků (JSON z DB).
     let images: [String]?
     let is_term_selection_issue: Bool
     let created_by_manager: Bool?
@@ -39,11 +45,11 @@ struct UserReport: Codable, Identifiable, Hashable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(Int.self, forKey: .id)
         user_id = try c.decodeIfPresent(Int.self, forKey: .user_id)
-        order_number = try c.decodeIfPresent(String.self, forKey: .order_number)
+        order_number = Self.decodeOrderNumber(c)
         note = try c.decodeIfPresent(String.self, forKey: .note)
         user_note = try c.decodeIfPresent(String.self, forKey: .user_note)
         statement = try c.decodeIfPresent(String.self, forKey: .statement)
-        statements = (try? c.decode([String].self, forKey: .statements)) ?? nil
+        statements = try? c.decode([ReportStatement].self, forKey: .statements)
         status = try c.decodeIfPresent(String.self, forKey: .status)
         created_at = try c.decodeIfPresent(String.self, forKey: .created_at)
         updated_at = try c.decodeIfPresent(String.self, forKey: .updated_at)
@@ -52,6 +58,13 @@ struct UserReport: Codable, Identifiable, Hashable {
         images = (try? c.decode([String].self, forKey: .images)) ?? nil
         is_term_selection_issue = (try? c.decode(Bool.self, forKey: .is_term_selection_issue)) ?? false
         created_by_manager = try c.decodeIfPresent(Bool.self, forKey: .created_by_manager)
+    }
+
+    /// order_number může přijít jako String nebo jako číslo – vždy vrátíme řetězec.
+    private static func decodeOrderNumber(_ c: KeyedDecodingContainer<CodingKeys>) -> String? {
+        if let s = try? c.decode(String.self, forKey: .order_number), !s.isEmpty { return s }
+        if let i = try? c.decode(Int.self, forKey: .order_number) { return String(i) }
+        return nil
     }
 
     /// Report je dokončený při statusu "completed". Nedokončené jsou "created" a "open".
@@ -90,7 +103,10 @@ final class UserReportsService {
             throw UserReportsError.notAuthenticated
         }
         var comp = URLComponents(string: "\(baseURL)/user_reports.php")
-        comp?.queryItems = [URLQueryItem(name: "token", value: token)]
+        comp?.queryItems = [
+            URLQueryItem(name: "token", value: token),
+            URLQueryItem(name: "_", value: "\(Int(Date().timeIntervalSince1970))") // cache bust
+        ]
         guard let url = comp?.url else {
             throw UserReportsError.invalidURL
         }

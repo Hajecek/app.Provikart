@@ -11,21 +11,91 @@ enum ReportFilter: String, CaseIterable {
     case completed = "Dokončené"
 }
 
+// MARK: - ViewModel: vlastní pollovací Task, nezávislý na životnosti view – změny v DB se vždy projeví v UI
+
+@MainActor
+final class ProblemsViewModel: ObservableObject {
+    @Published var reports: [UserReport] = []
+    @Published var errorMessage: String?
+    @Published var isLoading = false
+
+    var getToken: (() -> String?)?
+    private let service = UserReportsService()
+    private var pollingTask: Task<Void, Never>?
+
+    func startPolling() {
+        print("[Problems] ▶️ startPolling() – spouštím periodické načítání každých 5 s")
+        pollingTask?.cancel()
+        pollingTask = Task { @MainActor in
+            await loadReports(silent: false)
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                if Task.isCancelled { break }
+                await loadReports(silent: true)
+            }
+            print("[Problems] ⏹ pollování ukončeno")
+        }
+    }
+
+    func stopPolling() {
+        pollingTask?.cancel()
+        pollingTask = nil
+    }
+
+    func loadReports(silent: Bool = false) async {
+        guard let token = getToken?(), !token.isEmpty else {
+            print("[Problems] ❌ Žádný token, přeskakuji načtení")
+            reports = []
+            errorMessage = nil
+            isLoading = false
+            return
+        }
+        if !silent {
+            errorMessage = nil
+            isLoading = true
+        }
+        let timeStr = { () -> String in
+            let f = DateFormatter()
+            f.dateFormat = "HH:mm:ss"
+            return f.string(from: Date())
+        }()
+        print("[Problems] 🔄 \(timeStr) – načítám reporty z API…")
+        do {
+            let fetched = try await service.fetchUserReports(token: token)
+            let orderNumbers = fetched.map { $0.order_number ?? "?" }.joined(separator: ", ")
+            print("[Problems] ✅ \(timeStr) – načteno \(fetched.count) reportů: [\(orderNumbers)]")
+            objectWillChange.send()
+            reports = fetched
+            isLoading = false
+        } catch {
+            print("[Problems] ❌ \(timeStr) – chyba: \(error.localizedDescription)")
+            if !silent {
+                errorMessage = error.localizedDescription
+                reports = []
+            }
+            isLoading = false
+        }
+    }
+}
+
+// MARK: - View
+
 struct ProblemsView: View {
     @EnvironmentObject private var authState: AuthState
-    @State private var reports: [UserReport] = []
-    @State private var errorMessage: String?
-    @State private var isLoading = false
+    @StateObject private var viewModel = ProblemsViewModel()
     @State private var filter: ReportFilter = .incomplete
-
-    private let reportsService = UserReportsService()
 
     private var filteredReports: [UserReport] {
         switch filter {
-        case .all: return reports
-        case .incomplete: return reports.filter { !$0.isCompleted }
-        case .completed: return reports.filter(\.isCompleted)
+        case .all: return viewModel.reports
+        case .incomplete: return viewModel.reports.filter { !$0.isCompleted }
+        case .completed: return viewModel.reports.filter(\.isCompleted)
         }
+    }
+
+    /// Mění se při změně dat z API – vynutí překreslení Listu (řeší „stejné id, starý obsah“).
+    private var listContentId: String {
+        viewModel.reports.map { "\($0.id)-\($0.order_number ?? "")-\($0.updated_at ?? "")" }.joined(separator: "|")
     }
 
     var body: some View {
@@ -37,10 +107,10 @@ struct ProblemsView: View {
                         systemImage: "exclamationmark.triangle",
                         description: Text("Pro zobrazení reportů se přihlaste.")
                     )
-                } else if isLoading && reports.isEmpty {
+                } else if viewModel.isLoading && viewModel.reports.isEmpty {
                     ProgressView("Načítám reporty…")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let err = errorMessage {
+                } else if let err = viewModel.errorMessage {
                     VStack(spacing: 12) {
                         ContentUnavailableView(
                             "Chyba",
@@ -48,11 +118,11 @@ struct ProblemsView: View {
                             description: Text(err)
                         )
                         Button("Zkusit znovu") {
-                            Task { await loadReports() }
+                            Task { await viewModel.loadReports() }
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if reports.isEmpty {
+                } else if viewModel.reports.isEmpty {
                     ContentUnavailableView(
                         "Žádné reporty",
                         systemImage: "doc.text",
@@ -78,7 +148,7 @@ struct ProblemsView: View {
                                     .frame(maxWidth: .infinity)
                             }
                         } else {
-                            ForEach(filteredReports) { report in
+                            ForEach(filteredReports, id: \.id) { report in
                                 Section {
                                     NavigationLink(value: report) {
                                         ReportRow(report: report)
@@ -87,6 +157,7 @@ struct ProblemsView: View {
                             }
                         }
                     }
+                    .id(listContentId)
                     .listStyle(.insetGrouped)
                     .listSectionSpacing(.compact)
                     .navigationDestination(for: UserReport.self) { report in
@@ -104,29 +175,25 @@ struct ProblemsView: View {
                 }
             }
             .refreshable {
-                await loadReports()
+                await viewModel.loadReports()
             }
-        }
-        .task {
-            await loadReports()
-        }
-    }
-
-    private func loadReports() async {
-        guard authState.isLoggedIn else {
-            reports = []
-            errorMessage = nil
-            return
-        }
-        errorMessage = nil
-        isLoading = true
-        defer { isLoading = false }
-        let token = await MainActor.run { authState.authToken }
-        do {
-            reports = try await reportsService.fetchUserReports(token: token)
-        } catch {
-            errorMessage = error.localizedDescription
-            reports = []
+            .onAppear {
+                viewModel.getToken = { [authState] in authState.authToken }
+                if authState.isLoggedIn {
+                    viewModel.startPolling()
+                }
+            }
+            .onChange(of: authState.isLoggedIn) { _, isLoggedIn in
+                if isLoggedIn {
+                    viewModel.startPolling()
+                } else {
+                    viewModel.stopPolling()
+                    viewModel.reports = []
+                }
+            }
+            .onDisappear {
+                viewModel.stopPolling()
+            }
         }
     }
 }
@@ -250,8 +317,15 @@ struct ReportDetailView: View {
             }
             if let statements = report.statements, !statements.isEmpty {
                 Section("Výroky") {
-                    ForEach(statements, id: \.self) { s in
-                        Text(s)
+                    ForEach(Array(statements.enumerated()), id: \.offset) { _, s in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(s.text)
+                            if let date = s.created_at, !date.isEmpty {
+                                Text(formatDate(date))
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
                     }
                 }
             }
