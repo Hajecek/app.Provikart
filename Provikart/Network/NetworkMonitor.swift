@@ -16,15 +16,16 @@ final class NetworkMonitor: ObservableObject {
     @Published private(set) var isOffline = false
 
     private let monitor = NWPathMonitor()
+    private let queue = DispatchQueue(label: "com.provikart.networkmonitor")
 
     init() {
-        // Handler běží na .main, ale kompilátor nemůže zaručit hlavní actor – přepneme se explicitně.
         monitor.pathUpdateHandler = { [weak self] path in
-            Task { @MainActor [weak self] in
-                self?.isOffline = (path.status != .satisfied)
+            let offline = (path.status != .satisfied)
+            DispatchQueue.main.async {
+                self?.isOffline = offline
             }
         }
-        monitor.start(queue: .main)
+        monitor.start(queue: queue)
     }
 
     deinit {
