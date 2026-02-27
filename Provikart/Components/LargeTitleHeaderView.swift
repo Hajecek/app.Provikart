@@ -18,19 +18,38 @@ struct AuthenticatedProfileImageView: View {
     var body: some View {
         Group {
             if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
+                ZStack {
+                    Circle()
+                        .fill(Color(uiColor: .systemBackground))
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: size, height: size)
+                        .mask(Circle())
+                }
+                .frame(width: size, height: size)
+                .compositingGroup()
+                .clipShape(Circle())
             } else if loadFailed {
-                Image(systemName: "person.circle.fill")
-                    .font(.title2)
+                ZStack {
+                    Circle()
+                        .fill(Color(uiColor: .systemBackground))
+                    Image(systemName: "person.circle.fill")
+                        .font(.title2)
+                }
+                .frame(width: size, height: size)
             } else {
-                ProgressView()
-                    .frame(width: size, height: size)
+                ZStack {
+                    Circle()
+                        .fill(Color(uiColor: .tertiarySystemFill))
+                    ProgressView()
+                }
+                .frame(width: size, height: size)
             }
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
+        .contentShape(Circle())
         .task(id: url) {
             await loadImage()
         }
@@ -77,20 +96,32 @@ struct AuthenticatedProfileImageView: View {
 struct ProfileBarButton: View {
     @EnvironmentObject private var authState: AuthState
 
+    private let toolbarAvatarSize: CGFloat = 28
+
     var body: some View {
         NavigationLink {
             ProfileView()
         } label: {
-            if let url = authState.currentUser?.profileImageURL {
-                AuthenticatedProfileImageView(
-                    url: url,
-                    token: authState.authToken
-                )
-                .frame(width: 32, height: 32)
-            } else {
-                Image(systemName: "person.circle.fill")
-                    .font(.title2)
+            Group {
+                if let url = authState.currentUser?.profileImageURL {
+                    AuthenticatedProfileImageView(
+                        url: url,
+                        token: authState.authToken
+                    )
+                    .frame(width: toolbarAvatarSize, height: toolbarAvatarSize)
+                    .clipShape(Circle())
+                    .contentShape(Circle())
+                } else {
+                    Image(systemName: "person.circle.fill")
+                        .resizable()
+                        .scaledToFit()
+                        .foregroundStyle(.secondary)
+                        .frame(width: toolbarAvatarSize, height: toolbarAvatarSize)
+                        .clipShape(Circle())
+                        .contentShape(Circle())
+                }
             }
+            .accessibilityHidden(true)
         }
         .buttonStyle(.plain)
     }
@@ -155,4 +186,3 @@ struct LargeTitleHeaderView<Content: View>: View {
             .toolbarBackground(.hidden, for: .navigationBar)
     }
 }
-
