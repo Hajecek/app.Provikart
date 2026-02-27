@@ -11,6 +11,7 @@ enum Tabs: Hashable {
     case home
     case calendar
     case add
+    case problems
 }
 
 struct TabMenuView: View {
@@ -24,6 +25,10 @@ struct TabMenuView: View {
 
             Tab("Kalendář", systemImage: "calendar", value: .calendar) {
                 CalendarView()
+            }
+
+            Tab("Problémy", systemImage: "exclamationmark.triangle", value: .problems) {
+                ProblemsView()
             }
 
             Tab("Přidat", systemImage: "plus", value: .add) {
