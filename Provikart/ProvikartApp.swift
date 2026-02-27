@@ -13,6 +13,7 @@ private let onboardingCompletedKey = "Provikart.hasCompletedOnboarding"
 struct ProvikartApp: App {
     @StateObject private var authState = AuthState()
     @StateObject private var appLoginApprovalState = AppLoginApprovalState()
+    @StateObject private var networkMonitor = NetworkMonitor()
     @AppStorage(onboardingCompletedKey) private var hasCompletedOnboarding = false
     @State private var showLaunchScreen = true
     @State private var showBiometricVerification = false
@@ -55,6 +56,7 @@ struct ProvikartApp: App {
             }
             .environmentObject(authState)
             .environmentObject(appLoginApprovalState)
+            .environmentObject(networkMonitor)
             .sheet(item: Binding(
                 get: { appLoginApprovalState.presentedRequest },
                 set: { appLoginApprovalState.presentedRequest = $0 }
