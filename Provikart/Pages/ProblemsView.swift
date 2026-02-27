@@ -204,6 +204,9 @@ private struct ReportRow: View {
     let report: UserReport
 
     private var statusColor: Color {
+        if report.created_by_manager == true {
+            return Color(uiColor: .systemBlue)
+        }
         switch (report.status ?? "").lowercased() {
         case "completed": return Color(uiColor: .systemGreen)
         case "created": return Color(uiColor: .systemOrange)
