@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct HomeView: View {
+    @Binding var showProfile: Bool
     @EnvironmentObject private var authState: AuthState
     @State private var commission: CommissionResponse?
     @State private var commissionError: String?
@@ -55,9 +56,7 @@ struct HomeView: View {
     @ViewBuilder
     private var profileBarButton: some View {
         if let url = authState.currentUser?.profileImageURL {
-            NavigationLink {
-                ProfileView()
-            } label: {
+            NavigationLink(destination: ProfileView(onDismiss: { showProfile = false }), isActive: $showProfile) {
                 AuthenticatedProfileImageView(
                     url: url,
                     token: authState.authToken
@@ -66,9 +65,7 @@ struct HomeView: View {
             }
             .buttonStyle(.plain)
         } else {
-            NavigationLink {
-                ProfileView()
-            } label: {
+            NavigationLink(destination: ProfileView(onDismiss: { showProfile = false }), isActive: $showProfile) {
                 Image(systemName: "person.circle.fill")
                     .font(.title2)
             }
@@ -290,6 +287,6 @@ private extension View {
 }
 
 #Preview {
-    HomeView()
+    HomeView(showProfile: .constant(false))
         .environmentObject(AuthState())
 }

@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct ProfileView: View {
+    var onDismiss: (() -> Void)?
     @EnvironmentObject private var authState: AuthState
     @State private var isShowingSettings = false
     @State private var isShowingEdit = false
@@ -60,6 +61,9 @@ struct ProfileView: View {
                 }
                 .hidden()
             }
+        }
+        .onDisappear {
+            onDismiss?()
         }
         // Sheets
         .sheet(isPresented: $isShowingEdit) {
