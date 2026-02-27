@@ -40,7 +40,8 @@ struct ProvikartApp: App {
                 } else {
                     LoginView()
                 }
-                if scenePhase != .active {
+                // Pouze když je aplikace v pozadí (uživatel odešel / app switcher), ne při .inactive (ovládací centrum, notifikace).
+                if scenePhase == .background {
                     PrivacyScreen()
                         .ignoresSafeArea()
                         .zIndex(2)
