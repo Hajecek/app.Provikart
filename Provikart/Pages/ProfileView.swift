@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ProfileView: View {
     @EnvironmentObject private var authState: AuthState
+    @Environment(\.dismiss) private var dismiss
     @State private var isShowingSettings = false
     @State private var isShowingEdit = false
     @State private var isShowingSupport = false
@@ -59,10 +60,11 @@ struct ProfileView: View {
                 // Spodní toolbar (Liquid Glass) – časté akce s grupováním
                 ToolbarItemGroup(placement: .bottomBar) {
                     Button {
-                        isShowingEdit = true
+                        dismiss()
                     } label: {
-                        Label("Upravit", systemImage: "pencil")
+                        Label("Domů", systemImage: "house.fill")
                     }
+                    .accessibilityLabel("Zpět na Domů")
                     Button {
                         shareProfile()
                     } label: {
