@@ -5,12 +5,15 @@
 //  Onboarding v iOS 26 Liquid Glass stylu (pův. Balaji Venkatesh).
 //
 
+import LocalAuthentication
 import SwiftUI
 
 struct iOS26StyleOnBoarding: View {
     var tint: Color = .blue
     var hideBezels: Bool = false
     var items: [Item]
+    /// Volitelná akce před přechodem na další krok: (index kroku, pokračovat).
+    var stepAction: ((Int, @escaping () -> Void) -> Void)? = nil
     var onComplete: () -> ()
     /// View Properties
     @State private var currentIndex: Int = 0
@@ -178,12 +181,18 @@ struct iOS26StyleOnBoarding: View {
     @ViewBuilder
     func ContinueButton() -> some View {
         Button {
-            if currentIndex == items.count - 1 {
-                onComplete()
+            let advance = {
+                if currentIndex == items.count - 1 {
+                    onComplete()
+                }
+                withAnimation(animation) {
+                    currentIndex = min(currentIndex + 1, items.count - 1)
+                }
             }
-
-            withAnimation(animation) {
-                currentIndex = min(currentIndex + 1, items.count - 1)
+            if let action = stepAction {
+                action(currentIndex, advance)
+            } else {
+                advance()
             }
         } label: {
             Text(currentIndex == items.count - 1 ? "Get Started" : "Continue")
@@ -272,12 +281,18 @@ struct OnboardingView: View {
             ),
             .init(
                 id: 1,
+                title: "Face ID / Touch ID",
+                subtitle: "Povolte Face ID v okně. Poté zrušte\nověření tlačítkem Zrušit a pokračujte.",
+                screenshot: nil
+            ),
+            .init(
+                id: 2,
                 title: "New Context Menu's",
                 subtitle: "Access menu options with\ncontrols that fluidly morph.",
                 screenshot: UIImage(named: "Screen2")
             ),
             .init(
-                id: 2,
+                id: 3,
                 title: "Floating Tab Bar",
                 subtitle: "Tab bar that floats and responds\nto your hand's motion.",
                 screenshot: UIImage(named: "Screen4"),
@@ -285,7 +300,7 @@ struct OnboardingView: View {
                 zoomAnchor: .init(x: 0.5, y: 1.1)
             ),
             .init(
-                id: 3,
+                id: 4,
                 title: "All New Photo's App",
                 subtitle: "Focus on what matters with\nLiquid Glass Controls.",
                 screenshot: UIImage(named: "Screen3"),
@@ -293,13 +308,33 @@ struct OnboardingView: View {
                 zoomAnchor: .init(x: 0.5, y: -0.3)
             ),
             .init(
-                id: 4,
+                id: 5,
                 title: "Personalized Home Screen",
                 subtitle: "Personalize iPhone with new\nlooks for app icons.",
                 screenshot: UIImage(named: "Screen5")
             )
-        ]) {
+        ], stepAction: { index, advance in
+            if index == 1 {
+                requestBiometricPermission(then: advance)
+            } else {
+                advance()
+            }
+        }) {
             onFinish()
+        }
+    }
+
+    /// Zobrazí systémový dialog „Povolit Face ID?“ – po povolení se bohužel vždy zobrazí i výzva k ověření (iOS to nedovolí oddělit). Po dokončení nebo zrušení vždy pokračujeme.
+    private func requestBiometricPermission(then advance: @escaping () -> Void) {
+        let context = LAContext()
+        var biometricError: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &biometricError) else {
+            advance()
+            return
+        }
+        let reason = "Provikart používá Face ID pro rychlé a bezpečné ověření při návratu do aplikace."
+        context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason) { _, _ in
+            DispatchQueue.main.async { advance() }
         }
     }
 }
