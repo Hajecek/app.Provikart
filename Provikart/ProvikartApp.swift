@@ -96,9 +96,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
   func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
     if let token = fcmToken {
       print("[FCM] Registration token: \(token)")
-      if authToken != nil {
-        sendFCMTokenToBackend(fcmToken: token)
-      }
+      // Na backend neposíláme tady – ukládáme až po přihlášení v updateUserInfo.
     } else {
       print("[FCM] Registration token je nil")
     }
@@ -141,7 +139,10 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     currentUserId = userId
     currentUserRole = role
     self.authToken = authToken
-    // FCM token se odešle v messaging(didReceiveRegistrationToken:), až bude k dispozici.
+    // Uložení do DB až po přihlášení: při každém přihlášení (včetně přepnutí na jiného uživatele) odešli aktuální FCM token.
+    if authToken != nil, let fcmToken = Messaging.messaging().fcmToken {
+      sendFCMTokenToBackend(fcmToken: fcmToken)
+    }
   }
 
   func clearUserInfo() {
