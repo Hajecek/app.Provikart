@@ -277,6 +277,54 @@ private struct ReportRow: View {
     }
 }
 
+// MARK: - Výroky jako timeline se svislou čárou (iOS styl)
+
+private let timelineTrackWidth: CGFloat = 10
+private let timelineLineWidth: CGFloat = 2
+private let timelineDotSize: CGFloat = 8
+
+private struct StatementsTimelineView: View {
+    let statements: [ReportStatement]
+    let formatDate: (String) -> String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(statements.enumerated()), id: \.offset) { index, s in
+                HStack(alignment: .top, spacing: 12) {
+                    Circle()
+                        .fill(s.is_result == true ? Color(uiColor: .systemGreen) : Color.accentColor)
+                        .frame(width: timelineDotSize, height: timelineDotSize)
+                        .frame(width: timelineTrackWidth, height: timelineTrackWidth, alignment: .center)
+                        .padding(.top, 6)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(s.text)
+                            .font(.subheadline)
+                        if let date = s.created_at, !date.isEmpty {
+                            Text(formatDate(date))
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.bottom, index < statements.count - 1 ? 16 : 0)
+                }
+            }
+        }
+        .padding(.vertical, 8)
+        .background(alignment: .leading) {
+            GeometryReader { geo in
+                let h = max(0, geo.size.height - 12)
+                Rectangle()
+                    .fill(Color(uiColor: .tertiaryLabel).opacity(0.4))
+                    .frame(width: timelineLineWidth, height: h)
+                    .offset(x: (timelineTrackWidth - timelineLineWidth) / 2, y: 6)
+            }
+            .frame(width: timelineTrackWidth, alignment: .leading)
+        }
+    }
+}
+
 // MARK: - Detail reportu
 
 struct ReportDetailView: View {
@@ -317,16 +365,7 @@ struct ReportDetailView: View {
             }
             if let statements = report.statements, !statements.isEmpty {
                 Section("Výroky") {
-                    ForEach(Array(statements.enumerated()), id: \.offset) { _, s in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(s.text)
-                            if let date = s.created_at, !date.isEmpty {
-                                Text(formatDate(date))
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                            }
-                        }
-                    }
+                    StatementsTimelineView(statements: statements, formatDate: formatDate)
                 }
             }
             if let result = report.result, !result.isEmpty {
