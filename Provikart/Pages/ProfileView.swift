@@ -49,21 +49,19 @@ struct ProfileView: View {
                     .accessibilityLabel("Nastavení")
                 }
             }
+            // Hidden NavigationLink to push SettingsView (iOS-like)
+            .background {
+                NavigationLink(isActive: $isShowingSettings) {
+                    SettingsView()
+                        .navigationTitle("Nastavení")
+                        .navigationBarTitleDisplayMode(.inline)
+                } label: {
+                    EmptyView()
+                }
+                .hidden()
+            }
         }
         // Sheets
-        .sheet(isPresented: $isShowingSettings) {
-            NavigationStack {
-                SettingsView()
-                    .navigationTitle("Nastavení")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button("Hotovo") { isShowingSettings = false }
-                        }
-                    }
-            }
-            .environmentObject(authState)
-        }
         .sheet(isPresented: $isShowingEdit) {
             NavigationStack {
                 EditProfilePlaceholderView(user: authState.currentUser)
@@ -360,3 +358,4 @@ private struct EditProfilePlaceholderView: View {
     ProfileView()
         .environmentObject(AuthState())
 }
+

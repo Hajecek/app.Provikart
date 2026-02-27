@@ -10,7 +10,6 @@ import SwiftUI
 enum Tabs: Hashable {
     case home
     case profile
-    case settings
     case add
 }
 
@@ -30,10 +29,6 @@ struct TabMenuView: View {
             Tab("Profil", systemImage: "person", value: .profile) {
                 ProfileView()
             }
-
-            Tab("Nastavení", systemImage: "gearshape", value: .settings) {
-                SettingsView()
-            }
         }
     }
 }
@@ -41,3 +36,4 @@ struct TabMenuView: View {
 #Preview {
     TabMenuView()
 }
+
