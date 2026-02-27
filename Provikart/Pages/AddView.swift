@@ -9,20 +9,23 @@ struct AddView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(uiColor: .systemBackground).ignoresSafeArea()
+                Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
                 VStack {}
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .padding(32)
             }
-            .toolbar(.hidden, for: .navigationBar)
+            .navigationTitle("Přidat")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    ProfileBarButton()
+                }
+            }
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            PageHeaderBar(title: "Přidat")
-        }
-        .ignoresSafeArea(edges: .bottom)
     }
 }
 
 #Preview {
     AddView()
+        .environmentObject(AuthState())
 }

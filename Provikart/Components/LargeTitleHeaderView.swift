@@ -41,7 +41,7 @@ struct AuthenticatedProfileImageView: View {
         image = nil
         let urlsToTry = [url] + (fallbackURL.map { [$0] } ?? [])
         for tryURL in urlsToTry {
-            var requestURL = tryURL
+                var requestURL = tryURL
             if let token, var comp = URLComponents(url: tryURL, resolvingAgainstBaseURL: false) {
                 let existing = comp.queryItems ?? []
                 comp.queryItems = existing + [URLQueryItem(name: "token", value: token)]
@@ -73,7 +73,30 @@ struct AuthenticatedProfileImageView: View {
     }
 }
 
-/// Vlastní hlavička: velký nadpis vlevo, ikona profilu vpravo, v jednom řádku (pro Domů, Vyhledávání, Nastavení).
+/// Tlačítko profilu do toolbaru – použití např. .toolbar { ToolbarItem(placement: .topBarTrailing) { ProfileBarButton() } }
+struct ProfileBarButton: View {
+    @EnvironmentObject private var authState: AuthState
+
+    var body: some View {
+        NavigationLink {
+            ProfileView()
+        } label: {
+            if let url = authState.currentUser?.profileImageURL {
+                AuthenticatedProfileImageView(
+                    url: url,
+                    token: authState.authToken
+                )
+                .frame(width: 32, height: 32)
+            } else {
+                Image(systemName: "person.circle.fill")
+                    .font(.title2)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Vlastní hlavička: velký nadpis vlevo, ikona profilu vpravo (např. pro fullscreen flow bez NavigationStack).
 struct PageHeaderBar: View {
     @EnvironmentObject private var authState: AuthState
     let title: String
@@ -93,8 +116,7 @@ struct PageHeaderBar: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity)
-        // Odstraněno pozadí pro plnou transparentnost
-        // .background(.ultraThinMaterial)
+        .background(Color(uiColor: .systemBackground))
     }
 
     @ViewBuilder
@@ -106,7 +128,6 @@ struct PageHeaderBar: View {
             )
             .frame(width: 44, height: 44)
         } else {
-            let _ = print("[Avatar] Žádný currentUser nebo profileImageURL – currentUser: \(authState.currentUser != nil), profile_image: \(authState.currentUser?.profile_image ?? "nil")")
             Image(systemName: "person.circle.fill")
                 .font(.title2)
         }

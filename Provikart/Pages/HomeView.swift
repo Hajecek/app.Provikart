@@ -32,7 +32,7 @@ struct HomeView: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    profileBarButton
+                    ProfileBarButton()
                 }
             }
         }
@@ -47,32 +47,6 @@ struct HomeView: View {
         }
         .refreshable {
             await loadCommission()
-        }
-    }
-
-    // MARK: - Toolbar
-
-    @ViewBuilder
-    private var profileBarButton: some View {
-        if let url = authState.currentUser?.profileImageURL {
-            NavigationLink {
-                ProfileView()
-            } label: {
-                AuthenticatedProfileImageView(
-                    url: url,
-                    token: authState.authToken
-                )
-                .frame(width: 32, height: 32)
-            }
-            .buttonStyle(.plain)
-        } else {
-            NavigationLink {
-                ProfileView()
-            } label: {
-                Image(systemName: "person.circle.fill")
-                    .font(.title2)
-            }
-            .buttonStyle(.plain)
         }
     }
 
