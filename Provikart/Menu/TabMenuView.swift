@@ -20,6 +20,8 @@ struct TabMenuView: View {
     @State private var showAddSheet = false
     /// Když true, přepnutí na .add přišlo z výběru „AI objednávka“, ne z tapu na Plus – neotevíráme sheet.
     @State private var navigatingToAddFromSheet = false
+    /// Zobrazit v AddView režim „AI objednávka“ (vložit text → rozpoznat → přidat do DB).
+    @State private var addViewAIMode = false
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -36,12 +38,13 @@ struct TabMenuView: View {
             }
 
             Tab("Přidat", systemImage: "plus", value: .add) {
-                AddView(selectedTab: $selectedTab)
+                AddView(selectedTab: $selectedTab, isAIMode: $addViewAIMode)
             }
         }
         .onChange(of: selectedTab) { _, newValue in
             if newValue == .add {
                 if navigatingToAddFromSheet {
+                    addViewAIMode = true
                     navigatingToAddFromSheet = false
                 } else {
                     selectedTab = previousTab
@@ -49,6 +52,7 @@ struct TabMenuView: View {
                 }
             } else {
                 previousTab = newValue
+                addViewAIMode = false
             }
         }
         .sheet(isPresented: $showAddSheet) {

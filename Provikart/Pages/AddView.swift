@@ -7,6 +7,7 @@ import SwiftUI
 
 struct AddView: View {
     @Binding var selectedTab: Tabs
+    @Binding var isAIMode: Bool
     @EnvironmentObject private var authState: AuthState
     @State private var searchText = ""
     @State private var isRecording = false
@@ -16,81 +17,11 @@ struct AddView: View {
         NavigationStack {
             ZStack {
                 Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
-                VStack(spacing: 16) {
-                    Text(greetingText)
-                        .font(.title2)
-                        .fontWeight(.medium)
-                        .foregroundStyle(.primary)
-                        .multilineTextAlignment(.center)
-
-                    if isRecording {
-                        VoiceRecordingBarView(
-                            levels: audioMeter.levels,
-                            onStop: {
-                                withAnimation(.easeInOut(duration: 0.25)) {
-                                    audioMeter.stop()
-                                    isRecording = false
-                                }
-                            },
-                            onSend: {
-                                withAnimation(.easeInOut(duration: 0.25)) {
-                                    audioMeter.stop()
-                                    isRecording = false
-                                }
-                                // TODO: odeslat nahrávku / převést na text
-                            }
-                        )
-                        .transition(.asymmetric(
-                            insertion: .opacity.combined(with: .scale(scale: 0.96)),
-                            removal: .opacity.combined(with: .scale(scale: 0.96))
-                        ))
-                    } else {
-                        HStack(spacing: 10) {
-                            HStack(spacing: 12) {
-                                TextField("Zeptej se na cokoli", text: $searchText)
-                                    .textFieldStyle(.plain)
-                                    .foregroundStyle(.white)
-                                Button {
-                                    withAnimation(.easeInOut(duration: 0.25)) {
-                                        audioMeter.start()
-                                        isRecording = true
-                                    }
-                                } label: {
-                                    Image(systemName: "mic.fill")
-                                        .font(.body.weight(.medium))
-                                        .foregroundStyle(Color(uiColor: .tertiaryLabel))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 14)
-                            .frame(height: 52)
-                            .background(Color(red: 38/255, green: 38/255, blue: 38/255))
-                            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-
-                            Button {
-                                submitSearch()
-                            } label: {
-                                Image(systemName: "arrow.up")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(.black)
-                                    .frame(width: 52, height: 52)
-                                    .background(Color.white)
-                                    .clipShape(Circle())
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .frame(height: 52)
-                        .transition(.asymmetric(
-                            insertion: .opacity.combined(with: .scale(scale: 0.96)),
-                            removal: .opacity.combined(with: .scale(scale: 0.96))
-                        ))
-                    }
+                if isAIMode {
+                    aiOrderContent
+                } else {
+                    defaultContent
                 }
-                .animation(.easeInOut(duration: 0.25), value: isRecording)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(32)
             }
             .navigationBarTitleDisplayMode(.inline)
             .alert("Mikrofon nepovolen", isPresented: $audioMeter.permissionDenied) {
@@ -111,6 +42,93 @@ struct AddView: View {
                 }
             }
         }
+    }
+
+    // MARK: - AI objednávka
+    private var aiOrderContent: some View {
+        AIOrderFlowView(
+            isAIMode: $isAIMode,
+            authToken: authState.authToken
+        )
+    }
+
+    // MARK: - Výchozí (vyhledávání / hlas)
+    private var defaultContent: some View {
+        VStack(spacing: 16) {
+            Text(greetingText)
+                .font(.title2)
+                .fontWeight(.medium)
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.center)
+
+            if isRecording {
+                VoiceRecordingBarView(
+                    levels: audioMeter.levels,
+                    onStop: {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            audioMeter.stop()
+                            isRecording = false
+                        }
+                    },
+                    onSend: {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            audioMeter.stop()
+                            isRecording = false
+                        }
+                        // TODO: odeslat nahrávku / převést na text
+                    }
+                )
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .scale(scale: 0.96)),
+                    removal: .opacity.combined(with: .scale(scale: 0.96))
+                ))
+            } else {
+                HStack(spacing: 10) {
+                    HStack(spacing: 12) {
+                        TextField("Zeptej se na cokoli", text: $searchText)
+                            .textFieldStyle(.plain)
+                            .foregroundStyle(.white)
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                audioMeter.start()
+                                isRecording = true
+                            }
+                        } label: {
+                            Image(systemName: "mic.fill")
+                                .font(.body.weight(.medium))
+                                .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                    .frame(height: 52)
+                    .background(Color(red: 38/255, green: 38/255, blue: 38/255))
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+
+                    Button {
+                        submitSearch()
+                    } label: {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.black)
+                            .frame(width: 52, height: 52)
+                            .background(Color.white)
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .frame(height: 52)
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .scale(scale: 0.96)),
+                    removal: .opacity.combined(with: .scale(scale: 0.96))
+                ))
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: isRecording)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(32)
     }
 
     /// Pozdrav podle denní doby: Dobré ráno, Dobré dopoledne, Dobré odpoledne, Dobrý večer.
@@ -143,10 +161,290 @@ struct AddView: View {
     }
 
     private func submitSearch() {
-        // TODO: odeslat searchText (vyhledat / poslat na AI)
         let text = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         // Zatím jen příprava – napojíš odeslání / API
+    }
+}
+
+// MARK: - AI objednávka: text → parsování → výsledek → přidat do DB
+
+private struct AIOrderFlowView: View {
+    @Binding var isAIMode: Bool
+    let authToken: String?
+
+    @State private var orderText = ""
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+    @State private var parsedResponse: AIParseOrderResponse?
+    @State private var showCreateConfirm = false
+    @State private var isCreating = false
+    @State private var createSuccessOrderId: Int?
+    @State private var createSuccessOrderNumber: String?
+
+    private let service = AIOrderService()
+
+    private var timeGreeting: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        switch hour {
+        case 5..<9: return "Dobré ráno"
+        case 9..<12: return "Dobré dopoledne"
+        case 12..<18: return "Dobré odpoledne"
+        default: return "Dobrý večer"
+        }
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 20) {
+                if parsedResponse == nil {
+                    // Zadání textu
+                    Text("\(timeGreeting), vlož text objednávky a AI ho rozpozná.")
+                        .font(.title2)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+
+                    TextEditor(text: $orderText)
+                        .frame(minHeight: 120, maxHeight: 200)
+                        .padding(12)
+                        .background(Color(uiColor: .secondarySystemGroupedBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(Color(uiColor: .separator), lineWidth: 0.5)
+                        )
+                        .scrollContentBackground(.hidden)
+
+                    if let err = errorMessage {
+                        Text(err)
+                            .font(.subheadline)
+                            .foregroundStyle(.red)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
+
+                    if isLoading {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                            Text("AI zpracovává text…")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding()
+                    }
+
+                    Button {
+                        parseOrder()
+                    } label: {
+                        Label("Rozpoznat objednávku", systemImage: "sparkles")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(orderText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLoading)
+                } else {
+                    // Výsledek po rozpoznání
+                    aiResultView
+                }
+            }
+            .padding(24)
+        }
+        .confirmationDialog("Vytvořit objednávku?", isPresented: $showCreateConfirm) {
+            Button("Vytvořit") {
+                createOrder()
+            }
+            Button("Zrušit", role: .cancel) { }
+        } message: {
+            Text("Objednávka bude vytvořena s prázdnými údaji o zákazníkovi. Můžete je doplnit později.")
+        }
+        .alert("Objednávka vytvořena", isPresented: .init(
+            get: { createSuccessOrderId != nil },
+            set: { if !$0 { createSuccessOrderId = nil; createSuccessOrderNumber = nil } }
+        )) {
+            Button("OK") {
+                createSuccessOrderId = nil
+                createSuccessOrderNumber = nil
+                isAIMode = false
+            }
+        } message: {
+            if let num = createSuccessOrderNumber {
+                Text("Číslo objednávky: \(num)")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var aiResultView: some View {
+        if let resp = parsedResponse,
+           let orderNumber = resp.order_number,
+           let items = resp.items,
+           !items.isEmpty {
+
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    Button {
+                        parsedResponse = nil
+                        errorMessage = nil
+                    } label: {
+                        Image(systemName: "arrow.left")
+                    }
+                    Spacer()
+                    Text("Objednávka: \(orderNumber)")
+                        .font(.headline)
+                }
+
+                let totalCommission = items.reduce(0.0) { $0 + $1.commission }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                        HStack(alignment: .top) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.item_name)
+                                    .font(.subheadline.weight(.medium))
+                                Text(itemTypeLabel(item.item_type))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text("\(formatNumber(item.commission)) Kč")
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 12)
+                        .background(Color(uiColor: .secondarySystemGroupedBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                }
+
+                HStack {
+                    Text("Celková provize:")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Text("\(formatNumber(totalCommission)) Kč")
+                        .font(.headline)
+                }
+                .padding(.vertical, 8)
+
+                Button {
+                    showCreateConfirm = true
+                } label: {
+                    Label("Přidat do objednávek", systemImage: "checkmark.circle.fill")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isCreating)
+
+                if isCreating {
+                    HStack(spacing: 6) {
+                        ProgressView()
+                        Text("Vytvářím objednávku…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Button("Zpět") {
+                    parsedResponse = nil
+                    errorMessage = nil
+                }
+                .foregroundStyle(.secondary)
+            }
+        } else {
+            EmptyView()
+        }
+    }
+
+    /// Zobrazí srozumitelnou zprávu při chybách OpenAI (např. HTTP 401 = neplatný API klíč na serveru).
+    private func friendlyAIErrorMessage(_ raw: String) -> String {
+        if raw.contains("OpenAI") && raw.contains("401") {
+            return "Na serveru je neplatný nebo chybějící OpenAI API klíč. Správce musí v konfiguraci (app_config.php nebo env) nastavit platný OPENAI_API_KEY."
+        }
+        if raw.contains("OpenAI") && raw.contains("429") {
+            return "Překročen limit OpenAI API. Zkuste to za minutu znovu."
+        }
+        return raw
+    }
+
+    private func itemTypeLabel(_ type: String) -> String {
+        switch type {
+        case "internet": return "Internet"
+        case "televize": return "Televize"
+        case "postpaid": return "Mobilní tarif"
+        case "pevna_linka": return "Pevná linka"
+        default: return "Jiné"
+        }
+    }
+
+    private func formatNumber(_ n: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.locale = Locale(identifier: "cs_CZ")
+        return formatter.string(from: NSNumber(value: n)) ?? "\(Int(n))"
+    }
+
+    private func parseOrder() {
+        let text = orderText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        errorMessage = nil
+        isLoading = true
+        Task {
+            do {
+                let response = try await service.parseOrder(text: text, token: authToken)
+                await MainActor.run {
+                    isLoading = false
+                    // success is Bool? in AIParseOrderResponse – coalesce to false
+                    if (response.success ?? false),
+                       response.order_number != nil,
+                       let items = response.items, !items.isEmpty {
+                        parsedResponse = response
+                    } else {
+                        let msg = response.error ?? "AI nevrátilo platná data."
+                        errorMessage = friendlyAIErrorMessage(msg)
+                        print("[ProviKart AI] Chyba parse_order: \(msg)")
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    isLoading = false
+                    let raw = error.localizedDescription
+                    errorMessage = friendlyAIErrorMessage(raw)
+                    print("[ProviKart AI] Chyba parse_order: \(raw)")
+                    print("[ProviKart AI] Detail: \(error)")
+                }
+            }
+        }
+    }
+
+    private func createOrder() {
+        guard let resp = parsedResponse, let orderNumber = resp.order_number, let items = resp.items, !items.isEmpty else { return }
+        showCreateConfirm = false
+        isCreating = true
+        Task {
+            do {
+                let response = try await service.createOrderDirect(orderNumber: orderNumber, items: items, token: authToken)
+                await MainActor.run {
+                    isCreating = false
+                    if response.success != false {
+                        createSuccessOrderId = response.order_id
+                        createSuccessOrderNumber = response.order_number
+                    } else {
+                        let msg = response.error ?? "Nepodařilo se vytvořit objednávku."
+                        errorMessage = friendlyAIErrorMessage(msg)
+                        print("[ProviKart AI] Chyba create_order: \(msg)")
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    isCreating = false
+                    errorMessage = friendlyAIErrorMessage(error.localizedDescription)
+                    print("[ProviKart AI] Chyba create_order: \(error.localizedDescription)")
+                    print("[ProviKart AI] Detail: \(error)")
+                }
+            }
+        }
     }
 }
 
@@ -249,6 +547,6 @@ struct AddTypeSheetView: View {
 }
 
 #Preview {
-    AddView(selectedTab: .constant(.add))
+    AddView(selectedTab: .constant(.add), isAIMode: .constant(false))
         .environmentObject(AuthState())
 }
