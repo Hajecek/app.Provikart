@@ -186,7 +186,18 @@ final class AIOrderService {
         body += "&token_api=\(token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
         request.httpBody = body.data(using: .utf8)
 
+        print("[ProviKart AI] create_order_direct – odesílám na \(addAIURLString)")
+        print("[ProviKart AI] create_order_direct – order_number: \(orderNumber), počet položek: \(items.count)")
+        if let bodyPreview = request.httpBody.flatMap({ String(data: $0, encoding: .utf8) }) {
+            let short = bodyPreview.count > 400 ? String(bodyPreview.prefix(400)) + "…" : bodyPreview
+            print("[ProviKart AI] create_order_direct – body (náhled): \(short)")
+        }
+
         let (data, response) = try await URLSession.shared.data(for: request)
+
+        if let raw = String(data: data, encoding: .utf8) {
+            print("[ProviKart AI] create_order_direct – odpověď serveru (HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)): \(raw.prefix(600))\(raw.count > 600 ? "…" : "")")
+        }
         guard let http = response as? HTTPURLResponse else {
             throw AIOrderError.serverError(-1, "Neplatná odpověď")
         }
@@ -200,6 +211,7 @@ final class AIOrderService {
             }
             do {
                 let decoded = try JSONDecoder().decode(AICreateOrderResponse.self, from: cleanData)
+                print("[ProviKart AI] create_order_direct – dekódováno: success=\(decoded.success ?? false), order_id=\(decoded.order_id ?? -1), order_number=\(decoded.order_number ?? "—")")
                 return decoded
             } catch {
                 let msg = friendlyDecodingError(data: cleanData, underlying: error)

@@ -12,6 +12,7 @@ struct AddView: View {
     @State private var searchText = ""
     @State private var isRecording = false
     @StateObject private var audioMeter = AudioLevelMeter()
+    private let authService = AuthService()
 
     var body: some View {
         NavigationStack {
@@ -22,6 +23,22 @@ struct AddView: View {
                 } else {
                     defaultContent
                 }
+            }
+            .task(id: isAIMode, priority: .background) {
+                guard isAIMode else { return }
+                while !Task.isCancelled {
+                    let token = await MainActor.run { authState.authToken ?? "" }
+                    if !token.isEmpty, let user = try? await authService.fetchCurrentUser(token: token) {
+                        await MainActor.run {
+                            authState.refreshCurrentUser(user)
+                            printUserInfo(user)
+                        }
+                    }
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                }
+            }
+            .refreshable {
+                await refreshUserAndLog()
             }
             .navigationBarTitleDisplayMode(.inline)
             .alert("Mikrofon nepovolen", isPresented: $audioMeter.permissionDenied) {
@@ -78,6 +95,29 @@ struct AddView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Načte aktuálního uživatele ze serveru, aktualizuje stav a vypíše do konzole (např. při pull-to-refresh).
+    private func refreshUserAndLog() async {
+        guard let token = authState.authToken, !token.isEmpty else { return }
+        guard let user = try? await authService.fetchCurrentUser(token: token) else { return }
+        authState.refreshCurrentUser(user)
+        printUserInfo(user)
+    }
+
+    /// Výpis informací o uživateli do konzole (stejný formát jako u přihlášení, tag [Profil]).
+    private func printUserInfo(_ u: UserInfo) {
+        print("[Profil] Uživatel:")
+        print("  id: \(u.id ?? 0)")
+        print("  email: \(u.email ?? "—")")
+        print("  name: \(u.name ?? "—")")
+        print("  username: \(u.username ?? "—")")
+        print("  personal_number: \(u.personal_number ?? "—")")
+        print("  firstname: \(u.firstname ?? "—")")
+        print("  lastname: \(u.lastname ?? "—")")
+        print("  profile_image: \(u.profile_image ?? "—")")
+        print("  role: \(u.role ?? "—")")
+        print("  plan: \(u.plan ?? "—")")
     }
 
     // MARK: - Výchozí (vyhledávání / hlas)

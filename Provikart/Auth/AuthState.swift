@@ -71,4 +71,9 @@ final class AuthState: ObservableObject {
     func logOut() {
         setLoggedIn(false)
     }
+
+    /// Aktualizuje uloženého uživatele (např. po načtení profilu/plánu ze serveru).
+    func refreshCurrentUser(_ user: UserInfo) {
+        currentUser = user
+    }
 }

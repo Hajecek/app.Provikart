@@ -101,4 +101,38 @@ final class AuthService {
             throw AuthError.serverError(userMessage)
         }
     }
+
+    /// Načte aktuálního uživatele podle tokenu (pro kontrolu plánu bez odhlášení).
+    /// Backend musí mít endpoint GET /api/auth/me s hlavičkou Authorization: Bearer <token>,
+    /// odpověď stejná struktura jako u přihlášení (např. { "user": { ... } }).
+    func fetchCurrentUser(token: String?) async throws -> UserInfo? {
+        guard let token = token, !token.isEmpty else { return nil }
+        guard let url = URL(string: "\(baseURL)/auth/me") else { throw AuthError.invalidURL }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.serverError("Neplatná odpověď serveru")
+        }
+
+        switch httpResponse.statusCode {
+        case 200...299:
+            // Podpora odpovědi { "user": { ... } } i přímo { ... }
+            if let decoded = try? JSONDecoder().decode(LoginResponse.self, from: data), let user = decoded.user {
+                return user
+            }
+            if let user = try? JSONDecoder().decode(UserInfo.self, from: data) {
+                return user
+            }
+            return nil
+        case 401:
+            return nil
+        default:
+            return nil
+        }
+    }
 }
