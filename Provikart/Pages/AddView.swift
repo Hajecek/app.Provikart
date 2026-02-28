@@ -214,11 +214,16 @@ private struct AIOrderFlowView: View {
                                 }
                             },
                             onSend: {
-                                withAnimation(.easeInOut(duration: 0.25)) {
-                                    audioMeter.stop()
-                                    isRecording = false
+                                audioMeter.stopWithRecognitionResult { text in
+                                    DispatchQueue.main.async {
+                                        withAnimation(.easeInOut(duration: 0.25)) {
+                                            if let t = text, !t.isEmpty {
+                                                orderText = t
+                                            }
+                                            isRecording = false
+                                        }
+                                    }
                                 }
-                                // TODO: přepis hlasu → orderText, pak parseOrder()
                             }
                         )
                         .transition(.asymmetric(

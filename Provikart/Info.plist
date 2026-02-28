@@ -4,6 +4,8 @@
 <dict>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Aplikace potřebuje přístup k mikrofonu pro hlasové vyhledávání a nahrávání.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Aplikace používá rozpoznávání řeči pro přepis diktovaného textu objednávky.</string>
 	<key>FirebaseAppDelegateProxyEnabled</key>
 	<false/>
 	<key>UIBackgroundModes</key>

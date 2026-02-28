@@ -2,15 +2,15 @@
 //  AudioLevelMeter.swift
 //  Provikart
 //
-//  Měření úrovně mikrofonu pro vizualizaci vln při nahrávání.
+//  Měření úrovně mikrofonu a rozpoznávání řeči (přepis do textu).
 //
 
 import AVFoundation
 import Combine
+import Speech
 import SwiftUI
 
 final class AudioLevelMeter: ObservableObject {
-    /// Počet sloupců vizualizace (0...1 normalizované výšky).
     static let barCount = 32
 
     @Published private(set) var levels: [CGFloat] = Array(repeating: 0.15, count: barCount)
@@ -23,6 +23,11 @@ final class AudioLevelMeter: ObservableObject {
     private let levelSmoothing: Float = 0.3
     private var smoothedLevel: Float = 0
 
+    private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
+    private var recognitionTask: SFSpeechRecognitionTask?
+    private var recognitionCompletion: ((String?) -> Void)?
+    private var audioFormat: AVAudioFormat?
+
     init() {
         self.inputNode = engine.inputNode
     }
@@ -33,10 +38,18 @@ final class AudioLevelMeter: ObservableObject {
         AVAudioSession.sharedInstance().requestRecordPermission { [weak self] allowed in
             DispatchQueue.main.async {
                 if allowed {
-                    self?.startEngine()
+                    self?.requestSpeechAndStart()
                 } else {
                     self?.permissionDenied = true
                 }
+            }
+        }
+    }
+
+    private func requestSpeechAndStart() {
+        SFSpeechRecognizer.requestAuthorization { [weak self] status in
+            DispatchQueue.main.async {
+                self?.startEngine()
             }
         }
     }
@@ -50,15 +63,17 @@ final class AudioLevelMeter: ObservableObject {
             return
         }
 
-        // Použij platný formát – outputFormat(forBus:) může mít sample rate 0 před startem enginu.
         guard let format = AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 1) else {
             return
         }
+        audioFormat = format
 
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
             self?.processBuffer(buffer)
         }
         tapInstalled = true
+
+        startSpeechRecognition()
 
         do {
             try engine.start()
@@ -67,6 +82,39 @@ final class AudioLevelMeter: ObservableObject {
             }
         } catch {
             removeTap()
+        }
+    }
+
+    private func startSpeechRecognition() {
+        guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "cs-CZ")), recognizer.isAvailable else {
+            return
+        }
+
+        let request = SFSpeechAudioBufferRecognitionRequest()
+        request.shouldReportPartialResults = true
+        request.requiresOnDeviceRecognition = false
+        recognitionRequest = request
+
+        recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
+            guard let self = self else { return }
+            if let result = result, result.isFinal {
+                let text = result.bestTranscription.formattedString
+                DispatchQueue.main.async {
+                    self.recognitionCompletion?(text.isEmpty ? nil : text)
+                    self.recognitionCompletion = nil
+                    self.recognitionRequest = nil
+                    self.recognitionTask = nil
+                }
+                return
+            }
+            if error != nil {
+                DispatchQueue.main.async {
+                    self.recognitionCompletion?(nil)
+                    self.recognitionCompletion = nil
+                    self.recognitionRequest = nil
+                    self.recognitionTask = nil
+                }
+            }
         }
     }
 
@@ -86,6 +134,8 @@ final class AudioLevelMeter: ObservableObject {
         DispatchQueue.main.async {
             self.pushLevel(CGFloat(self.smoothedLevel))
         }
+
+        recognitionRequest?.append(buffer)
     }
 
     private func pushLevel(_ level: CGFloat) {
@@ -100,10 +150,38 @@ final class AudioLevelMeter: ObservableObject {
 
     func stop() {
         guard isRunning else { return }
+        recognitionRequest?.endAudio()
+        recognitionRequest = nil
+        recognitionTask?.cancel()
+        recognitionTask = nil
+        recognitionCompletion = nil
         engine.stop()
         removeTap()
         isRunning = false
         levels = Array(repeating: 0.15, count: Self.barCount)
+    }
+
+    /// Zastaví nahrávání a po dokončení rozpoznávání zavolá completion s přepsaným textem (nebo nil).
+    func stopWithRecognitionResult(completion: @escaping (String?) -> Void) {
+        guard isRunning else {
+            completion(nil)
+            return
+        }
+        recognitionCompletion = completion
+        recognitionRequest?.endAudio()
+        engine.stop()
+        removeTap()
+        tapInstalled = false
+        isRunning = false
+        levels = Array(repeating: 0.15, count: Self.barCount)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            guard let self = self, let comp = self.recognitionCompletion else { return }
+            comp(nil)
+            self.recognitionCompletion = nil
+            self.recognitionRequest = nil
+            self.recognitionTask = nil
+        }
     }
 
     private func removeTap() {
