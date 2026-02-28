@@ -7,13 +7,34 @@
 
 import SwiftUI
 
+/// Jak zobrazit čekající přihlášení: sheet, jen accessory (po přetažení), nebo nic.
+enum LoginApprovalPresentation {
+    case sheet(AppLoginRequest)
+    case accessory
+    case none
+}
+
 /// Stav čekajících požadavků na přihlášení – sdílený v aplikaci pro zobrazení sheetu.
 final class AppLoginApprovalState: ObservableObject {
     @Published private(set) var pendingRequests: [AppLoginRequest] = []
-    /// Požadavek, pro který se má zobrazit sheet (nil = sheet skryt).
-    @Published var presentedRequest: AppLoginRequest?
+    /// Jedna hodnota: sheet / accessory / none – při zavření sheetu jen přepneme na .accessory, žádný race.
+    @Published var presentation: LoginApprovalPresentation = .none
     @Published var isProcessing = false
     @Published var errorMessage: String?
+
+    /// Pokud uživatel sheet zavřel „bokem“, neotvírat ho automaticky z pollingu,
+    /// dokud si ho sám z accessory znovu neotevře, nebo dokud fronta úplně nezmizí.
+    private var userDismissedSheetUntilInteraction = false
+
+    var presentedRequest: AppLoginRequest? {
+        if case .sheet(let r) = presentation { return r }
+        return nil
+    }
+
+    var showAsBottomAccessory: Bool {
+        if case .accessory = presentation { return true }
+        return false
+    }
 
     private let service = AppLoginRequestService()
     private var pollTask: Task<Void, Never>?
@@ -26,8 +47,27 @@ final class AppLoginApprovalState: ObservableObject {
                 let list = try await service.fetchPendingRequests(username: username, token: token)
                 pendingRequests = list
                 errorMessage = nil
-                if let first = list.first {
-                    presentedRequest = first
+
+                if list.isEmpty {
+                    // Reset – nic nečeká, můžeme zapomenout, že uživatel zavřel sheet.
+                    userDismissedSheetUntilInteraction = false
+                    presentation = .none
+                } else {
+                    switch presentation {
+                    case .accessory:
+                        // Zůstaň v accessory, dokud si to uživatel sám neotevře.
+                        break
+                    case .sheet:
+                        // Už se něco zobrazuje, jen držíme aktuální list
+                        break
+                    case .none:
+                        if userDismissedSheetUntilInteraction {
+                            // Po uživatelském zavření nikdy neotevírej automaticky.
+                            presentation = .accessory
+                        } else if let first = list.first {
+                            presentation = .sheet(first)
+                        }
+                    }
                 }
             } catch {
                 errorMessage = error.localizedDescription
@@ -61,7 +101,37 @@ final class AppLoginApprovalState: ObservableObject {
         if let first = pendingRequests.first {
             pendingRequests.removeAll { $0.request_id == first.request_id }
         }
-        presentedRequest = pendingRequests.first
+        if let first = pendingRequests.first {
+            presentation = .sheet(first)
+        } else {
+            // Fronta prázdná → reset chování, aby se příští nové požadavky mohly opět automaticky otevřít.
+            userDismissedSheetUntilInteraction = false
+            presentation = .none
+        }
+    }
+
+    /// Uživatel zavřel sheet (swipe/tap bokem) → okamžitě zobraz jen accessory a neotevírej znovu.
+    func dismissedSheetByUser() {
+        // Nastav flag hned, aby případný souběžný fetchPending už neotevřel sheet.
+        userDismissedSheetUntilInteraction = true
+
+        if pendingRequests.isEmpty {
+            // Nic nečeká → accessory nedává smysl, zároveň reset flagu.
+            userDismissedSheetUntilInteraction = false
+            presentation = .none
+        } else {
+            // Okamžitě přepni do accessory (bez mezistavu .none), aby binding sheetu byl hned nil.
+            presentation = .accessory
+        }
+    }
+
+    /// Otevře sheet z accessory (tap na bottom accessory).
+    func openSheetFromAccessory() {
+        if let first = pendingRequests.first {
+            // Uživatel si explicitně přeje otevřít → povolíme další auto-sheety.
+            userDismissedSheetUntilInteraction = false
+            presentation = .sheet(first)
+        }
     }
 
     func startPolling(username: String, token: String?, interval: TimeInterval = 8) {
@@ -136,5 +206,54 @@ struct AppLoginApprovalSheetView: View {
         }
         .presentationDetents([.medium])
         .presentationDragIndicator(.visible)
+    }
+}
+
+// MARK: - Bottom accessory (po přetažení sheetu)
+
+struct AppLoginApprovalAccessoryView: View {
+    @ObservedObject var approvalState: AppLoginApprovalState
+
+    var body: some View {
+        Button {
+            approvalState.openSheetFromAccessory()
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "globe.badge.chevron.backward")
+                    .font(.body)
+                Text("Přihlášení na webu čeká")
+                    .font(.subheadline)
+                Spacer()
+                Image(systemName: "chevron.up")
+                    .font(.caption.weight(.semibold))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Modifier pro zobrazení čekajícího přihlášení jako tabViewBottomAccessory (iOS 26+).
+struct LoginApprovalBottomAccessoryModifier: ViewModifier {
+    @ObservedObject var approvalState: AppLoginApprovalState
+
+    private var showAccessory: Bool {
+        approvalState.showAsBottomAccessory && !approvalState.pendingRequests.isEmpty
+    }
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            if showAccessory {
+                content
+                    .tabViewBottomAccessory {
+                        AppLoginApprovalAccessoryView(approvalState: approvalState)
+                    }
+            } else {
+                content
+            }
+        } else {
+            content
+        }
     }
 }

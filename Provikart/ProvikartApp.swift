@@ -216,13 +216,6 @@ struct ProvikartApp: App {
                 appDelegate.updateUserInfo(userId: user.id ?? 0, role: user.role ?? "", authToken: authState.authToken)
               }
             }
-            .sheet(item: Binding(
-                get: { appLoginApprovalState.presentedRequest },
-                set: { appLoginApprovalState.presentedRequest = $0 }
-            )) { request in
-                AppLoginApprovalSheetView(approvalState: appLoginApprovalState, request: request)
-                    .environmentObject(authState)
-            }
             .onChange(of: scenePhase) { _, newPhase in
                 switch newPhase {
                 case .background:

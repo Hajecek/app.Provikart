@@ -28,6 +28,19 @@ struct ContentView: View {
         .onDisappear {
             appLoginApprovalState.stopPolling()
         }
+        .sheet(item: Binding(
+            get: { appLoginApprovalState.presentedRequest },
+            set: { newValue in
+                if newValue == nil {
+                    appLoginApprovalState.dismissedSheetByUser()
+                }
+            }
+        ), onDismiss: {
+            appLoginApprovalState.dismissedSheetByUser()
+        }) { request in
+            AppLoginApprovalSheetView(approvalState: appLoginApprovalState, request: request)
+                .environmentObject(authState)
+        }
     }
 }
 

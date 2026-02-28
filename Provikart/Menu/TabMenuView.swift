@@ -15,6 +15,7 @@ enum Tabs: Hashable {
 }
 
 struct TabMenuView: View {
+    @EnvironmentObject private var appLoginApprovalState: AppLoginApprovalState
     @State var selectedTab: Tabs = .home
     @State private var previousTab: Tabs = .home
     @State private var showAddSheet = false
@@ -62,10 +63,12 @@ struct TabMenuView: View {
                 navigatingToAddFromSheet: $navigatingToAddFromSheet
             )
         }
+        .modifier(LoginApprovalBottomAccessoryModifier(approvalState: appLoginApprovalState))
     }
 }
 
 #Preview {
     TabMenuView()
+        .environmentObject(AppLoginApprovalState())
 }
 
