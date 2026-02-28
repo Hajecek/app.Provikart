@@ -418,13 +418,16 @@ private struct AIOrderFlowView: View {
         }
     }
 
-    /// Zobrazí srozumitelnou zprávu při chybách OpenAI (např. HTTP 401 = neplatný API klíč na serveru).
+    /// Zobrazí srozumitelnou zprávu při chybách OpenAI a při free plánu.
     private func friendlyAIErrorMessage(_ raw: String) -> String {
         if raw.contains("OpenAI") && raw.contains("401") {
             return "Na serveru je neplatný nebo chybějící OpenAI API klíč. Správce musí v konfiguraci (app_config.php nebo env) nastavit platný OPENAI_API_KEY."
         }
         if raw.contains("OpenAI") && raw.contains("429") {
             return "Překročen limit OpenAI API. Zkuste to za minutu znovu."
+        }
+        if raw.contains("403") || raw.lowercased().contains("free") || raw.contains("placený plán") || raw.contains("placeného plánu") {
+            return "Máte free plán. Pro použití této funkce je potřeba mít placený plán."
         }
         return raw
     }

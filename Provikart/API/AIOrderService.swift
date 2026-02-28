@@ -152,10 +152,18 @@ final class AIOrderService {
             throw AIOrderError.notAuthenticated
         default:
             let cleanData = dataWithoutBOMOrWhitespace(data)
-            let message = (try? JSONDecoder().decode([String: String].self, from: cleanData))?["error"]
+            let message = extractErrorFromJSON(cleanData)
             print("[ProviKart AI] parse_order – HTTP \(http.statusCode): \(message ?? "bez zprávy")")
             throw AIOrderError.serverError(http.statusCode, message)
         }
+    }
+
+    /// Z odpovědi JSON vytáhne řetězec z klíče „error“ (např. při 403).
+    private func extractErrorFromJSON(_ data: Data) -> String? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let err = json["error"] else { return nil }
+        if let s = err as? String, !s.isEmpty { return s }
+        return nil
     }
 
     /// Vytvoří objednávku přímo v databázi (order_number + položky). Položky musí být ve formátu vráceném z parse_order.
@@ -205,7 +213,7 @@ final class AIOrderService {
             throw AIOrderError.notAuthenticated
         default:
             let cleanData = dataWithoutBOMOrWhitespace(data)
-            let message = (try? JSONDecoder().decode([String: String].self, from: cleanData))?["error"]
+            let message = extractErrorFromJSON(cleanData)
             print("[ProviKart AI] create_order_direct – HTTP \(http.statusCode): \(message ?? "bez zprávy")")
             throw AIOrderError.serverError(http.statusCode, message)
         }
