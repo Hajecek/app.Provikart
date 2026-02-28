@@ -133,6 +133,7 @@ struct LoginView: View {
                         print("  lastname: \(u.lastname ?? "—")")
                         print("  profile_image: \(u.profile_image ?? "—")")
                         print("  role: \(u.role ?? "—")")
+                        print("  plan: \(u.plan ?? "—")")
                     } else {
                         print("[Login] Uživatel: (API nevrátilo objekt user)")
                     }

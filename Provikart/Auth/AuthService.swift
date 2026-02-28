@@ -23,6 +23,8 @@ struct UserInfo: Codable {
     let lastname: String?
     let profile_image: String?
     let role: String?
+    /// free / paid – pro zobrazení AI objednávky jen pro placený plán
+    let plan: String?
 
     /// URL profilového obrázku – přes serve_image.php (složka images/ je zakázaná pro přímý přístup).
     var profileImageURL: URL? {

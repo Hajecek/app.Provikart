@@ -45,15 +45,39 @@ struct AddView: View {
     }
 
     // MARK: - AI objednávka
+    @ViewBuilder
     private var aiOrderContent: some View {
-        let greeting: String = userName.isEmpty
-            ? "\(timeGreeting), vlož text objednávky a rozpoznám ho."
-            : "\(timeGreeting), \(userName), vlož text objednávky a rozpoznám ho."
-        return AIOrderFlowView(
-            isAIMode: $isAIMode,
-            authToken: authState.authToken,
-            greetingText: greeting
-        )
+        let plan = authState.currentUser?.plan ?? "free"
+        if plan != "paid" {
+            aiOrderPaidOnlyView
+        } else {
+            let greeting: String = userName.isEmpty
+                ? "\(timeGreeting), vlož text objednávky a rozpoznám ho."
+                : "\(timeGreeting), \(userName), vlož text objednávky a rozpoznám ho."
+            AIOrderFlowView(
+                isAIMode: $isAIMode,
+                authToken: authState.authToken,
+                greetingText: greeting
+            )
+        }
+    }
+
+    /// Zobrazení pro uživatele s free plánem – bez inputu, jen hláška.
+    private var aiOrderPaidOnlyView: some View {
+        VStack(spacing: 24) {
+            Spacer()
+            Image(systemName: "lock.circle.fill")
+                .font(.system(size: 56))
+                .foregroundStyle(.secondary)
+            Text("Tato stránka se dá využít pouze pro uživatele s placeným plánem.")
+                .font(.title3)
+                .fontWeight(.medium)
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Výchozí (vyhledávání / hlas)
