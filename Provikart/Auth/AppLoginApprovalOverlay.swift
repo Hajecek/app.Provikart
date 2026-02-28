@@ -134,5 +134,7 @@ struct AppLoginApprovalSheetView: View {
                 }
             }
         }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
     }
 }
