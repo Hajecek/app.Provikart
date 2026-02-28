@@ -32,6 +32,20 @@ struct UserInfo: Codable {
         let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name
         return URL(string: "https://provikart.cz/auth/serve_image?file=\(encoded)")
     }
+
+    /// Sloučí data z API s existujícím uživatelem – hodnoty z API mají přednost, u nil se zachová existing (např. profilový obrázek).
+    init(merging api: UserInfo, existing: UserInfo?) {
+        id = api.id ?? existing?.id
+        email = api.email ?? existing?.email
+        name = api.name ?? existing?.name
+        username = api.username ?? existing?.username
+        personal_number = api.personal_number ?? existing?.personal_number
+        firstname = api.firstname ?? existing?.firstname
+        lastname = api.lastname ?? existing?.lastname
+        profile_image = api.profile_image ?? existing?.profile_image
+        role = api.role ?? existing?.role
+        plan = api.plan ?? existing?.plan
+    }
 }
 
 enum AuthError: LocalizedError {
@@ -103,21 +117,25 @@ final class AuthService {
     }
 
     /// Načte aktuálního uživatele podle tokenu (pro kontrolu plánu bez odhlášení).
-    /// Backend musí mít endpoint GET /api/auth/me s hlavičkou Authorization: Bearer <token>,
-    /// odpověď stejná struktura jako u přihlášení (např. { "user": { ... } }).
+    /// POST s tělem token=xxx – tělo se na serveru neodstraňuje (na rozdíl od query u GET).
+    /// Odpověď: stejný tvar jako u přihlášení (např. { "user": { ... } }).
     func fetchCurrentUser(token: String?) async throws -> UserInfo? {
         guard let token = token, !token.isEmpty else { return nil }
-        guard let url = URL(string: "\(baseURL)/auth/me") else { throw AuthError.invalidURL }
+        guard let url = URL(string: "https://www.provikart.cz/api/auth/me") else { throw AuthError.invalidURL }
 
         var request = URLRequest(url: url)
-        request.httpMethod = "GET"
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = "token=\(token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")".data(using: .utf8)
 
+        print("[AuthService] /auth/me – POST token=***")
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw AuthError.serverError("Neplatná odpověď serveru")
         }
+
+        let bodyPreview = String(data: data.prefix(500), encoding: .utf8) ?? "(nelze přečíst)"
 
         switch httpResponse.statusCode {
         case 200...299:
@@ -128,10 +146,18 @@ final class AuthService {
             if let user = try? JSONDecoder().decode(UserInfo.self, from: data) {
                 return user
             }
+            print("[AuthService] /auth/me – HTTP 200, ale dekódování selhalo. Tělo: \(bodyPreview)")
+            do {
+                _ = try JSONDecoder().decode(LoginResponse.self, from: data)
+            } catch {
+                print("[AuthService] /auth/me – chyba dekódování: \(error)")
+            }
             return nil
         case 401:
+            print("[AuthService] /auth/me – HTTP 401 (neplatný/vypršený token). Tělo: \(bodyPreview)")
             return nil
         default:
+            print("[AuthService] /auth/me – HTTP \(httpResponse.statusCode). Tělo: \(bodyPreview)")
             return nil
         }
     }

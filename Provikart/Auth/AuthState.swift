@@ -73,7 +73,12 @@ final class AuthState: ObservableObject {
     }
 
     /// Aktualizuje uloženého uživatele (např. po načtení profilu/plánu ze serveru).
+    /// Sloučí s existujícím uživatelem, aby se nepřepsala pole, která API nevrací (např. profile_image).
     func refreshCurrentUser(_ user: UserInfo) {
-        currentUser = user
+        if let existing = currentUser {
+            currentUser = UserInfo(merging: user, existing: existing)
+        } else {
+            currentUser = user
+        }
     }
 }

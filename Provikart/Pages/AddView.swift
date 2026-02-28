@@ -28,10 +28,20 @@ struct AddView: View {
                 guard isAIMode else { return }
                 while !Task.isCancelled {
                     let token = await MainActor.run { authState.authToken ?? "" }
-                    if !token.isEmpty, let user = try? await authService.fetchCurrentUser(token: token) {
-                        await MainActor.run {
-                            authState.refreshCurrentUser(user)
-                            printUserInfo(user)
+                    if token.isEmpty {
+                        print("[Profil] Kontrola (každých 5 s): žádný token, přihlaste se")
+                    } else {
+                        do {
+                            if let user = try await authService.fetchCurrentUser(token: token) {
+                                await MainActor.run {
+                                    authState.refreshCurrentUser(user)
+                                    printUserInfo(user)
+                                }
+                            } else {
+                                print("[Profil] Kontrola (každých 5 s): server nevrátil uživatele (401 nebo prázdná odpověď)")
+                            }
+                        } catch {
+                            print("[Profil] Kontrola (každých 5 s): chyba – \(error.localizedDescription)")
                         }
                     }
                     try? await Task.sleep(nanoseconds: 5_000_000_000)
@@ -105,7 +115,7 @@ struct AddView: View {
         printUserInfo(user)
     }
 
-    /// Výpis informací o uživateli do konzole (stejný formát jako u přihlášení, tag [Profil]).
+    /// Výpis všech informací o uživateli do konzole (tag [Profil]), včetně URL profilového obrázku.
     private func printUserInfo(_ u: UserInfo) {
         print("[Profil] Uživatel:")
         print("  id: \(u.id ?? 0)")
@@ -116,6 +126,11 @@ struct AddView: View {
         print("  firstname: \(u.firstname ?? "—")")
         print("  lastname: \(u.lastname ?? "—")")
         print("  profile_image: \(u.profile_image ?? "—")")
+        if let url = u.profileImageURL {
+            print("  profile_image_url: \(url.absoluteString)")
+        } else {
+            print("  profile_image_url: —")
+        }
         print("  role: \(u.role ?? "—")")
         print("  plan: \(u.plan ?? "—")")
     }
