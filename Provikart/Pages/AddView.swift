@@ -46,9 +46,13 @@ struct AddView: View {
 
     // MARK: - AI objednávka
     private var aiOrderContent: some View {
-        AIOrderFlowView(
+        let greeting: String = userName.isEmpty
+            ? "\(timeGreeting), vlož text objednávky a rozpoznám ho."
+            : "\(timeGreeting), \(userName), vlož text objednávky a rozpoznám ho."
+        return AIOrderFlowView(
             isAIMode: $isAIMode,
-            authToken: authState.authToken
+            authToken: authState.authToken,
+            greetingText: greeting
         )
     }
 
@@ -172,9 +176,11 @@ struct AddView: View {
 private struct AIOrderFlowView: View {
     @Binding var isAIMode: Bool
     let authToken: String?
+    let greetingText: String
 
     @State private var orderText = ""
     @State private var isLoading = false
+    @State private var isRecording = false
     @State private var errorMessage: String?
     @State private var parsedResponse: AIParseOrderResponse?
     @State private var showCreateConfirm = false
@@ -182,40 +188,87 @@ private struct AIOrderFlowView: View {
     @State private var createSuccessOrderId: Int?
     @State private var createSuccessOrderNumber: String?
 
+    @StateObject private var audioMeter = AudioLevelMeter()
     private let service = AIOrderService()
 
-    private var timeGreeting: String {
-        let hour = Calendar.current.component(.hour, from: Date())
-        switch hour {
-        case 5..<9: return "Dobré ráno"
-        case 9..<12: return "Dobré dopoledne"
-        case 12..<18: return "Dobré odpoledne"
-        default: return "Dobrý večer"
-        }
-    }
-
     var body: some View {
-        ScrollView {
-            VStack(spacing: 20) {
-                if parsedResponse == nil {
-                    // Zadání textu
-                    Text("\(timeGreeting), vlož text objednávky a AI ho rozpozná.")
+        Group {
+            if parsedResponse == nil {
+                VStack(spacing: 20) {
+                    Spacer()
+
+                    Text(greetingText)
                         .font(.title2)
                         .fontWeight(.medium)
                         .foregroundStyle(.primary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
 
-                    TextEditor(text: $orderText)
-                        .frame(minHeight: 120, maxHeight: 200)
-                        .padding(12)
-                        .background(Color(uiColor: .secondarySystemGroupedBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .stroke(Color(uiColor: .separator), lineWidth: 0.5)
+                    if isRecording {
+                        VoiceRecordingBarView(
+                            levels: audioMeter.levels,
+                            onStop: {
+                                withAnimation(.easeInOut(duration: 0.25)) {
+                                    audioMeter.stop()
+                                    isRecording = false
+                                }
+                            },
+                            onSend: {
+                                withAnimation(.easeInOut(duration: 0.25)) {
+                                    audioMeter.stop()
+                                    isRecording = false
+                                }
+                                // TODO: přepis hlasu → orderText, pak parseOrder()
+                            }
                         )
-                        .scrollContentBackground(.hidden)
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 0.96)),
+                            removal: .opacity.combined(with: .scale(scale: 0.96))
+                        ))
+                    } else {
+                        HStack(spacing: 10) {
+                            HStack(spacing: 12) {
+                                TextField("Vlož text objednávky", text: $orderText)
+                                    .textFieldStyle(.plain)
+                                    .foregroundStyle(.white)
+                                Button {
+                                    withAnimation(.easeInOut(duration: 0.25)) {
+                                        audioMeter.start()
+                                        isRecording = true
+                                    }
+                                } label: {
+                                    Image(systemName: "mic.fill")
+                                        .font(.body.weight(.medium))
+                                        .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+                            .frame(height: 52)
+                            .background(Color(red: 38/255, green: 38/255, blue: 38/255))
+                            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+
+                            Button {
+                                parseOrder()
+                            } label: {
+                                Image(systemName: "arrow.up")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(.black)
+                                    .frame(width: 52, height: 52)
+                                    .background(Color.white)
+                                    .clipShape(Circle())
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(orderText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLoading)
+                        }
+                        .frame(height: 52)
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 0.96)),
+                            removal: .opacity.combined(with: .scale(scale: 0.96))
+                        ))
+                    }
 
                     if let err = errorMessage {
                         Text(err)
@@ -235,21 +288,24 @@ private struct AIOrderFlowView: View {
                         .padding()
                     }
 
-                    Button {
-                        parseOrder()
-                    } label: {
-                        Label("Rozpoznat objednávku", systemImage: "sparkles")
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(orderText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLoading)
-                } else {
-                    // Výsledek po rozpoznání
-                    aiResultView
+                    Spacer()
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .animation(.easeInOut(duration: 0.25), value: isRecording)
+                .padding(24)
+            } else {
+                ScrollView {
+                    aiResultView
+                        .padding(24)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .padding(24)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .alert("Mikrofon nepovolen", isPresented: $audioMeter.permissionDenied) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Pro hlasové zadání povolte přístup k mikrofonu v Nastavení.")
         }
         .confirmationDialog("Vytvořit objednávku?", isPresented: $showCreateConfirm) {
             Button("Vytvořit") {
