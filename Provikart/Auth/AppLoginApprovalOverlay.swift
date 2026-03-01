@@ -125,12 +125,13 @@ final class AppLoginApprovalState: ObservableObject {
         }
     }
 
-    /// Otevře sheet z accessory (tap na bottom accessory).
+    /// Otevře sheet z accessory (tap na bottom accessory) – systémová animace sheetu zdola.
     func openSheetFromAccessory() {
-        if let first = pendingRequests.first {
-            // Uživatel si explicitně přeje otevřít → povolíme další auto-sheety.
-            userDismissedSheetUntilInteraction = false
-            presentation = .sheet(first)
+        guard let first = pendingRequests.first else { return }
+        userDismissedSheetUntilInteraction = false
+        // Odložení na další run loop zajistí, že SwiftUI spustí nativní animaci prezentace sheetu
+        DispatchQueue.main.async {
+            self.presentation = .sheet(first)
         }
     }
 
