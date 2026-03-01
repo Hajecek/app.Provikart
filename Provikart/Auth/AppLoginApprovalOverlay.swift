@@ -223,7 +223,7 @@ final class AppLoginApprovalState: ObservableObject {
         }
     }
 
-    func startPolling(username: String, token: String?, interval: TimeInterval = 8) {
+    func startPolling(username: String, token: String?, interval: TimeInterval = 2) {
         guard !username.isEmpty else { return }
         pollTask?.cancel()
         pollTask = Task { @MainActor in

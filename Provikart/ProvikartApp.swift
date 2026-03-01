@@ -230,7 +230,7 @@ struct ProvikartApp: App {
                     backgroundedAt = nil
                     if authState.isLoggedIn, !showLaunchScreen, hasCompletedOnboarding,
                        let username = authState.currentUser?.username {
-                        appLoginApprovalState.startPolling(username: username, token: authState.authToken, interval: 8)
+                        appLoginApprovalState.startPolling(username: username, token: authState.authToken, interval: 2)
                     }
                 default:
                     break
@@ -242,7 +242,7 @@ struct ProvikartApp: App {
                 }
                 if authState.isLoggedIn, !showLaunchScreen, hasCompletedOnboarding,
                    scenePhase == .active, let username = authState.currentUser?.username {
-                    appLoginApprovalState.startPolling(username: username, token: authState.authToken, interval: 8)
+                    appLoginApprovalState.startPolling(username: username, token: authState.authToken, interval: 2)
                 }
             }
         }

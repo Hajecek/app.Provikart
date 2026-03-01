@@ -22,7 +22,7 @@ struct ContentView: View {
         }
         .onAppear {
             if let username = authState.currentUser?.username {
-                appLoginApprovalState.startPolling(username: username, token: authState.authToken, interval: 8)
+                appLoginApprovalState.startPolling(username: username, token: authState.authToken, interval: 2)
             }
         }
         .onDisappear {
