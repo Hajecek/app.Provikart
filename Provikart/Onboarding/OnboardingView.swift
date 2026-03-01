@@ -195,7 +195,7 @@ struct iOS26StyleOnBoarding: View {
                 advance()
             }
         } label: {
-            Text(currentIndex == items.count - 1 ? "Get Started" : "Continue")
+            Text(currentIndex == items.count - 1 ? "Vrhnout se do aplikace" : "Pokračovat")
                 .fontWeight(.medium)
                 .contentTransition(.numericText())
                 .padding(.vertical, 6)
@@ -275,14 +275,14 @@ struct OnboardingView: View {
         iOS26StyleOnBoarding(tint: .blue, hideBezels: false, items: [
             .init(
                 id: 0,
-                title: "Welcome to iOS 26",
-                subtitle: "Introducing a new design with\nLiquid Glass.",
+                title: "Vítejte v ProviKart",
+                subtitle: "Představujeme nový způsob hlídání provizí a objednávek pomocí AI",
                 screenshot: UIImage(named: "Screen1")
             ),
             .init(
                 id: 1,
                 title: "Face ID / Touch ID",
-                subtitle: "Povolte Face ID v okně. Poté zrušte\nověření tlačítkem Zrušit a pokračujte.",
+                subtitle: "Kvůli citlivosti dat vás budeme ověřovat. Potřebujeme svolení k použití FACE ID",
                 screenshot: nil
             ),
             .init(
@@ -338,7 +338,7 @@ struct OnboardingView: View {
         }
     }
 }
-
 #Preview("Onboarding") {
     OnboardingView(onFinish: {})
 }
+
