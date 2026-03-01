@@ -28,15 +28,15 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     Messaging.messaging().delegate = self
     UNUserNotificationCenter.current().delegate = self
 
-    UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
-      DispatchQueue.main.async {
-        if granted {
-          UserDefaults.standard.set(true, forKey: "Provikart.notificationsEnabled")
-          application.registerForRemoteNotifications()
-          print("[FCM] Notifikace povoleny, registruji na APNS…")
-        } else {
-          UserDefaults.standard.set(false, forKey: "Provikart.notificationsEnabled")
-          print("[FCM] Notifikace zamítnuty")
+    // Svolení k notifikacím se vyžaduje v onboardingu (krok „Notifikace“), ne hned při startu.
+    if UserDefaults.standard.bool(forKey: onboardingCompletedKey) {
+      UNUserNotificationCenter.current().getNotificationSettings { settings in
+        DispatchQueue.main.async {
+          if settings.authorizationStatus == .authorized {
+            UserDefaults.standard.set(true, forKey: "Provikart.notificationsEnabled")
+            application.registerForRemoteNotifications()
+            print("[FCM] Notifikace již povoleny, registruji na APNS…")
+          }
         }
       }
     }

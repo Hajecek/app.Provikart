@@ -7,6 +7,7 @@
 
 import LocalAuthentication
 import SwiftUI
+import UserNotifications
 
 struct iOS26StyleOnBoarding: View {
     var tint: Color = .blue
@@ -309,6 +310,12 @@ struct OnboardingView: View {
             ),
             .init(
                 id: 5,
+                title: "Notifikace",
+                subtitle: "Povolte notifikace, abyste nepromeškali důležité připomínky k provizím a objednávkám.",
+                screenshot: nil
+            ),
+            .init(
+                id: 6,
                 title: "Personalized Home Screen",
                 subtitle: "Personalize iPhone with new\nlooks for app icons.",
                 screenshot: UIImage(named: "Screen5")
@@ -316,6 +323,8 @@ struct OnboardingView: View {
         ], stepAction: { index, advance in
             if index == 1 {
                 requestBiometricPermission(then: advance)
+            } else if index == 5 {
+                requestNotificationPermission(then: advance)
             } else {
                 advance()
             }
@@ -340,6 +349,21 @@ struct OnboardingView: View {
                     advance()
                 }
                 // Při !success (zrušení / neúspěch) nevoláme advance() – uživatel zůstane na Face ID kroku
+            }
+        }
+    }
+
+    /// Vyžádá svolení k notifikacím – zobrazí systémový dialog. Po odpovědi (povolení i zamítnutí) pustí na další krok.
+    private func requestNotificationPermission(then advance: @escaping () -> Void) {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
+            DispatchQueue.main.async {
+                if granted {
+                    UserDefaults.standard.set(true, forKey: "Provikart.notificationsEnabled")
+                    UIApplication.shared.registerForRemoteNotifications()
+                } else {
+                    UserDefaults.standard.set(false, forKey: "Provikart.notificationsEnabled")
+                }
+                advance()
             }
         }
     }
