@@ -10,9 +10,21 @@ import SwiftUI
 struct PrivacyScreen: View {
     @Environment(\.colorScheme) private var colorScheme
 
+    private var backgroundColor: Color {
+        colorScheme == .light ? .white : Color(.systemBackground)
+    }
+
+    private var titleColor: Color {
+        colorScheme == .light ? .black : .primary
+    }
+
+    private var subtitleColor: Color {
+        colorScheme == .light ? Color.black.opacity(0.7) : .secondary
+    }
+
     var body: some View {
         ZStack {
-            Color(.systemBackground)
+            backgroundColor
                 .ignoresSafeArea()
 
             VStack(spacing: 12) {
@@ -24,11 +36,11 @@ struct PrivacyScreen: View {
 
                 Text("Provikart")
                     .font(.title2.bold())
-                    .foregroundStyle(.primary.opacity(0.9))
+                    .foregroundStyle(titleColor)
 
                 Text("Obsah skryt z důvodu soukromí")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(subtitleColor)
             }
             .multilineTextAlignment(.center)
             .padding()

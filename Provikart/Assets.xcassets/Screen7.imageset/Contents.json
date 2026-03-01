@@ -1,0 +1,21 @@
+{
+  "images" : [
+    {
+      "filename" : "Snímek\nobrazovky 2026-03-02 v 0.28.07.png",
+      "idiom" : "universal",
+      "scale" : "1x"
+    },
+    {
+      "idiom" : "universal",
+      "scale" : "2x"
+    },
+    {
+      "idiom" : "universal",
+      "scale" : "3x"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

@@ -316,8 +316,8 @@ struct OnboardingView: View {
             ),
             .init(
                 id: 6,
-                title: "Personalized Home Screen",
-                subtitle: "Personalize iPhone with new\nlooks for app icons.",
+                title: "Moderní Widgety",
+                subtitle: "Aplikace obsahuje widgety, kvůli důležitosti zobrazení informací.",
                 screenshot: UIImage(named: "Screen5")
             )
         ], stepAction: { index, advance in
