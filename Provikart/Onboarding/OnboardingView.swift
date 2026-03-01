@@ -296,8 +296,8 @@ struct OnboardingView: View {
             ),
             .init(
                 id: 3,
-                title: "All New Photo's App",
-                subtitle: "Focus on what matters with\nLiquid Glass Controls.",
+                title: "AI Rozpoznání",
+                subtitle: "Díky AI automaticky aplikace rozpozná text objednávky a ušetří vám tak dost času.",
                 screenshot: UIImage(named: "Screen3"),
                 zoomScale: 1.3,
                 zoomAnchor: .init(x: 0.5, y: -0.3)
@@ -306,13 +306,13 @@ struct OnboardingView: View {
                 id: 4,
                 title: "Notifikace",
                 subtitle: "Povolte notifikace, abyste nepromeškali důležité připomínky k provizím a objednávkám.",
-                screenshot: nil
+                screenshot: UIImage(named: "Screen6"),
             ),
             .init(
                 id: 5,
                 title: "Face ID / Touch ID",
                 subtitle: "Kvůli citlivosti dat vás budeme ověřovat. Potřebujeme svolení k použití FACE ID",
-                screenshot: nil
+                screenshot: UIImage(named: "Screen7"),
             ),
             .init(
                 id: 6,

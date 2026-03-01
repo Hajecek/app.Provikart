@@ -170,7 +170,7 @@ struct AddView: View {
                     HStack(spacing: 12) {
                         TextField("Zeptej se na cokoli", text: $searchText)
                             .textFieldStyle(.plain)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(Color(uiColor: .label))
                         Button {
                             withAnimation(.easeInOut(duration: 0.25)) {
                                 audioMeter.start()
@@ -187,7 +187,7 @@ struct AddView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 14)
                     .frame(height: 52)
-                    .background(Color(red: 38/255, green: 38/255, blue: 38/255))
+                    .background(Color(uiColor: .secondarySystemGroupedBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
 
                     Button {
@@ -195,9 +195,9 @@ struct AddView: View {
                     } label: {
                         Image(systemName: "arrow.up")
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.black)
+                            .foregroundStyle(Color(uiColor: .systemBackground))
                             .frame(width: 52, height: 52)
-                            .background(Color.white)
+                            .background(Color(uiColor: .label))
                             .clipShape(Circle())
                     }
                     .buttonStyle(.plain)
@@ -314,7 +314,7 @@ private struct AIOrderFlowView: View {
                             HStack(spacing: 12) {
                                 TextField("Vlož text objednávky", text: $orderText)
                                     .textFieldStyle(.plain)
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(Color(uiColor: .label))
                                 Button {
                                     withAnimation(.easeInOut(duration: 0.25)) {
                                         audioMeter.start()
@@ -331,7 +331,7 @@ private struct AIOrderFlowView: View {
                             .padding(.horizontal, 16)
                             .padding(.vertical, 14)
                             .frame(height: 52)
-                            .background(Color(red: 38/255, green: 38/255, blue: 38/255))
+                            .background(Color(uiColor: .secondarySystemGroupedBackground))
                             .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
 
                             Button {
@@ -339,9 +339,9 @@ private struct AIOrderFlowView: View {
                             } label: {
                                 Image(systemName: "arrow.up")
                                     .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(.black)
+                                    .foregroundStyle(Color(uiColor: .systemBackground))
                                     .frame(width: 52, height: 52)
-                                    .background(Color.white)
+                                    .background(Color(uiColor: .label))
                                     .clipShape(Circle())
                             }
                             .buttonStyle(.plain)
@@ -630,15 +630,15 @@ private struct VoiceRecordingBarView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
             .frame(height: rowHeight)
-            .background(Color(red: 38/255, green: 38/255, blue: 38/255))
+            .background(Color(uiColor: .secondarySystemGroupedBackground))
             .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
 
             Button(action: onSend) {
                 Image(systemName: "arrow.up")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.black)
+                    .foregroundStyle(Color(uiColor: .systemBackground))
                     .frame(width: buttonSize, height: buttonSize)
-                    .background(Color.white)
+                    .background(Color(uiColor: .label))
                     .clipShape(Circle())
             }
             .buttonStyle(.plain)
