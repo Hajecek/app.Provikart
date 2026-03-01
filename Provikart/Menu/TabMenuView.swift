@@ -14,54 +14,53 @@ enum Tabs: Hashable {
     case problems
 }
 
+private struct OpenAddSheetKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    var openAddSheet: (() -> Void)? {
+        get { self[OpenAddSheetKey.self] }
+        set { self[OpenAddSheetKey.self] = newValue }
+    }
+}
+
 struct TabMenuView: View {
+    @EnvironmentObject private var authState: AuthState
     @EnvironmentObject private var appLoginApprovalState: AppLoginApprovalState
     @State var selectedTab: Tabs = .home
-    @State private var previousTab: Tabs = .home
     @State private var showAddSheet = false
-    /// Když true, přepnutí na .add přišlo z výběru „AI objednávka“, ne z tapu na Plus – neotevíráme sheet.
-    @State private var navigatingToAddFromSheet = false
-    /// Zobrazit v AddView režim „AI objednávka“ (vložit text → rozpoznat → přidat do DB).
-    @State private var addViewAIMode = false
+    @State private var showAddAIModeSheet = false
 
     var body: some View {
         TabView(selection: $selectedTab) {
             Tab("Domů", systemImage: "house", value: .home) {
                 HomeView()
+                    .environment(\.openAddSheet, { showAddSheet = true })
             }
 
             Tab("Kalendář", systemImage: "calendar", value: .calendar) {
                 CalendarView()
+                    .environment(\.openAddSheet, { showAddSheet = true })
             }
 
             Tab("Problémy", systemImage: "exclamationmark.triangle", value: .problems) {
                 ProblemsView()
-            }
-
-            Tab("Přidat", systemImage: "plus", value: .add) {
-                AddView(selectedTab: $selectedTab, isAIMode: $addViewAIMode)
-            }
-        }
-        .onChange(of: selectedTab) { _, newValue in
-            if newValue == .add {
-                if navigatingToAddFromSheet {
-                    addViewAIMode = true
-                    navigatingToAddFromSheet = false
-                } else {
-                    selectedTab = previousTab
-                    showAddSheet = true
-                }
-            } else {
-                previousTab = newValue
-                addViewAIMode = false
+                    .environment(\.openAddSheet, { showAddSheet = true })
             }
         }
         .sheet(isPresented: $showAddSheet) {
             AddTypeSheetView(
                 isPresented: $showAddSheet,
-                selectedTab: $selectedTab,
-                navigatingToAddFromSheet: $navigatingToAddFromSheet
+                onSelectAIMode: { showAddSheet = false; showAddAIModeSheet = true }
             )
+        }
+        .fullScreenCover(isPresented: $showAddAIModeSheet) {
+            AddView(
+                selectedTab: Binding(get: { .add }, set: { _ in showAddAIModeSheet = false }),
+                isAIMode: .constant(true)
+            )
+            .environmentObject(authState)
         }
         .modifier(LoginApprovalBottomAccessoryModifier(approvalState: appLoginApprovalState))
     }
@@ -69,6 +68,7 @@ struct TabMenuView: View {
 
 #Preview {
     TabMenuView()
+        .environmentObject(AuthState())
         .environmentObject(AppLoginApprovalState())
 }
 

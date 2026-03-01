@@ -9,6 +9,7 @@ import SwiftUI
 
 struct HomeView: View {
     @EnvironmentObject private var authState: AuthState
+    @Environment(\.openAddSheet) private var openAddSheet
     @State private var commission: CommissionResponse?
     @State private var commissionError: String?
     @State private var isLoadingCommission = false
@@ -31,6 +32,15 @@ struct HomeView: View {
             .navigationTitle("Domů")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
+                if let openAddSheet {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            openAddSheet()
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     ProfileBarButton()
                 }

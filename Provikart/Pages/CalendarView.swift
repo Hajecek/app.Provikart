@@ -26,6 +26,7 @@ private func parseInstallationDate(_ raw: String) -> Date? {
 
 struct CalendarView: View {
     @EnvironmentObject private var authState: AuthState
+    @Environment(\.openAddSheet) private var openAddSheet
 
     @State private var items: [OrderItemByInstallationDate] = []
     @State private var isLoading = false
@@ -75,6 +76,15 @@ struct CalendarView: View {
             .navigationTitle("Kalendář")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
+                if let openAddSheet {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            openAddSheet()
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     ProfileBarButton()
                 }

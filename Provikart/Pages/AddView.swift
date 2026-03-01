@@ -651,8 +651,7 @@ private struct VoiceRecordingBarView: View {
 
 struct AddTypeSheetView: View {
     @Binding var isPresented: Bool
-    @Binding var selectedTab: Tabs
-    @Binding var navigatingToAddFromSheet: Bool
+    var onSelectAIMode: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -667,9 +666,7 @@ struct AddTypeSheetView: View {
                 }
 
                 Button {
-                    navigatingToAddFromSheet = true
-                    isPresented = false
-                    selectedTab = .add
+                    onSelectAIMode?()
                     dismiss()
                 } label: {
                     Label("AI objednávka", systemImage: "sparkles")

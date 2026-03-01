@@ -82,6 +82,7 @@ final class ProblemsViewModel: ObservableObject {
 
 struct ProblemsView: View {
     @EnvironmentObject private var authState: AuthState
+    @Environment(\.openAddSheet) private var openAddSheet
     @StateObject private var viewModel = ProblemsViewModel()
     @State private var filter: ReportFilter = .incomplete
 
@@ -170,6 +171,15 @@ struct ProblemsView: View {
             .navigationTitle("Problémy")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
+                if let openAddSheet {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            openAddSheet()
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     ProfileBarButton()
                 }
