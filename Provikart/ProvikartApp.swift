@@ -209,6 +209,7 @@ struct ProvikartApp: App {
                 appDelegate.updateUserInfo(userId: user.id ?? 0, role: user.role ?? "", authToken: authState.authToken)
               } else {
                 appDelegate.clearUserInfo()
+                WidgetDataStore.clearCommission()
               }
             }
             .onAppear {

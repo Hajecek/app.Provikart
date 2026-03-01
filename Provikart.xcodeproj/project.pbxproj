@@ -8,6 +8,9 @@
 
 /* Begin PBXBuildFile section */
 		0726DB072F5219D2000CC7F6 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 0726DB062F5219D2000CC7F6 /* FirebaseMessaging */; };
+		07FAA3352F55074E00FDE731 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 07FAA3342F55074E00FDE731 /* WidgetKit.framework */; };
+		07FAA3372F55074E00FDE731 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 07FAA3362F55074E00FDE731 /* SwiftUI.framework */; };
+		07FAA3482F55074F00FDE731 /* ProvikartWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 07FAA3322F55074E00FDE731 /* ProvikartWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -25,12 +28,37 @@
 			remoteGlobalIDString = 07EB0A2A2E16A17200204AFA;
 			remoteInfo = Provikart;
 		};
+		07FAA3462F55074F00FDE731 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 07EB0A232E16A17200204AFA /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 07FAA3312F55074E00FDE731;
+			remoteInfo = ProvikartWidgetExtension;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		07FAA34D2F55074F00FDE731 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				07FAA3482F55074F00FDE731 /* ProvikartWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		07EB0A2B2E16A17200204AFA /* Provikart.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Provikart.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		07EB0A382E16A17300204AFA /* ProvikartTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ProvikartTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		07EB0A422E16A17300204AFA /* ProvikartUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ProvikartUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		07FAA3322F55074E00FDE731 /* ProvikartWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ProvikartWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		07FAA3342F55074E00FDE731 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		07FAA3362F55074E00FDE731 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		07FAA34F2F5507B400FDE731 /* ProvikartWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ProvikartWidgetExtension.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -40,6 +68,13 @@
 				Info.plist,
 			);
 			target = 07EB0A2A2E16A17200204AFA /* Provikart */;
+		};
+		07FAA34C2F55074F00FDE731 /* Exceptions for "ProvikartWidget" folder in "ProvikartWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 07FAA3312F55074E00FDE731 /* ProvikartWidgetExtension */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -60,6 +95,14 @@
 		07EB0A452E16A17300204AFA /* ProvikartUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = ProvikartUITests;
+			sourceTree = "<group>";
+		};
+		07FAA3382F55074E00FDE731 /* ProvikartWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				07FAA34C2F55074F00FDE731 /* Exceptions for "ProvikartWidget" folder in "ProvikartWidgetExtension" target */,
+			);
+			path = ProvikartWidget;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -87,15 +130,27 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		07FAA32F2F55074E00FDE731 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				07FAA3372F55074E00FDE731 /* SwiftUI.framework in Frameworks */,
+				07FAA3352F55074E00FDE731 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		07EB0A222E16A17200204AFA = {
 			isa = PBXGroup;
 			children = (
+				07FAA34F2F5507B400FDE731 /* ProvikartWidgetExtension.entitlements */,
 				07EB0A2D2E16A17200204AFA /* Provikart */,
 				07EB0A3B2E16A17300204AFA /* ProvikartTests */,
 				07EB0A452E16A17300204AFA /* ProvikartUITests */,
+				07FAA3382F55074E00FDE731 /* ProvikartWidget */,
+				07FAA3332F55074E00FDE731 /* Frameworks */,
 				07EB0A2C2E16A17200204AFA /* Products */,
 			);
 			sourceTree = "<group>";
@@ -106,8 +161,18 @@
 				07EB0A2B2E16A17200204AFA /* Provikart.app */,
 				07EB0A382E16A17300204AFA /* ProvikartTests.xctest */,
 				07EB0A422E16A17300204AFA /* ProvikartUITests.xctest */,
+				07FAA3322F55074E00FDE731 /* ProvikartWidgetExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		07FAA3332F55074E00FDE731 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				07FAA3342F55074E00FDE731 /* WidgetKit.framework */,
+				07FAA3362F55074E00FDE731 /* SwiftUI.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -120,10 +185,12 @@
 				07EB0A272E16A17200204AFA /* Sources */,
 				07EB0A282E16A17200204AFA /* Frameworks */,
 				07EB0A292E16A17200204AFA /* Resources */,
+				07FAA34D2F55074F00FDE731 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				07FAA3472F55074F00FDE731 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				07EB0A2D2E16A17200204AFA /* Provikart */,
@@ -182,6 +249,28 @@
 			productReference = 07EB0A422E16A17300204AFA /* ProvikartUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		07FAA3312F55074E00FDE731 /* ProvikartWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 07FAA3492F55074F00FDE731 /* Build configuration list for PBXNativeTarget "ProvikartWidgetExtension" */;
+			buildPhases = (
+				07FAA32E2F55074E00FDE731 /* Sources */,
+				07FAA32F2F55074E00FDE731 /* Frameworks */,
+				07FAA3302F55074E00FDE731 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				07FAA3382F55074E00FDE731 /* ProvikartWidget */,
+			);
+			name = ProvikartWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = ProvikartWidgetExtension;
+			productReference = 07FAA3322F55074E00FDE731 /* ProvikartWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -189,7 +278,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 1640;
+				LastSwiftUpdateCheck = 2600;
 				LastUpgradeCheck = 1640;
 				TargetAttributes = {
 					07EB0A2A2E16A17200204AFA = {
@@ -202,6 +291,9 @@
 					07EB0A412E16A17300204AFA = {
 						CreatedOnToolsVersion = 16.4;
 						TestTargetID = 07EB0A2A2E16A17200204AFA;
+					};
+					07FAA3312F55074E00FDE731 = {
+						CreatedOnToolsVersion = 26.0;
 					};
 				};
 			};
@@ -225,6 +317,7 @@
 				07EB0A2A2E16A17200204AFA /* Provikart */,
 				07EB0A372E16A17300204AFA /* ProvikartTests */,
 				07EB0A412E16A17300204AFA /* ProvikartUITests */,
+				07FAA3312F55074E00FDE731 /* ProvikartWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -245,6 +338,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		07EB0A402E16A17300204AFA /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		07FAA3302F55074E00FDE731 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -275,6 +375,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		07FAA32E2F55074E00FDE731 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -287,6 +394,11 @@
 			isa = PBXTargetDependency;
 			target = 07EB0A2A2E16A17200204AFA /* Provikart */;
 			targetProxy = 07EB0A432E16A17300204AFA /* PBXContainerItemProxy */;
+		};
+		07FAA3472F55074F00FDE731 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 07FAA3312F55074E00FDE731 /* ProvikartWidgetExtension */;
+			targetProxy = 07FAA3462F55074F00FDE731 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -552,6 +664,70 @@
 			};
 			name = Release;
 		};
+		07FAA34A2F55074F00FDE731 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = ProvikartWidgetExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = W6R3HZD7R4;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ProvikartWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ProvikartWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.hajecek.provikartApp.ProvikartWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		07FAA34B2F55074F00FDE731 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = ProvikartWidgetExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = W6R3HZD7R4;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ProvikartWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ProvikartWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.hajecek.provikartApp.ProvikartWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -587,6 +763,15 @@
 			buildConfigurations = (
 				07EB0A532E16A17300204AFA /* Debug */,
 				07EB0A542E16A17300204AFA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		07FAA3492F55074F00FDE731 /* Build configuration list for PBXNativeTarget "ProvikartWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				07FAA34A2F55074F00FDE731 /* Debug */,
+				07FAA34B2F55074F00FDE731 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

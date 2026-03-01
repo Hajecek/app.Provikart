@@ -218,6 +218,7 @@ struct HomeView: View {
             await MainActor.run {
                 commission = response
                 isLoadingCommission = false
+                WidgetDataStore.saveCommission(response.commission, currency: response.currency, monthLabel: response.month_label)
             }
         } catch {
             await MainActor.run {

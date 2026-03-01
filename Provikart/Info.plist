@@ -2,6 +2,19 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>provikart</string>
+			</array>
+			<key>CFBundleURLName</key>
+			<string>Provikart</string>
+			<key>CFBundleRoleEditor</key>
+			<string>Editor</string>
+		</dict>
+	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Aplikace potřebuje přístup k mikrofonu pro hlasové vyhledávání a nahrávání.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
