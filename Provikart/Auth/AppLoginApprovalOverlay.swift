@@ -7,6 +7,65 @@
 
 import SwiftUI
 
+// MARK: - Časová platnost požadavku
+
+/// Platnost požadavku na přihlášení – backend: created_at > DATE_SUB(NOW(), INTERVAL 1 MINUTE)
+private let loginRequestTimeoutSeconds: TimeInterval = 60 // 1 minuta
+
+private let requestReceivedAtDefaultsKey = "AppLoginApproval.requestReceivedAt"
+
+extension AppLoginRequest {
+    /// Kdy požadavek vyprší (created_at + timeout), nebo nil pokud created_at nelze přečíst.
+    var expiresAt: Date? {
+        guard let created = createdAt else { return nil }
+        return Date(timeInterval: loginRequestTimeoutSeconds, since: created)
+    }
+
+    private var createdAt: Date? {
+        guard let raw = created_at, !raw.isEmpty else { return nil }
+        // ISO8601 (např. 2025-02-28T12:34:56Z)
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = iso.date(from: raw) { return date }
+        iso.formatOptions = [.withInternetDateTime]
+        if let date = iso.date(from: raw) { return date }
+        // Unix timestamp jako string
+        if let sec = Double(raw) { return Date(timeIntervalSince1970: sec) }
+        return nil
+    }
+}
+
+/// Zobrazí přesný sekundový odpočet do vypršení (vždy z platného expiresAt).
+private struct LoginRequestCountdownView: View {
+    let expiresAt: Date?
+
+    var body: some View {
+        if let expires = expiresAt {
+            TimelineView(.periodic(from: .now, by: 1.0)) { context in
+                let remaining = max(0, expires.timeIntervalSince(context.date))
+                let text = formatCountdown(remaining)
+                Text(text)
+                    .font(.subheadline)
+                    .monospacedDigit()
+                    .foregroundStyle(remaining == 0 ? Color.red : (remaining <= 60 ? Color.red : Color.secondary))
+            }
+        }
+    }
+
+    private func formatCountdown(_ seconds: TimeInterval) -> String {
+        let m = Int(seconds) / 60
+        let s = Int(seconds) % 60
+        if seconds <= 0 {
+            return "Vypršelo"
+        }
+        if m > 0 {
+            return "Zbývá \(m) min \(s) s"
+        } else {
+            return "Zbývá \(s) s"
+        }
+    }
+}
+
 /// Jak zobrazit čekající přihlášení: sheet, jen accessory (po přetažení), nebo nic.
 enum LoginApprovalPresentation {
     case sheet(AppLoginRequest)
@@ -38,6 +97,26 @@ final class AppLoginApprovalState: ObservableObject {
 
     private let service = AppLoginRequestService()
     private var pollTask: Task<Void, Never>?
+    /// Čas prvního přijetí požadavku (persistovaný do UserDefaults, aby po restartu appky byl odpočet správný).
+    private var requestReceivedAt: [String: Date] = [:]
+
+    private func loadRequestReceivedAt() {
+        guard let raw = UserDefaults.standard.dictionary(forKey: requestReceivedAtDefaultsKey) as? [String: Double] else { return }
+        requestReceivedAt = raw.mapValues { Date(timeIntervalSince1970: $0) }
+    }
+
+    private func saveRequestReceivedAt() {
+        let raw = requestReceivedAt.mapValues { $0.timeIntervalSince1970 }
+        UserDefaults.standard.set(raw, forKey: requestReceivedAtDefaultsKey)
+    }
+
+    /// Vrací přesný čas vypršení: z API (created_at) nebo od prvního přijetí (včetně po restartu appky).
+    func effectiveExpiresAt(for request: AppLoginRequest) -> Date? {
+        if let apiExpires = request.expiresAt { return apiExpires }
+        if requestReceivedAt.isEmpty { loadRequestReceivedAt() }
+        guard let received = requestReceivedAt[request.request_id] else { return nil }
+        return Date(timeInterval: loginRequestTimeoutSeconds, since: received)
+    }
 
     /// Načte čekající požadavky (volá se z pollingu – nekanceluje task).
     func fetchPending(username: String, token: String?) {
@@ -45,6 +124,15 @@ final class AppLoginApprovalState: ObservableObject {
         Task { @MainActor in
             do {
                 let list = try await service.fetchPendingRequests(username: username, token: token)
+                loadRequestReceivedAt()
+                let now = Date()
+                for r in list {
+                    if requestReceivedAt[r.request_id] == nil {
+                        requestReceivedAt[r.request_id] = now
+                    }
+                }
+                requestReceivedAt = requestReceivedAt.filter { id, _ in list.contains(where: { $0.request_id == id }) }
+                saveRequestReceivedAt()
                 pendingRequests = list
                 errorMessage = nil
 
@@ -172,6 +260,8 @@ struct AppLoginApprovalSheetView: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal)
 
+                LoginRequestCountdownView(expiresAt: approvalState.effectiveExpiresAt(for: request))
+
                 if let err = approvalState.errorMessage {
                     Text(err)
                         .font(.caption)
@@ -224,6 +314,11 @@ struct AppLoginApprovalAccessoryView: View {
                     .font(.body)
                 Text("Přihlášení na webu čeká")
                     .font(.subheadline)
+                if let first = approvalState.pendingRequests.first, let expires = approvalState.effectiveExpiresAt(for: first) {
+                    Spacer()
+                    LoginRequestCountdownView(expiresAt: expires)
+                        .font(.caption)
+                }
                 Spacer()
                 Image(systemName: "chevron.up")
                     .font(.caption.weight(.semibold))
