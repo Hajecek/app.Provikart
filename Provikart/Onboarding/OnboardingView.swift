@@ -324,17 +324,23 @@ struct OnboardingView: View {
         }
     }
 
-    /// Zobrazí systémový dialog „Povolit Face ID?“ – po povolení se bohužel vždy zobrazí i výzva k ověření (iOS to nedovolí oddělit). Po dokončení nebo zrušení vždy pokračujeme.
+    /// Zobrazí výzvu k ověření Face ID / Touch ID. Na další stránku pustí jen po úspěšném ověření; při zrušení nebo chybě zůstane uživatel na kroku Face ID.
     private func requestBiometricPermission(then advance: @escaping () -> Void) {
         let context = LAContext()
         var biometricError: NSError?
         guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &biometricError) else {
+            // Biometrika není k dispozici – přesto pustíme dál (např. simulátor)
             advance()
             return
         }
         let reason = "Provikart používá Face ID pro rychlé a bezpečné ověření při návratu do aplikace."
-        context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason) { _, _ in
-            DispatchQueue.main.async { advance() }
+        context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason) { success, _ in
+            DispatchQueue.main.async {
+                if success {
+                    advance()
+                }
+                // Při !success (zrušení / neúspěch) nevoláme advance() – uživatel zůstane na Face ID kroku
+            }
         }
     }
 }
