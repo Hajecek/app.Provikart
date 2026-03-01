@@ -282,26 +282,20 @@ struct OnboardingView: View {
             ),
             .init(
                 id: 1,
-                title: "Face ID / Touch ID",
-                subtitle: "Kvůli citlivosti dat vás budeme ověřovat. Potřebujeme svolení k použití FACE ID",
-                screenshot: nil
-            ),
-            .init(
-                id: 2,
-                title: "New Context Menu's",
-                subtitle: "Access menu options with\ncontrols that fluidly morph.",
+                title: "Kalendář Instalací",
+                subtitle: "Přehledný kalendář, ve kterém vidíte přesně kdy se vám co spuští",
                 screenshot: UIImage(named: "Screen2")
             ),
             .init(
-                id: 3,
-                title: "Floating Tab Bar",
-                subtitle: "Tab bar that floats and responds\nto your hand's motion.",
+                id: 2,
+                title: "Nativní Aplikace",
+                subtitle: "Nejmodernější a nativní aplikace",
                 screenshot: UIImage(named: "Screen4"),
-                zoomScale: 1.3,
+                zoomScale: 1.5,
                 zoomAnchor: .init(x: 0.5, y: 1.1)
             ),
             .init(
-                id: 4,
+                id: 3,
                 title: "All New Photo's App",
                 subtitle: "Focus on what matters with\nLiquid Glass Controls.",
                 screenshot: UIImage(named: "Screen3"),
@@ -309,9 +303,15 @@ struct OnboardingView: View {
                 zoomAnchor: .init(x: 0.5, y: -0.3)
             ),
             .init(
-                id: 5,
+                id: 4,
                 title: "Notifikace",
                 subtitle: "Povolte notifikace, abyste nepromeškali důležité připomínky k provizím a objednávkám.",
+                screenshot: nil
+            ),
+            .init(
+                id: 5,
+                title: "Face ID / Touch ID",
+                subtitle: "Kvůli citlivosti dat vás budeme ověřovat. Potřebujeme svolení k použití FACE ID",
                 screenshot: nil
             ),
             .init(
@@ -321,10 +321,10 @@ struct OnboardingView: View {
                 screenshot: UIImage(named: "Screen5")
             )
         ], stepAction: { index, advance in
-            if index == 1 {
-                requestBiometricPermission(then: advance)
-            } else if index == 5 {
+            if index == 4 {
                 requestNotificationPermission(then: advance)
+            } else if index == 5 {
+                requestBiometricPermission(then: advance)
             } else {
                 advance()
             }
