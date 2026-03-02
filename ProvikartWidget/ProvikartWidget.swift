@@ -9,6 +9,14 @@ import WidgetKit
 import SwiftUI
 
 private let appGroupIdentifier = "group.com.hajecek.provikartApp"
+private enum WidgetKeys {
+    static let commission = "widget_commission"
+    static let currency = "widget_currency"
+    static let monthLabel = "widget_month_label"
+    static let lastUpdated = "widget_last_updated"
+    static let reportsIncompleteCount = "widget_reports_incomplete_count"
+    static let authToken = "widget_auth_token"
+}
 
 // MARK: - Data
 
@@ -28,22 +36,39 @@ struct ProvikartWidgetProvider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (WidgetCommissionEntry) -> Void) {
-        completion(loadEntry())
+        completion(loadCachedEntry())
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<WidgetCommissionEntry>) -> Void) {
-        let entry = loadEntry()
-        let nextUpdate = Calendar.current.date(byAdding: .hour, value: 1, to: Date()) ?? Date().addingTimeInterval(3600)
-        completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
+        let cached = loadCachedEntry()
+
+        guard let token = loadAuthToken() else {
+            completion(Timeline(entries: [cached], policy: .after(Date().addingTimeInterval(60 * 60))))
+            return
+        }
+
+        Task {
+            let fresh = await fetchCommission(token: token)
+            let entry = fresh ?? cached
+            // iOS stejně throttluje; 30 min je rozumný kompromis
+            completion(Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(60 * 30))))
+        }
     }
 
-    private func loadEntry() -> WidgetCommissionEntry {
+    private func loadAuthToken() -> String? {
         let suite = UserDefaults(suiteName: appGroupIdentifier)
-        let rawCommission = suite?.object(forKey: "widget_commission")
+        let token = suite?.string(forKey: WidgetKeys.authToken)
+        let trimmed = token?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (trimmed?.isEmpty == false) ? trimmed : nil
+    }
+
+    private func loadCachedEntry() -> WidgetCommissionEntry {
+        let suite = UserDefaults(suiteName: appGroupIdentifier)
+        let rawCommission = suite?.object(forKey: WidgetKeys.commission)
         let commission: Double? = (rawCommission as? NSNumber)?.doubleValue ?? rawCommission as? Double
-        let currency = suite?.string(forKey: "widget_currency") ?? "Kč"
-        let monthLabel = suite?.string(forKey: "widget_month_label")
-        let hasData = suite?.object(forKey: "widget_commission") != nil
+        let currency = suite?.string(forKey: WidgetKeys.currency) ?? "Kč"
+        let monthLabel = suite?.string(forKey: WidgetKeys.monthLabel)
+        let hasData = suite?.object(forKey: WidgetKeys.commission) != nil
         return WidgetCommissionEntry(
             date: Date(),
             commission: commission,
@@ -51,6 +76,53 @@ struct ProvikartWidgetProvider: TimelineProvider {
             monthLabel: monthLabel,
             hasData: hasData
         )
+    }
+
+    private struct CommissionAPIResponse: Decodable {
+        let success: Bool
+        let month_label: String?
+        let commission: Double
+        let currency: String
+    }
+
+    @MainActor
+    private func saveCommissionToCache(_ resp: CommissionAPIResponse) {
+        let suite = UserDefaults(suiteName: appGroupIdentifier)
+        suite?.set(NSNumber(value: resp.commission), forKey: WidgetKeys.commission)
+        suite?.set(resp.currency, forKey: WidgetKeys.currency)
+        suite?.set(resp.month_label, forKey: WidgetKeys.monthLabel)
+        suite?.set(Date(), forKey: WidgetKeys.lastUpdated)
+    }
+
+    private func fetchCommission(token: String) async -> WidgetCommissionEntry? {
+        var comp = URLComponents(string: "https://provikart.cz/api/commission.php")
+        comp?.queryItems = [URLQueryItem(name: "token", value: token)]
+        guard let url = comp?.url else { return nil }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+            let decoded = try JSONDecoder().decode(CommissionAPIResponse.self, from: data)
+            guard decoded.success else { return nil }
+
+            await MainActor.run { saveCommissionToCache(decoded) }
+
+            return WidgetCommissionEntry(
+                date: Date(),
+                commission: decoded.commission,
+                currency: decoded.currency,
+                monthLabel: decoded.month_label,
+                hasData: true
+            )
+        } catch {
+            return nil
+        }
     }
 }
 
@@ -250,25 +322,86 @@ struct ProvikartReportsWidgetProvider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (WidgetReportsEntry) -> Void) {
-        completion(loadEntry())
+        completion(loadCachedEntry())
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<WidgetReportsEntry>) -> Void) {
-        let entry = loadEntry()
-        let nextUpdate = Calendar.current.date(byAdding: .hour, value: 1, to: Date()) ?? Date().addingTimeInterval(3600)
-        completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
+        let cached = loadCachedEntry()
+
+        guard let token = loadAuthToken() else {
+            completion(Timeline(entries: [cached], policy: .after(Date().addingTimeInterval(60 * 60))))
+            return
+        }
+
+        Task {
+            let fresh = await fetchIncompleteReportsCount(token: token)
+            let entry = fresh ?? cached
+            completion(Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(60 * 30))))
+        }
     }
 
-    private func loadEntry() -> WidgetReportsEntry {
+    private func loadAuthToken() -> String? {
         let suite = UserDefaults(suiteName: appGroupIdentifier)
-        let rawCount = suite?.object(forKey: "widget_reports_incomplete_count")
+        let token = suite?.string(forKey: WidgetKeys.authToken)
+        let trimmed = token?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (trimmed?.isEmpty == false) ? trimmed : nil
+    }
+
+    private func loadCachedEntry() -> WidgetReportsEntry {
+        let suite = UserDefaults(suiteName: appGroupIdentifier)
+        let rawCount = suite?.object(forKey: WidgetKeys.reportsIncompleteCount)
         let count: Int? = (rawCount as? NSNumber)?.intValue ?? rawCount as? Int
-        let hasData = suite?.object(forKey: "widget_reports_incomplete_count") != nil
+        let hasData = suite?.object(forKey: WidgetKeys.reportsIncompleteCount) != nil
         return WidgetReportsEntry(
             date: Date(),
             incompleteCount: count,
             hasData: hasData
         )
+    }
+
+    private struct ReportsAPIResponse: Decodable {
+        let success: Bool
+        let reports: [Report]
+
+        struct Report: Decodable {
+            let status: String?
+        }
+    }
+
+    @MainActor
+    private func saveReportsToCache(incompleteCount: Int) {
+        let suite = UserDefaults(suiteName: appGroupIdentifier)
+        suite?.set(NSNumber(value: incompleteCount), forKey: WidgetKeys.reportsIncompleteCount)
+        suite?.set(Date(), forKey: WidgetKeys.lastUpdated)
+    }
+
+    private func fetchIncompleteReportsCount(token: String) async -> WidgetReportsEntry? {
+        var comp = URLComponents(string: "https://provikart.cz/api/user_reports.php")
+        comp?.queryItems = [
+            URLQueryItem(name: "token", value: token),
+            URLQueryItem(name: "_", value: "\(Int(Date().timeIntervalSince1970))")
+        ]
+        guard let url = comp?.url else { return nil }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+            let decoded = try JSONDecoder().decode(ReportsAPIResponse.self, from: data)
+            guard decoded.success else { return nil }
+
+            let incomplete = decoded.reports.filter { ($0.status ?? "").lowercased() != "completed" }.count
+            await MainActor.run { saveReportsToCache(incompleteCount: incomplete) }
+
+            return WidgetReportsEntry(date: Date(), incompleteCount: incomplete, hasData: true)
+        } catch {
+            return nil
+        }
     }
 }
 

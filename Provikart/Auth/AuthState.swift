@@ -37,8 +37,10 @@ final class AuthState: ObservableObject {
         didSet {
             if let t = authToken {
                 UserDefaults.standard.set(t, forKey: tokenKey)
+                WidgetDataStore.saveAuthToken(t)
             } else {
                 UserDefaults.standard.removeObject(forKey: tokenKey)
+                WidgetDataStore.clearAuthToken()
             }
         }
     }

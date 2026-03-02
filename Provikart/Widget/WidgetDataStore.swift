@@ -24,6 +24,21 @@ enum WidgetDataStore {
         static let monthLabel = "widget_month_label"
         static let lastUpdated = "widget_last_updated"
         static let reportsIncompleteCount = "widget_reports_incomplete_count"
+        static let authToken = "widget_auth_token"
+    }
+
+    /// Uloží token do App Group, aby si widget mohl data stáhnout i bez spuštění aplikace.
+    static func saveAuthToken(_ token: String?) {
+        let trimmed = token?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let t = trimmed, !t.isEmpty {
+            suite?.set(t, forKey: Keys.authToken)
+        } else {
+            suite?.removeObject(forKey: Keys.authToken)
+        }
+    }
+
+    static func clearAuthToken() {
+        suite?.removeObject(forKey: Keys.authToken)
     }
 
     /// Uloží aktuální provizi pro widget. Volá se z hlavní aplikace po načtení provize.
