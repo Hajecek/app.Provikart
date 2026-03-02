@@ -210,6 +210,7 @@ struct ProvikartApp: App {
               } else {
                 appDelegate.clearUserInfo()
                 WidgetDataStore.clearCommission()
+                WidgetDataStore.clearReports()
               }
             }
             .onAppear {

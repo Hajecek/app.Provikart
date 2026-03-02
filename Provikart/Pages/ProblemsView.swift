@@ -67,6 +67,8 @@ final class ProblemsViewModel: ObservableObject {
             objectWillChange.send()
             reports = fetched
             isLoading = false
+            let incomplete = fetched.filter { !$0.isCompleted }.count
+            WidgetDataStore.saveReports(incompleteCount: incomplete)
         } catch {
             print("[Problems] ❌ \(timeStr) – chyba: \(error.localizedDescription)")
             if !silent {

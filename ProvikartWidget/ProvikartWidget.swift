@@ -39,15 +39,17 @@ struct ProvikartWidgetProvider: TimelineProvider {
 
     private func loadEntry() -> WidgetCommissionEntry {
         let suite = UserDefaults(suiteName: appGroupIdentifier)
-        let commission = suite?.object(forKey: "widget_commission") as? Double
+        let rawCommission = suite?.object(forKey: "widget_commission")
+        let commission: Double? = (rawCommission as? NSNumber)?.doubleValue ?? rawCommission as? Double
         let currency = suite?.string(forKey: "widget_currency") ?? "Kč"
         let monthLabel = suite?.string(forKey: "widget_month_label")
+        let hasData = suite?.object(forKey: "widget_commission") != nil
         return WidgetCommissionEntry(
             date: Date(),
             commission: commission,
             currency: currency,
             monthLabel: monthLabel,
-            hasData: commission != nil
+            hasData: hasData
         )
     }
 }
@@ -169,6 +171,147 @@ struct ProvikartWidget: Widget {
         }
         .configurationDisplayName("Provize")
         .description("Aktuální měsíční provize z Provikart.")
+        .supportedFamilies([.systemSmall, .systemMedium])
+    }
+}
+
+// MARK: - Widget Reporty (nedokončené reporty)
+
+struct WidgetReportsEntry: TimelineEntry {
+    let date: Date
+    let incompleteCount: Int?
+    let hasData: Bool
+}
+
+struct ProvikartReportsWidgetProvider: TimelineProvider {
+    func placeholder(in context: Context) -> WidgetReportsEntry {
+        WidgetReportsEntry(date: Date(), incompleteCount: 3, hasData: true)
+    }
+
+    func getSnapshot(in context: Context, completion: @escaping (WidgetReportsEntry) -> Void) {
+        completion(loadEntry())
+    }
+
+    func getTimeline(in context: Context, completion: @escaping (Timeline<WidgetReportsEntry>) -> Void) {
+        let entry = loadEntry()
+        let nextUpdate = Calendar.current.date(byAdding: .hour, value: 1, to: Date()) ?? Date().addingTimeInterval(3600)
+        completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
+    }
+
+    private func loadEntry() -> WidgetReportsEntry {
+        let suite = UserDefaults(suiteName: appGroupIdentifier)
+        let rawCount = suite?.object(forKey: "widget_reports_incomplete_count")
+        let count: Int? = (rawCount as? NSNumber)?.intValue ?? rawCount as? Int
+        let hasData = suite?.object(forKey: "widget_reports_incomplete_count") != nil
+        return WidgetReportsEntry(
+            date: Date(),
+            incompleteCount: count,
+            hasData: hasData
+        )
+    }
+}
+
+struct ProvikartReportsWidgetEntryView: View {
+    var entry: WidgetReportsEntry
+    @Environment(\.widgetFamily) var family
+
+    var body: some View {
+        Group {
+            switch family {
+            case .systemSmall:
+                reportsSmallView
+            case .systemMedium:
+                reportsMediumView
+            default:
+                reportsMediumView
+            }
+        }
+        .containerBackground(for: .widget) {
+            Color(uiColor: .secondarySystemGroupedBackground)
+        }
+        .widgetURL(URL(string: "provikart://"))
+    }
+
+    private var reportsSmallView: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.bubble.fill")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text("REPORTY")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                    .tracking(0.5)
+            }
+            Spacer(minLength: 8)
+            if entry.hasData, let count = entry.incompleteCount {
+                HStack(alignment: .lastTextBaseline, spacing: 4) {
+                    Text("\(count)")
+                        .font(.system(size: 22, weight: .semibold, design: .rounded))
+                        .minimumScaleFactor(0.6)
+                        .lineLimit(1)
+                    Text(count == 1 ? "nedokončený" : "nedokončených")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            } else {
+                Text("Přihlaste se")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .padding(16)
+    }
+
+    private var reportsMediumView: some View {
+        HStack(alignment: .center, spacing: 0) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.bubble.fill")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    Text("Nedokončené reporty")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+                Text("Problémy k vyřešení")
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(.tertiary)
+            }
+            Spacer(minLength: 12)
+            if entry.hasData, let count = entry.incompleteCount {
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("\(count)")
+                        .font(.system(size: 26, weight: .semibold, design: .rounded))
+                        .minimumScaleFactor(0.5)
+                        .lineLimit(1)
+                    Text(count == 1 ? "report" : "reportů")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Text("Přihlaste se")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(16)
+    }
+}
+
+struct ProvikartReportsWidget: Widget {
+    let kind: String = "ProvikartReportsWidget"
+
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: kind, provider: ProvikartReportsWidgetProvider()) { entry in
+            ProvikartReportsWidgetEntryView(entry: entry)
+        }
+        .configurationDisplayName("Reporty")
+        .description("Počet nedokončených reportů z Problémů.")
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }
