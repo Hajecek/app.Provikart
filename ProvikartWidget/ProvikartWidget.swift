@@ -2,13 +2,21 @@
 //  ProvikartWidget.swift
 //  ProvikartWidget
 //
-//  Widget zobrazující aktuální měsíční provizi z App Group.
+//  Widgety Provize a Reporty. Aktualizace dle dokumentace:
+//  https://developer.apple.com/documentation/widgetkit/keeping-a-widget-up-to-date
+//  - Aplikace volá WidgetCenter.reloadTimelines(ofKind:) při změně dat (nečerpá budget).
+//  - Provider vrací timeline s policy .after (min. ~5 min, typicky 15–60 min).
+//  - Síťové požadavky v getTimeline s timeoutem, vždy jednou completion.
 //
 
 import WidgetKit
 import SwiftUI
 
 private let appGroupIdentifier = "group.com.hajecek.provikartApp"
+/// Interval pro další reload – respektuje budget (~40–70 reloadů/24 h na widget).
+private let timelineRefreshInterval: TimeInterval = 30 * 60 // 30 minut
+private let networkRequestTimeout: TimeInterval = 10
+
 private enum WidgetKeys {
     static let commission = "widget_commission"
     static let currency = "widget_currency"
@@ -41,17 +49,29 @@ struct ProvikartWidgetProvider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<WidgetCommissionEntry>) -> Void) {
         let cached = loadCachedEntry()
+        let nextReload = Date().addingTimeInterval(timelineRefreshInterval)
 
         guard let token = loadAuthToken() else {
             completion(Timeline(entries: [cached], policy: .after(Date().addingTimeInterval(60 * 60))))
             return
         }
 
+        var didComplete = false
+        let completeOnce: (Timeline<WidgetCommissionEntry>) -> Void = { timeline in
+            guard !didComplete else { return }
+            didComplete = true
+            completion(timeline)
+        }
+
         Task {
             let fresh = await fetchCommission(token: token)
             let entry = fresh ?? cached
-            // iOS stejně throttluje; 30 min je rozumný kompromis
-            completion(Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(60 * 30))))
+            completeOnce(Timeline(entries: [entry], policy: .after(nextReload)))
+        }
+
+        Task {
+            try? await Task.sleep(nanoseconds: UInt64((networkRequestTimeout + 1) * 1_000_000_000))
+            completeOnce(Timeline(entries: [cached], policy: .after(nextReload)))
         }
     }
 
@@ -80,6 +100,7 @@ struct ProvikartWidgetProvider: TimelineProvider {
 
     private struct CommissionAPIResponse: Decodable {
         let success: Bool
+        let month: String?
         let month_label: String?
         let commission: Double
         let currency: String
@@ -101,6 +122,7 @@ struct ProvikartWidgetProvider: TimelineProvider {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        request.timeoutInterval = networkRequestTimeout
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -327,16 +349,29 @@ struct ProvikartReportsWidgetProvider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<WidgetReportsEntry>) -> Void) {
         let cached = loadCachedEntry()
+        let nextReload = Date().addingTimeInterval(timelineRefreshInterval)
 
         guard let token = loadAuthToken() else {
             completion(Timeline(entries: [cached], policy: .after(Date().addingTimeInterval(60 * 60))))
             return
         }
 
+        var didComplete = false
+        let completeOnce: (Timeline<WidgetReportsEntry>) -> Void = { timeline in
+            guard !didComplete else { return }
+            didComplete = true
+            completion(timeline)
+        }
+
         Task {
             let fresh = await fetchIncompleteReportsCount(token: token)
             let entry = fresh ?? cached
-            completion(Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(60 * 30))))
+            completeOnce(Timeline(entries: [entry], policy: .after(nextReload)))
+        }
+
+        Task {
+            try? await Task.sleep(nanoseconds: UInt64((networkRequestTimeout + 1) * 1_000_000_000))
+            completeOnce(Timeline(entries: [cached], policy: .after(nextReload)))
         }
     }
 
@@ -385,6 +420,7 @@ struct ProvikartReportsWidgetProvider: TimelineProvider {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        request.timeoutInterval = networkRequestTimeout
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")

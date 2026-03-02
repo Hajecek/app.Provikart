@@ -3,6 +3,9 @@
 //  Provikart
 //
 //  Sdílená data pro widget přes App Group.
+//  Při změně dat voláme WidgetCenter.reloadTimelines(ofKind:) – dle dokumentace
+//  https://developer.apple.com/documentation/widgetkit/keeping-a-widget-up-to-date
+//  to nečerpá budget widgetu, když je aplikace v popředí.
 //
 
 import Foundation
