@@ -76,6 +76,12 @@ struct ProvikartWidgetEntryView: View {
                 smallView
             case .systemMedium:
                 mediumView
+            case .accessoryCircular:
+                accessoryCircularView
+            case .accessoryRectangular:
+                accessoryRectangularView
+            case .accessoryInline:
+                accessoryInlineView
             default:
                 mediumView
             }
@@ -84,6 +90,58 @@ struct ProvikartWidgetEntryView: View {
             Color(uiColor: .secondarySystemGroupedBackground)
         }
         .widgetURL(URL(string: "provikart://"))
+    }
+
+    // Zamykací obrazovka – kruh (jen číslo)
+    private var accessoryCircularView: some View {
+        ZStack {
+            if entry.hasData, let value = entry.commission {
+                VStack(spacing: 0) {
+                    Text(formatCommission(value))
+                        .font(.system(size: 18, weight: .semibold, design: .rounded))
+                        .minimumScaleFactor(0.5)
+                        .lineLimit(1)
+                    Text(entry.currency)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Image(systemName: "creditcard.fill")
+                    .font(.system(size: 20, weight: .medium))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // Zamykací obrazovka – obdélník
+    private var accessoryRectangularView: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Label("Provize", systemImage: "creditcard.fill")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+            if entry.hasData, let value = entry.commission {
+                Text(formatCommission(value) + " " + entry.currency)
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .minimumScaleFactor(0.7)
+            } else {
+                Text("Přihlaste se")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+    }
+
+    // Zamykací obrazovka – jeden řádek
+    private var accessoryInlineView: some View {
+        if entry.hasData, let value = entry.commission {
+            Text("Provize \(formatCommission(value)) \(entry.currency)")
+                .font(.system(size: 14, weight: .medium))
+        } else {
+            Text("Provikart – přihlaste se")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(.secondary)
+        }
     }
 
     // Malý widget – styl jako nativní iOS (Peněženka, Akcie)
@@ -171,7 +229,10 @@ struct ProvikartWidget: Widget {
         }
         .configurationDisplayName("Provize")
         .description("Aktuální měsíční provize z Provikart.")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies([
+            .systemSmall, .systemMedium,
+            .accessoryCircular, .accessoryRectangular, .accessoryInline
+        ])
     }
 }
 
@@ -222,6 +283,12 @@ struct ProvikartReportsWidgetEntryView: View {
                 reportsSmallView
             case .systemMedium:
                 reportsMediumView
+            case .accessoryCircular:
+                reportsAccessoryCircularView
+            case .accessoryRectangular:
+                reportsAccessoryRectangularView
+            case .accessoryInline:
+                reportsAccessoryInlineView
             default:
                 reportsMediumView
             }
@@ -230,6 +297,50 @@ struct ProvikartReportsWidgetEntryView: View {
             Color(uiColor: .secondarySystemGroupedBackground)
         }
         .widgetURL(URL(string: "provikart://"))
+    }
+
+    // Zamykací obrazovka – kruh (jen číslo)
+    private var reportsAccessoryCircularView: some View {
+        ZStack {
+            if entry.hasData, let count = entry.incompleteCount {
+                Text("\(count)")
+                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+            } else {
+                Image(systemName: "exclamationmark.bubble.fill")
+                    .font(.system(size: 20, weight: .medium))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // Zamykací obrazovka – obdélník
+    private var reportsAccessoryRectangularView: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Label("Reporty", systemImage: "exclamationmark.bubble.fill")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+            if entry.hasData, let count = entry.incompleteCount {
+                Text(count == 1 ? "1 nedokončený report" : "\(count) nedokončených reportů")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+            } else {
+                Text("Přihlaste se")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+    }
+
+    // Zamykací obrazovka – jeden řádek
+    private var reportsAccessoryInlineView: some View {
+        if entry.hasData, let count = entry.incompleteCount {
+            Text(count == 1 ? "1 nedokončený report" : "\(count) nedokončených reportů")
+                .font(.system(size: 14, weight: .medium))
+        } else {
+            Text("Provikart – přihlaste se")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(.secondary)
+        }
     }
 
     private var reportsSmallView: some View {
@@ -312,6 +423,9 @@ struct ProvikartReportsWidget: Widget {
         }
         .configurationDisplayName("Reporty")
         .description("Počet nedokončených reportů z Problémů.")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies([
+            .systemSmall, .systemMedium,
+            .accessoryCircular, .accessoryRectangular, .accessoryInline
+        ])
     }
 }
