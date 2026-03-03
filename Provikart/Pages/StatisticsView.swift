@@ -217,6 +217,17 @@ struct StatisticsView: View {
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle("Statistiky")
         .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Picker("Metrika", selection: $selectedMetric) {
+                    ForEach(Metric.allCases) { m in
+                        Text(m.displayName).tag(m)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 160)
+            }
+        }
         .task { await loadItems() }
         .refreshable { await loadItems() }
     }
@@ -277,54 +288,51 @@ struct StatisticsView: View {
         .padding(.vertical, 8)
     }
 
-    // MARK: - Summary Card (nativní iOS styl)
+    // MARK: - Summary Card (přehledné řádky)
 
     private var summaryCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(spacing: 0) {
+            // Nadpis
             HStack {
                 Text("Souhrn")
                     .font(.headline)
                 Spacer()
-                Picker("Metrika", selection: $selectedMetric) {
-                    ForEach(Metric.allCases) { m in
-                        Text(m.displayName).tag(m)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 200)
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 12)
+            .padding(16)
 
-            // Total řádek
+            Divider()
+                .padding(.horizontal, 16)
+
+            // Celkem
             HStack(alignment: .firstTextBaseline) {
                 if selectedMetric == .count {
                     Text("\(totalCountInMonth)")
-                        .font(.system(size: 34, weight: .bold, design: .rounded))
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
                 } else {
                     Text(price(totalRevenueInMonth))
-                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
                 }
-                Text(selectedMetric == .count ? "celkem v měsíci" : "celková tržba")
+                Text(selectedMetric == .count ? "ks celkem" : "celková tržba")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 Spacer()
             }
-            .padding(.horizontal, 12)
+            .padding(16)
 
-            // Grid 2×2 karet
-            VStack(spacing: 12) {
-                HStack(spacing: 12) {
-                    SummaryTile(category: .postpaid, value: metricValue(for: .postpaid), metric: selectedMetric)
-                    SummaryTile(category: .family, value: metricValue(for: .family), metric: selectedMetric)
-                }
-                HStack(spacing: 12) {
-                    SummaryTile(category: .internet, value: metricValue(for: .internet), metric: selectedMetric)
-                    SummaryTile(category: .oneplay, value: metricValue(for: .oneplay), metric: selectedMetric)
-                }
+            Divider()
+                .padding(.horizontal, 16)
+
+            // 4 kategorie jako řádky
+            VStack(spacing: 0) {
+                SummaryRow(category: .postpaid, value: metricValue(for: .postpaid), metric: selectedMetric)
+                Divider().padding(.leading, 56)
+                SummaryRow(category: .family, value: metricValue(for: .family), metric: selectedMetric)
+                Divider().padding(.leading, 56)
+                SummaryRow(category: .internet, value: metricValue(for: .internet), metric: selectedMetric)
+                Divider().padding(.leading, 56)
+                SummaryRow(category: .oneplay, value: metricValue(for: .oneplay), metric: selectedMetric)
             }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 12)
+            .padding(.vertical, 8)
         }
         .background(Color(uiColor: .secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -467,9 +475,9 @@ struct StatisticsView: View {
     }
 }
 
-// MARK: - Shrnutí (karta + dlaždice)
+// MARK: - Shrnutí (řádek: ikona + název + hodnota)
 
-private struct SummaryTile: View {
+private struct SummaryRow: View {
     let category: ProductCategory
     let value: Double
     let metric: Metric
@@ -485,52 +493,30 @@ private struct SummaryTile: View {
     }
 
     var body: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(accent.opacity(0.15))
-                    Image(systemName: category.icon)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(accent)
-                }
-                .frame(width: 34, height: 34)
-
-                Spacer(minLength: 0)
-
-                Text(metric == .count ? "\(Int(value))" : price(value))
-                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(.ultraThinMaterial)
-                    .clipShape(Capsule())
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(accent.opacity(0.12))
+                    .frame(width: 36, height: 36)
+                Image(systemName: category.icon)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(accent)
             }
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(category.displayName)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
-                Text(metric == .count ? "Počet v měsíci" : "Tržba v měsíci")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            Text(category.displayName)
+                .font(.body.weight(.medium))
+
+            Spacer(minLength: 8)
+
+            Text(metric == .count ? "\(Int(value))" : formatPrice(value))
+                .font(.system(.body, design: .rounded).weight(.semibold))
+                .foregroundStyle(.primary)
         }
-        .padding(14)
-        .frame(maxWidth: .infinity)
-        .background {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(Color.black.opacity(0.06))
-                )
-        }
-        .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 4)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
     }
 
-    private func price(_ value: Double) -> String {
+    private func formatPrice(_ value: Double) -> String {
         let f = NumberFormatter()
         f.numberStyle = .currency
         f.currencyCode = "CZK"
