@@ -32,6 +32,14 @@ struct HomeView: View {
             .navigationTitle("Domů")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    NavigationLink {
+                        StatisticsView()
+                            .environmentObject(authState)
+                    } label: {
+                        Image(systemName: "chart.bar")
+                    }
+                }
                 if let openAddSheet {
                     ToolbarItem(placement: .primaryAction) {
                         Button {

@@ -15,6 +15,8 @@ struct OrderItemByInstallationDate: Decodable, Identifiable {
     /// Skutečné číslo objednávky pro zákazníka (z tabulky orders). Pokud API nevrátí, zobrazí se order_id.
     let order_number: String?
     let item_name: String
+    /// Typ produktu z tabulky order_items (sloupec item_type). Např. postpaid → zobrazení „Postpaid“. Používá se pro kategorizaci ve statistikách.
+    let item_type: String?
     let installation_date: String
     let base_price: Double
     let discount: Double
@@ -22,7 +24,7 @@ struct OrderItemByInstallationDate: Decodable, Identifiable {
     let status: String
 
     enum CodingKeys: String, CodingKey {
-        case id, order_id, order_number, item_name, installation_date, base_price, discount, commission, status
+        case id, order_id, order_number, item_name, item_type, installation_date, base_price, discount, commission, status
     }
 
     init(from decoder: Decoder) throws {
@@ -31,6 +33,7 @@ struct OrderItemByInstallationDate: Decodable, Identifiable {
         order_id = try c.decodeIntOrString(forKey: .order_id)
         order_number = try? c.decodeIfPresent(String.self, forKey: .order_number)
         item_name = (try c.decodeIfPresent(String.self, forKey: .item_name)) ?? ""
+        item_type = try? c.decodeIfPresent(String.self, forKey: .item_type)
         installation_date = (try c.decodeIfPresent(String.self, forKey: .installation_date)) ?? ""
         base_price = try c.decodeDoubleOrString(forKey: .base_price)
         discount = try c.decodeDoubleOrString(forKey: .discount)
