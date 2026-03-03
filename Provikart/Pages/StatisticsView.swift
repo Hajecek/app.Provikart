@@ -447,9 +447,14 @@ struct StatisticsView: View {
             }
         } catch {
             await MainActor.run {
-                items = []
                 isLoading = false
-                errorMessage = error.localizedDescription
+                let isCancelled = error is CancellationError || (error as? URLError)?.code == .cancelled
+                if isCancelled {
+                    errorMessage = nil
+                } else {
+                    items = []
+                    errorMessage = error.localizedDescription
+                }
             }
         }
     }
