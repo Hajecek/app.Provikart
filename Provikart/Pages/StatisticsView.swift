@@ -27,7 +27,7 @@ private func parseInstallationDate(_ raw: String) -> Date? {
 }
 
 private enum ProductCategory: String, CaseIterable, Hashable {
-    case postpaid = "Postpaid"
+    case postpaid = "Postpaidd"
     case family = "Family"
     case internet = "Internet"
     case oneplay = "Oneplay"
