@@ -44,6 +44,7 @@ struct CalendarView: View {
     @State private var errorMessage: String?
     @State private var displayedMonth: Date = Date()
     @State private var selectedDate: Date?
+    @State private var selectedItem: OrderItemByInstallationDate?
 
     private let service = OrderItemsByInstallationDateService()
     private let calendar = Calendar.current
@@ -101,6 +102,9 @@ struct CalendarView: View {
                 }
             }
         }
+        .sheet(item: $selectedItem) { item in
+            InstallationDetailSheet(item: item, selectedItem: $selectedItem)
+        }
         .task { await loadItems() }
         .refreshable { await loadItems() }
     }
@@ -151,7 +155,12 @@ struct CalendarView: View {
                         .listRowBackground(Color.clear)
                     } else {
                         ForEach(dayItems) { item in
-                            InstallationListRow(item: item)
+                            Button {
+                                selectedItem = item
+                            } label: {
+                                InstallationListRow(item: item)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 } header: {
@@ -351,6 +360,68 @@ private struct DayCell: View {
         }
         .buttonStyle(.borderless)
         .disabled(day == nil)
+    }
+}
+
+// MARK: - Sheet s detailem instalace
+
+private struct InstallationDetailSheet: View {
+    let item: OrderItemByInstallationDate
+    @Binding var selectedItem: OrderItemByInstallationDate?
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    LabeledContent("Položka", value: item.item_name)
+                    LabeledContent("Objednávka", value: item.displayOrderNumber)
+                    if let type = item.item_type, !type.isEmpty {
+                        LabeledContent("Typ", value: type)
+                    }
+                }
+                Section("Instalace") {
+                    LabeledContent("Datum", value: formatInstallationDate(item.installation_date))
+                    if let time = item.installation_time, !time.isEmpty {
+                        LabeledContent("Čas", value: time)
+                    }
+                }
+                Section("Ceny") {
+                    LabeledContent("Základní cena", value: Formatting.price(item.base_price))
+                    if item.discount != 0 {
+                        LabeledContent("Sleva", value: Formatting.price(item.discount))
+                    }
+                    LabeledContent("Provize", value: Formatting.price(item.commission))
+                }
+                if !item.status.isEmpty {
+                    Section {
+                        LabeledContent("Stav", value: item.status)
+                    }
+                }
+            }
+            .navigationTitle(item.item_name)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Zavřít") {
+                        selectedItem = nil
+                        dismiss()
+                    }
+                }
+            }
+            .onDisappear {
+                selectedItem = nil
+            }
+        }
+    }
+
+    private func formatInstallationDate(_ raw: String) -> String {
+        guard let date = parseInstallationDate(raw) else { return raw }
+        let f = DateFormatter()
+        f.dateStyle = .long
+        f.timeStyle = .none
+        f.locale = Locale(identifier: "cs_CZ")
+        return f.string(from: date)
     }
 }
 
