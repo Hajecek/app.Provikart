@@ -24,6 +24,17 @@ private func parseInstallationDate(_ raw: String) -> Date? {
     return ddMMyyyy.date(from: trimmed) ?? yyyyMMdd.date(from: trimmed)
 }
 
+/// Vrací datum + čas pro řazení (pokud je installation_time, přidá ho k datu).
+private func sortDate(for item: OrderItemByInstallationDate) -> Date {
+    guard let day = parseInstallationDate(item.installation_date) else { return .distantPast }
+    guard let timeStr = item.installation_time, !timeStr.isEmpty else { return day }
+    let parts = timeStr.split(separator: ":")
+    guard parts.count >= 2,
+          let h = Int(parts[0]), let m = Int(parts[1]),
+          (0..<24).contains(h), (0..<60).contains(m) else { return day }
+    return Calendar.current.date(bySettingHour: h, minute: m, second: 0, of: day) ?? day
+}
+
 struct CalendarView: View {
     @EnvironmentObject private var authState: AuthState
     @Environment(\.openAddSheet) private var openAddSheet
@@ -47,7 +58,7 @@ struct CalendarView: View {
             guard let d = parseInstallationDate($0.installation_date) else { return false }
             return calendar.isDate(d, inSameDayAs: start)
         }
-        .sorted { (parseInstallationDate($0.installation_date) ?? .distantPast) < (parseInstallationDate($1.installation_date) ?? .distantPast) }
+        .sorted { sortDate(for: $0) < sortDate(for: $1) }
     }
 
     private func formatSectionDate(_ date: Date) -> String {
@@ -350,8 +361,15 @@ private struct InstallationListRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(item.item_name)
-                .font(.body)
+            HStack {
+                Text(item.item_name)
+                    .font(.body)
+                if let time = item.installation_time, !time.isEmpty {
+                    Text(time)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
             Text("Objednávka \(item.displayOrderNumber)")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)

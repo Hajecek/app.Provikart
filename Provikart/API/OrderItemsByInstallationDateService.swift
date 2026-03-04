@@ -9,6 +9,7 @@ import Foundation
 
 /// Jedna položka objednávky s datumem instalace (odpověď API).
 /// Dekódování je tolerantní k null a k číslům vráceným jako řetězce (PHP/MySQL).
+/// Podporuje jak staré pole installation_date, tak nové installation_day + installation_time z tabulky order_items.
 struct OrderItemByInstallationDate: Decodable, Identifiable {
     let id: Int
     let order_id: Int
@@ -17,14 +18,18 @@ struct OrderItemByInstallationDate: Decodable, Identifiable {
     let item_name: String
     /// Typ produktu z tabulky order_items (sloupec item_type). Např. postpaid → zobrazení „Postpaid“. Používá se pro kategorizaci ve statistikách.
     let item_type: String?
+    /// Datum instalace – buď z installation_date (API), nebo z installation_day (nová DB). Formát YYYY-MM-DD nebo dd.MM.yyyy.
     let installation_date: String
+    /// Čas instalace HH:MM (volitelné, z sloupce installation_time).
+    let installation_time: String?
     let base_price: Double
     let discount: Double
     let commission: Double
     let status: String
 
     enum CodingKeys: String, CodingKey {
-        case id, order_id, order_number, item_name, item_type, installation_date, base_price, discount, commission, status
+        case id, order_id, order_number, item_name, item_type, installation_date, installation_time, base_price, discount, commission, status
+        case installation_day
     }
 
     init(from decoder: Decoder) throws {
@@ -34,7 +39,13 @@ struct OrderItemByInstallationDate: Decodable, Identifiable {
         order_number = try? c.decodeIfPresent(String.self, forKey: .order_number)
         item_name = (try c.decodeIfPresent(String.self, forKey: .item_name)) ?? ""
         item_type = try? c.decodeIfPresent(String.self, forKey: .item_type)
-        installation_date = (try c.decodeIfPresent(String.self, forKey: .installation_date)) ?? ""
+        // API může vracet installation_date (staré) nebo installation_day (nové po úpravě tabulky)
+        let fromDate = try? c.decodeIfPresent(String.self, forKey: .installation_date)
+        let fromDay = try? c.decodeIfPresent(String.self, forKey: .installation_day)
+        installation_date = fromDate?.trimmingCharacters(in: .whitespaces).isEmpty == false
+            ? (fromDate ?? "")
+            : (fromDay?.trimmingCharacters(in: .whitespaces) ?? "")
+        installation_time = try? c.decodeIfPresent(String.self, forKey: .installation_time)
         base_price = try c.decodeDoubleOrString(forKey: .base_price)
         discount = try c.decodeDoubleOrString(forKey: .discount)
         commission = try c.decodeDoubleOrString(forKey: .commission)
