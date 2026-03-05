@@ -42,7 +42,6 @@ struct CalendarView: View {
     @State private var items: [OrderItemByInstallationDate] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
-    @State private var displayedMonth: Date = Date()
     @State private var selectedDate: Date?
     @State private var selectedItem: OrderItemByInstallationDate?
 
@@ -68,6 +67,30 @@ struct CalendarView: View {
         f.timeStyle = .none
         f.locale = Locale(identifier: "cs_CZ")
         return f.string(from: date)
+    }
+
+    /// Nadpis sekce ve stylu iOS Kalendáře: "Dnes", "Zítra" nebo "v sobotu 7. 3."
+    private func relativeSectionHeader(for date: Date) -> String {
+        let cal = Calendar.current
+        if cal.isDateInToday(date) {
+            return "Dnes"
+        }
+        if cal.isDateInTomorrow(date) {
+            return "Zítra"
+        }
+        let dayMonth = DateFormatter()
+        dayMonth.locale = Locale(identifier: "cs_CZ")
+        dayMonth.dateFormat = "d. M."
+        let weekday = DateFormatter()
+        weekday.locale = Locale(identifier: "cs_CZ")
+        weekday.dateFormat = "EEEE"
+        let weekdayLower = weekday.string(from: date).lowercased()
+        return "\(weekdayLower) \(dayMonth.string(from: date))"
+    }
+
+    private func dateHeaderColor(for date: Date) -> Color {
+        if calendar.isDateInToday(date) { return Color.accentColor }
+        return Color.primary
     }
 
     var body: some View {
@@ -132,58 +155,84 @@ struct CalendarView: View {
         ContentUnavailableView {
             Label("Žádné instalace", systemImage: "calendar.badge.clock")
         } description: {
-            Text("Položky s datem instalace se zde zobrazí.")
+            Text("Jakmile budete mít položky s datem instalace, objeví se zde.")
+        } actions: {
+            if openAddSheet != nil {
+                Button("Přidat položku") { openAddSheet?() }
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - Hlavní List (iOS inset group style)
+    // MARK: - Hlavní obsah (přehledný iOS design)
+
+    private static let monthTitleFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "cs_CZ")
+        f.dateFormat = "LLLL yyyy"
+        return f
+    }()
 
     private var mainList: some View {
         List {
             Section {
-                monthGrid
-                    .listRowInsets(EdgeInsets(top: 12, leading: 0, bottom: 12, trailing: 0))
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(Self.monthTitleFormatter.string(from: selectedDate ?? Date()).capitalized)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.secondary)
+                    weekStrip
+                }
+                .padding(.vertical, 4)
             }
+            .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16))
+            .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
+            .listRowSeparator(.hidden)
 
             if let date = selectedDate {
                 Section {
                     let dayItems = items(for: date)
                     if dayItems.isEmpty {
-                        HStack {
-                            Spacer()
-                            Text("V tento den nemáte naplánované instalace")
+                        VStack(spacing: 8) {
+                            Image(systemName: "calendar.badge.clock")
+                                .font(.title2)
+                                .foregroundStyle(.tertiary)
+                            Text("Žádné instalace na tento den")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center)
-                            Spacer()
                         }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 20)
                         .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                     } else {
                         ForEach(dayItems) { item in
                             Button {
                                 selectedItem = item
                             } label: {
-                                InstallationListRow(item: item)
+                                HStack(alignment: .center, spacing: 12) {
+                                    InstallationListRow(item: item)
+                                    Spacer(minLength: 8)
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                                }
                             }
                             .buttonStyle(.plain)
                         }
                     }
                 } header: {
-                    Text(formatSectionDate(date))
-                }
-            } else {
-                Section {
-                    HStack {
-                        Spacer()
-                        Text("Vyberte den v kalendáři")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Spacer()
+                    Text(relativeSectionHeader(for: date))
+                        .textCase(nil)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(dateHeaderColor(for: date))
+                } footer: {
+                    if !items(for: date).isEmpty {
+                        Text("Klepněte na položku pro detail")
+                            .textCase(nil)
                     }
-                    .listRowBackground(Color.clear)
                 }
             }
         }
@@ -191,111 +240,58 @@ struct CalendarView: View {
         .scrollContentBackground(.visible)
     }
 
-    // MARK: - Mřížka měsíce (jako v Kalendáři)
+    // MARK: - Pás dnů (vždy zahrnuje dnes i vybraný den)
 
-    private var monthGrid: some View {
-        VStack(spacing: 16) {
-            HStack {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        displayedMonth = calendar.date(byAdding: .month, value: -1, to: displayedMonth) ?? displayedMonth
-                    }
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.body.weight(.semibold))
-                        .foregroundColor(Color.accentColor)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.borderless)
-                Spacer()
-                Text(monthYearString(displayedMonth))
-                    .font(.headline)
-                Spacer()
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        displayedMonth = calendar.date(byAdding: .month, value: 1, to: displayedMonth) ?? displayedMonth
-                    }
-                } label: {
-                    Image(systemName: "chevron.right")
-                        .font(.body.weight(.semibold))
-                        .foregroundColor(Color.accentColor)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.borderless)
-            }
-
-            HStack(spacing: 0) {
-                ForEach(shortWeekdaySymbols, id: \.self) { symbol in
-                    Text(symbol)
-                        .font(.caption2)
-                        .fontWeight(.medium)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity)
-                }
-            }
-
-            let days = daysInDisplayedMonth()
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7), spacing: 8) {
-                ForEach(Array(days.enumerated()), id: \.offset) { _, cell in
-                    let cellDate = cell.date
-                    DayCell(
-                        day: cell.day,
-                        hasInstallation: cellDate.map { daysWithItems.contains($0) } ?? false,
-                        isSelected: cellDate.flatMap { d in selectedDate.map { calendar.isDate(d, inSameDayAs: $0) } } ?? false,
-                        isToday: cellDate.map { calendar.isDateInToday($0) } ?? false
-                    ) {
-                        if let d = cellDate {
-                            withAnimation(.easeInOut(duration: 0.2)) { selectedDate = d }
-                        }
-                    }
-                }
-            }
-        }
-        .padding(.horizontal, 8)
-    }
-
-    private func monthYearString(_ date: Date) -> String {
+    private static let weekdayFormatter: DateFormatter = {
         let f = DateFormatter()
-        f.dateFormat = "LLLL yyyy"
         f.locale = Locale(identifier: "cs_CZ")
-        return f.string(from: date).capitalized
+        f.dateFormat = "EEEEE"
+        return f
+    }()
+
+    private func daysForStrip() -> [(weekdaySymbol: String, day: Int, date: Date)] {
+        let today = calendar.startOfDay(for: Date())
+        let selected = selectedDate ?? today
+        let from = calendar.date(byAdding: .day, value: -10, to: min(today, selected)) ?? today
+        let to = calendar.date(byAdding: .day, value: 16, to: max(today, selected)) ?? selected
+        var result: [(String, Int, Date)] = []
+        var d = calendar.startOfDay(for: from)
+        while d <= to {
+            result.append((
+                Self.weekdayFormatter.string(from: d),
+                calendar.component(.day, from: d),
+                d
+            ))
+            guard let next = calendar.date(byAdding: .day, value: 1, to: d) else { break }
+            d = next
+        }
+        return result
     }
 
-    private var shortWeekdaySymbols: [String] {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "cs_CZ")
-        formatter.dateFormat = "EEEEE"
-        var symbols: [String] = []
-        for i in 1...7 {
-            guard let date = calendar.date(bySetting: .weekday, value: i, of: Date()) else { continue }
-            symbols.append(formatter.string(from: date))
-        }
-        let first = calendar.firstWeekday - 1
-        if first > 0 { symbols = Array(symbols[first...]) + Array(symbols[..<first]) }
-        return symbols
-    }
-
-    private func daysInDisplayedMonth() -> [(day: Int?, date: Date?)] {
-        guard let range = calendar.range(of: .day, in: .month, for: displayedMonth),
-              let firstDay = calendar.date(from: calendar.dateComponents([.year, .month], from: displayedMonth)) else {
-            return []
-        }
-        let numberOfDays = range.count
-        let firstWeekday = calendar.component(.weekday, from: firstDay)
-        let offset = (firstWeekday - calendar.firstWeekday + 7) % 7
-        var result: [(Int?, Date?)] = []
-        for _ in 0..<offset { result.append((nil, nil)) }
-        for day in 1...numberOfDays {
-            if let date = calendar.date(bySetting: .day, value: day, of: firstDay) {
-                result.append((day, calendar.startOfDay(for: date)))
-            } else {
-                result.append((day, nil))
+    private var weekStrip: some View {
+        let days = daysForStrip()
+        let selectedIdx = selectedDate.flatMap { sel in days.firstIndex { calendar.isDate($0.date, inSameDayAs: sel) } } ?? 0
+        return ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(Array(days.enumerated()), id: \.offset) { idx, cell in
+                        DayCell(
+                            weekday: cell.weekdaySymbol,
+                            day: cell.day,
+                            isSelected: selectedDate.map { calendar.isDate(cell.date, inSameDayAs: $0) } ?? false,
+                            isToday: calendar.isDateInToday(cell.date)
+                        ) {
+                            withAnimation(.easeInOut(duration: 0.22)) { selectedDate = cell.date }
+                            proxy.scrollTo(idx, anchor: .center)
+                        }
+                        .id(idx)
+                    }
+                }
+                .padding(.horizontal, 4)
             }
+            .frame(height: 58)
+            .onAppear { proxy.scrollTo(selectedIdx, anchor: .center) }
         }
-        while result.count < 42 { result.append((nil, nil)) }
-        return Array(result.prefix(42))
     }
 
     private func loadItems() async {
@@ -312,7 +308,6 @@ struct CalendarView: View {
                 let today = calendar.startOfDay(for: Date())
                 if selectedDate == nil {
                     selectedDate = today
-                    displayedMonth = today
                 }
             }
         } catch {
@@ -325,49 +320,49 @@ struct CalendarView: View {
     }
 }
 
-// MARK: - Buňka dne (jako v aplikaci Kalendář)
+// MARK: - Buňka dne (iOS styl – přehledná, přívětivá)
 
 private struct DayCell: View {
-    let day: Int?
-    let hasInstallation: Bool
+    let weekday: String
+    let day: Int
     let isSelected: Bool
     let isToday: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 2) {
-                if let d = day {
-                    ZStack {
-                        if isSelected {
-                            Circle()
-                                .fill(Color.accentColor)
-                        } else if isToday {
-                            Circle()
-                                .stroke(Color.accentColor, lineWidth: 2)
-                        }
-                        Text("\(d)")
-                            .font(.system(.body, design: .rounded))
-                            .fontWeight(isSelected || isToday ? .semibold : .regular)
-                            .foregroundColor(isSelected ? .white : (isToday ? Color.accentColor : .primary))
+            VStack(spacing: 6) {
+                Text(weekday)
+                    .font(.caption2)
+                    .fontWeight(.medium)
+                    .foregroundStyle(isSelected ? .white.opacity(0.9) : .secondary)
+                ZStack {
+                    if isSelected {
+                        Circle().fill(Color.accentColor)
+                    } else if isToday {
+                        Circle().stroke(Color.accentColor, lineWidth: 2)
                     }
-                    .frame(width: 32, height: 32)
-                    if hasInstallation {
-                        Circle()
-                            .fill(isSelected ? Color.white.opacity(0.8) : Color.accentColor)
-                            .frame(width: 4, height: 4)
-                    } else {
-                        Color.clear.frame(height: 4)
-                    }
-                } else {
-                    Color.clear.frame(height: 36)
+                    Text("\(day)")
+                        .font(.body)
+                        .fontWeight(isSelected || isToday ? .semibold : .regular)
+                        .foregroundColor(isSelected ? .white : (isToday ? Color.accentColor : .primary))
                 }
+                .frame(width: 36, height: 36)
+                Group {
+                    if isSelected {
+                        Circle().fill(Color.accentColor).frame(width: 4, height: 4)
+                    } else if isToday {
+                        Text("Dnes").font(.caption2).fontWeight(.medium).foregroundStyle(Color.accentColor)
+                    } else {
+                        Color.clear
+                    }
+                }
+                .frame(height: 14)
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 44)
+            .frame(width: 44)
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.borderless)
-        .disabled(day == nil)
+        .buttonStyle(.plain)
     }
 }
 
@@ -410,8 +405,8 @@ private struct InstallationDetailSheet: View {
             .navigationTitle(item.item_name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Zavřít") {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Hotovo") {
                         selectedItem = nil
                         dismiss()
                     }
@@ -433,37 +428,42 @@ private struct InstallationDetailSheet: View {
     }
 }
 
-// MARK: - Řádek v Listu (nativní styl)
+// MARK: - Řádek instalace (přehledný, iOS styl)
 
 private struct InstallationListRow: View {
     let item: OrderItemByInstallationDate
 
+    private var timeAndOrder: String {
+        var parts: [String] = ["Obj. \(item.displayOrderNumber)"]
+        if let t = item.installation_time, !t.isEmpty { parts.append(t) }
+        return parts.joined(separator: " · ")
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text(item.item_name)
-                    .font(.body)
-                if let time = item.installation_time, !time.isEmpty {
-                    Text(time)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Text("Objednávka \(item.displayOrderNumber)")
+        VStack(alignment: .leading, spacing: 4) {
+            Text(item.item_name)
+                .font(.body)
+                .fontWeight(.medium)
+                .foregroundStyle(.primary)
+            Text(timeAndOrder)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-            if item.base_price > 0 {
-                Text(Formatting.price(item.base_price))
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
-            if !item.status.isEmpty {
-                Text(item.status)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+            if item.base_price > 0 || !item.status.isEmpty {
+                HStack(spacing: 8) {
+                    if item.base_price > 0 {
+                        Text(Formatting.price(item.base_price))
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                    if !item.status.isEmpty {
+                        Text(item.status)
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
     }
 }
 
