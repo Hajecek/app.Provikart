@@ -88,19 +88,27 @@ struct CalendarView: View {
             .navigationTitle("Kalendář")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
-                if let openAddSheet {
-                    ToolbarItem(placement: .primaryAction) {
+                ToolbarItem(placement: .topBarLeading) {
+                    NavigationLink {
+                        StatisticsView()
+                            .environmentObject(authState)
+                            .environment(\.openAddSheet, openAddSheet)
+                    } label: {
+                        Image(systemName: "chart.bar")
+                    }
+                }
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    if let openAddSheet {
                         Button {
                             openAddSheet()
                         } label: {
                             Image(systemName: "plus")
                         }
                     }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
                     ProfileBarButton()
                 }
             }
+            .toolbarBackground(.visible, for: .navigationBar)
         }
         .sheet(item: $selectedItem) { item in
             InstallationDetailSheet(item: item, selectedItem: $selectedItem)

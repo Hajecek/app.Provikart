@@ -218,16 +218,20 @@ struct StatisticsView: View {
         .navigationTitle("Statistiky")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .principal) {
                 Picker("Metrika", selection: $selectedMetric) {
                     ForEach(Metric.allCases) { m in
                         Text(m.displayName).tag(m)
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 160)
+                .frame(minWidth: 180, maxWidth: 220)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                ProfileBarButton()
             }
         }
+        .toolbarBackground(.visible, for: .navigationBar)
         .task { await loadItems() }
         .refreshable { await loadItems() }
     }

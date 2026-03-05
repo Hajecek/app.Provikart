@@ -36,23 +36,23 @@ struct HomeView: View {
                     NavigationLink {
                         StatisticsView()
                             .environmentObject(authState)
+                            .environment(\.openAddSheet, openAddSheet)
                     } label: {
                         Image(systemName: "chart.bar")
                     }
                 }
-                if let openAddSheet {
-                    ToolbarItem(placement: .primaryAction) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    if let openAddSheet {
                         Button {
                             openAddSheet()
                         } label: {
                             Image(systemName: "plus")
                         }
                     }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
                     ProfileBarButton()
                 }
             }
+            .toolbarBackground(.visible, for: .navigationBar)
         }
         .task {
             await loadCommission()
