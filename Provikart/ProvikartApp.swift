@@ -211,6 +211,7 @@ struct ProvikartApp: App {
                 appDelegate.clearUserInfo()
                 WidgetDataStore.clearCommission()
                 WidgetDataStore.clearReports()
+                WidgetDataStore.clearInstallations()
               }
             }
             .onAppear {

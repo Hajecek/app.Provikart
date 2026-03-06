@@ -24,6 +24,7 @@ private enum WidgetKeys {
     static let lastUpdated = "widget_last_updated"
     static let reportsIncompleteCount = "widget_reports_incomplete_count"
     static let authToken = "widget_auth_token"
+    static let installations = "widget_installations"
 }
 
 // MARK: - Data
@@ -595,6 +596,372 @@ struct ProvikartReportsWidget: Widget {
         .supportedFamilies([
             .systemSmall, .systemMedium,
             .accessoryCircular, .accessoryRectangular, .accessoryInline
+        ])
+    }
+}
+
+// MARK: - Widget Instalace (kalendář instalovaných služeb)
+
+struct WidgetInstallationItem: Codable, Identifiable {
+    let installation_date: String
+    let installation_time: String?
+    let item_name: String
+    let order_display: String?  // z cache aplikace
+    let order_number: String?  // z API
+    let order_id: Int?         // z API (může přijít jako Int nebo String)
+
+    enum CodingKeys: String, CodingKey {
+        case installation_date, installation_time, item_name, order_display, order_number, order_id
+        case installation_day
+    }
+
+    init(installation_date: String, installation_time: String?, item_name: String, order_display: String?, order_number: String?, order_id: Int?) {
+        self.installation_date = installation_date
+        self.installation_time = installation_time
+        self.item_name = item_name
+        self.order_display = order_display
+        self.order_number = order_number
+        self.order_id = order_id
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let fromDate = try? c.decodeIfPresent(String.self, forKey: .installation_date)
+        let fromDay = try? c.decodeIfPresent(String.self, forKey: .installation_day)
+        installation_date = (fromDate?.trimmingCharacters(in: .whitespaces).isEmpty == false ? fromDate : fromDay) ?? ""
+        installation_time = try? c.decodeIfPresent(String.self, forKey: .installation_time)
+        item_name = (try? c.decode(String.self, forKey: .item_name)) ?? ""
+        order_display = try? c.decodeIfPresent(String.self, forKey: .order_display)
+        order_number = try? c.decodeIfPresent(String.self, forKey: .order_number)
+        if let i = try? c.decode(Int.self, forKey: .order_id) {
+            order_id = i
+        } else if let s = try? c.decode(String.self, forKey: .order_id), let i = Int(s) {
+            order_id = i
+        } else {
+            order_id = nil
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(installation_date, forKey: .installation_date)
+        try c.encode(installation_time, forKey: .installation_time)
+        try c.encode(item_name, forKey: .item_name)
+        try c.encodeIfPresent(order_display, forKey: .order_display)
+        try c.encodeIfPresent(order_number, forKey: .order_number)
+        try c.encodeIfPresent(order_id, forKey: .order_id)
+    }
+
+    var displayOrder: String {
+        if let d = order_display, !d.isEmpty { return d }
+        if let n = order_number, !n.isEmpty { return n }
+        return "\(order_id ?? 0)"
+    }
+
+    var id: String { "\(installation_date)-\(item_name)-\(displayOrder)" }
+}
+
+private func parseInstallationDate(_ raw: String) -> Date? {
+    let trimmed = raw.trimmingCharacters(in: .whitespaces)
+    let ddMMyyyy: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "dd.MM.yyyy"
+        f.locale = Locale(identifier: "cs_CZ")
+        return f
+    }()
+    let yyyyMMdd: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+    return ddMMyyyy.date(from: trimmed) ?? yyyyMMdd.date(from: trimmed)
+}
+
+struct WidgetInstallationsEntry: TimelineEntry {
+    let date: Date
+    let items: [WidgetInstallationItem]
+    let hasData: Bool
+}
+
+struct ProvikartInstallationsWidgetProvider: TimelineProvider {
+    func placeholder(in context: Context) -> WidgetInstallationsEntry {
+        WidgetInstallationsEntry(date: Date(), items: [
+            WidgetInstallationItem(installation_date: "2025-03-06", installation_time: "09:00", item_name: "Internet 100", order_display: "123", order_number: nil, order_id: nil),
+            WidgetInstallationItem(installation_date: "2025-03-06", installation_time: "14:00", item_name: "Postpaid", order_display: "124", order_number: nil, order_id: nil),
+        ], hasData: true)
+    }
+
+    func getSnapshot(in context: Context, completion: @escaping (WidgetInstallationsEntry) -> Void) {
+        completion(loadCachedEntry())
+    }
+
+    func getTimeline(in context: Context, completion: @escaping (Timeline<WidgetInstallationsEntry>) -> Void) {
+        let cached = loadCachedEntry()
+        let nextReload = Date().addingTimeInterval(timelineRefreshInterval)
+
+        guard let token = loadAuthToken() else {
+            completion(Timeline(entries: [cached], policy: .after(Date().addingTimeInterval(60 * 60))))
+            return
+        }
+
+        var didComplete = false
+        let completeOnce: (Timeline<WidgetInstallationsEntry>) -> Void = { timeline in
+            guard !didComplete else { return }
+            didComplete = true
+            completion(timeline)
+        }
+
+        Task {
+            let fresh = await fetchInstallations(token: token)
+            let entry = fresh ?? cached
+            completeOnce(Timeline(entries: [entry], policy: .after(nextReload)))
+        }
+
+        Task {
+            try? await Task.sleep(nanoseconds: UInt64((networkRequestTimeout + 1) * 1_000_000_000))
+            completeOnce(Timeline(entries: [cached], policy: .after(nextReload)))
+        }
+    }
+
+    private func loadAuthToken() -> String? {
+        let suite = UserDefaults(suiteName: appGroupIdentifier)
+        let token = suite?.string(forKey: WidgetKeys.authToken)
+        let trimmed = token?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (trimmed?.isEmpty == false) ? trimmed : nil
+    }
+
+    private func loadCachedEntry() -> WidgetInstallationsEntry {
+        let suite = UserDefaults(suiteName: appGroupIdentifier)
+        guard let data = suite?.data(forKey: WidgetKeys.installations),
+              let items = try? JSONDecoder().decode([WidgetInstallationItem].self, from: data) else {
+            return WidgetInstallationsEntry(date: Date(), items: [], hasData: false)
+        }
+        return WidgetInstallationsEntry(date: Date(), items: items, hasData: true)
+    }
+
+    private struct InstallationsAPIResponse: Decodable {
+        let success: Bool
+        let items: [WidgetInstallationItem]?
+    }
+
+    private func fetchInstallations(token: String) async -> WidgetInstallationsEntry? {
+        var comp = URLComponents(string: "https://provikart.cz/api/order_items_by_installation_date.php")
+        comp?.queryItems = [URLQueryItem(name: "token", value: token)]
+        guard let url = comp?.url else { return nil }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = networkRequestTimeout
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        do {
+            let (data, _) = try await URLSession.shared.data(for: request)
+            let decoded = try JSONDecoder().decode(InstallationsAPIResponse.self, from: data)
+            guard decoded.success, let items = decoded.items, !items.isEmpty else { return nil }
+            return WidgetInstallationsEntry(date: Date(), items: items, hasData: true)
+        } catch {
+            return nil
+        }
+    }
+}
+
+struct ProvikartInstallationsWidgetEntryView: View {
+    var entry: WidgetInstallationsEntry
+    @Environment(\.widgetFamily) var family
+
+    private static var czechCalendar: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.locale = Locale(identifier: "cs_CZ")
+        return c
+    }
+
+    private var calendar: Calendar { Self.czechCalendar }
+    private var now: Date { Date() }
+
+    /// Všechny dny s instalacemi, seřazené od nejbližšího (dnes + budoucí první, pak minulé).
+    private var itemsGroupedByDay: [(dayStart: Date, items: [WidgetInstallationItem])] {
+        var byDay: [Date: [WidgetInstallationItem]] = [:]
+        let todayStart = calendar.startOfDay(for: now)
+        for item in entry.items {
+            guard let d = parseInstallationDate(item.installation_date) else { continue }
+            let start = calendar.startOfDay(for: d)
+            byDay[start, default: []].append(item)
+        }
+        return byDay.keys.sorted().map { (dayStart: $0, items: byDay[$0]!.sorted { ($0.installation_time ?? "") < ($1.installation_time ?? "") }) }
+    }
+
+    /// Pouze dnes a budoucí dny – pro sekci „Nejbližší“.
+    private var upcomingGroupedByDay: [(dayStart: Date, items: [WidgetInstallationItem])] {
+        let todayStart = calendar.startOfDay(for: now)
+        return itemsGroupedByDay.filter { $0.dayStart >= todayStart }
+    }
+
+    /// Pro zobrazení v widgetu: nejdřív nadcházející, pokud žádné tak aspoň první dny z celku.
+    private var displayGroupedByDay: [(dayStart: Date, items: [WidgetInstallationItem])] {
+        let upcoming = upcomingGroupedByDay
+        if upcoming.isEmpty {
+            return Array(itemsGroupedByDay.suffix(4))
+        }
+        return Array(upcoming.prefix(4))
+    }
+
+    var body: some View {
+        Group {
+            switch family {
+            case .systemSmall:
+                installationsSmallView
+            case .systemMedium:
+                installationsMediumView
+            case .accessoryRectangular:
+                installationsAccessoryRectangularView
+            case .accessoryInline:
+                installationsAccessoryInlineView
+            default:
+                installationsMediumView
+            }
+        }
+        .containerBackground(for: .widget) {
+            Color(uiColor: .secondarySystemGroupedBackground)
+        }
+        .widgetURL(URL(string: "provikart://calendar"))
+    }
+
+    private var installationsAccessoryInlineView: some View {
+        Group {
+            if entry.hasData, !entry.items.isEmpty {
+                let count = entry.items.count
+                Text(count == 1 ? "1 instalace" : "\(count) instalací")
+                    .font(.system(size: 14, weight: .medium))
+            } else {
+                Text("Instalace – přihlaste se")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var installationsAccessoryRectangularView: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Label("Instalace", systemImage: "calendar.badge.clock")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+            if entry.hasData, !entry.items.isEmpty {
+                let total = entry.items.count
+                Text(total == 1 ? "1 instalace v plánu" : "\(total) instalací v plánu")
+                    .font(.system(size: 14, weight: .semibold))
+            } else {
+                Text("Přihlaste se")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+    }
+
+    private var installationsSmallView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "calendar.badge.clock")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text("Instalace")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            if entry.hasData, !entry.items.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(displayGroupedByDay.prefix(3), id: \.dayStart.timeIntervalSince1970) { pair in
+                        Text(dayLabelString(pair.dayStart))
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        ForEach(pair.items.prefix(2)) { item in
+                            Text(installationLine(item))
+                                .font(.system(size: 12, weight: .medium))
+                                .lineLimit(1)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Spacer(minLength: 6)
+                Text("Přihlaste se")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .padding(16)
+    }
+
+    private var installationsMediumView: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "calendar.badge.clock")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text("Kdy se co spouští")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+            if entry.hasData, !entry.items.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(displayGroupedByDay, id: \.dayStart.timeIntervalSince1970) { pair in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(dayLabelString(pair.dayStart))
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                            ForEach(pair.items.prefix(4)) { item in
+                                Text(installationLine(item))
+                                    .font(.system(size: 13, weight: .medium))
+                                    .lineLimit(1)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Text("Přihlaste se v aplikaci")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .padding(16)
+    }
+
+    private func dayLabelString(_ date: Date) -> String {
+        if calendar.isDateInToday(date) { return "Dnes" }
+        if calendar.isDateInTomorrow(date) { return "Zítra" }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "cs_CZ")
+        f.dateFormat = "d. M."
+        return f.string(from: date)
+    }
+
+    private func installationLine(_ item: WidgetInstallationItem) -> String {
+        var parts: [String] = [item.item_name]
+        if let t = item.installation_time, !t.isEmpty { parts.append(t) }
+        parts.append("Obj. \(item.displayOrder)")
+        return parts.joined(separator: " · ")
+    }
+}
+
+struct ProvikartInstallationsWidget: Widget {
+    let kind: String = "ProvikartInstallationsWidget"
+
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: kind, provider: ProvikartInstallationsWidgetProvider()) { entry in
+            ProvikartInstallationsWidgetEntryView(entry: entry)
+        }
+        .configurationDisplayName("Instalace")
+        .description("Přehled, kdy se co spouští – datum a čas instalací.")
+        .supportedFamilies([
+            .systemSmall, .systemMedium,
+            .accessoryRectangular, .accessoryInline
         ])
     }
 }

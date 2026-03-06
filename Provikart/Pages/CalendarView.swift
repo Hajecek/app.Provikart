@@ -301,6 +301,7 @@ struct CalendarView: View {
             await MainActor.run {
                 items = fetched
                 isLoading = false
+                WidgetDataStore.saveInstallations(items: fetched)
                 let today = calendar.startOfDay(for: Date())
                 if selectedDate == nil {
                     selectedDate = today

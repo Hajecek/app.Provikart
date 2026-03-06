@@ -16,6 +16,7 @@ enum WidgetDataStore {
     static let appGroupIdentifier = "group.com.hajecek.provikartApp"
     private static let widgetKindCommission = "ProvikartWidget"
     private static let widgetKindReports = "ProvikartReportsWidget"
+    private static let widgetKindInstallations = "ProvikartInstallationsWidget"
 
     private static var suite: UserDefaults? {
         UserDefaults(suiteName: appGroupIdentifier)
@@ -28,6 +29,15 @@ enum WidgetDataStore {
         static let lastUpdated = "widget_last_updated"
         static let reportsIncompleteCount = "widget_reports_incomplete_count"
         static let authToken = "widget_auth_token"
+        static let installations = "widget_installations"
+    }
+
+    /// Položka pro widget instalací (minimální payload pro App Group).
+    private struct InstallationItemPayload: Encodable {
+        let installation_date: String
+        let installation_time: String?
+        let item_name: String
+        let order_display: String
     }
 
     /// Uloží token do App Group, aby si widget mohl data stáhnout i bez spuštění aplikace.
@@ -72,5 +82,26 @@ enum WidgetDataStore {
     static func clearReports() {
         suite?.removeObject(forKey: Keys.reportsIncompleteCount)
         WidgetCenter.shared.reloadTimelines(ofKind: widgetKindReports)
+    }
+
+    /// Uloží položky instalací pro widget (kalendář). Volá se z CalendarView po načtení.
+    static func saveInstallations(items: [OrderItemByInstallationDate]) {
+        let payload = items.map { item in
+            InstallationItemPayload(
+                installation_date: item.installation_date,
+                installation_time: item.installation_time,
+                item_name: item.item_name,
+                order_display: item.displayOrderNumber
+            )
+        }
+        guard let data = try? JSONEncoder().encode(payload) else { return }
+        suite?.set(data, forKey: Keys.installations)
+        WidgetCenter.shared.reloadTimelines(ofKind: widgetKindInstallations)
+    }
+
+    /// Smaže data instalací (po odhlášení) a aktualizuje widget.
+    static func clearInstallations() {
+        suite?.removeObject(forKey: Keys.installations)
+        WidgetCenter.shared.reloadTimelines(ofKind: widgetKindInstallations)
     }
 }
