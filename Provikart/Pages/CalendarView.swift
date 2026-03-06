@@ -44,6 +44,7 @@ struct CalendarView: View {
     @State private var errorMessage: String?
     @State private var selectedDate: Date?
     @State private var selectedItem: OrderItemByInstallationDate?
+    @State private var scrollToDate: Date?
 
     private let service = OrderItemsByInstallationDateService()
     private let calendar = Calendar.current
@@ -108,16 +109,25 @@ struct CalendarView: View {
                 }
             }
             .background(Color(uiColor: .systemGroupedBackground))
-            .navigationTitle("Kalendář")
+            .navigationTitle(Self.monthTitleFormatter.string(from: selectedDate ?? Date()).capitalized)
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    NavigationLink {
-                        StatisticsView()
-                            .environmentObject(authState)
-                            .environment(\.openAddSheet, openAddSheet)
-                    } label: {
-                        Image(systemName: "chart.bar")
+                    HStack(spacing: 16) {
+                        NavigationLink {
+                            StatisticsView()
+                                .environmentObject(authState)
+                                .environment(\.openAddSheet, openAddSheet)
+                        } label: {
+                            Image(systemName: "chart.bar")
+                        }
+                        if !items.isEmpty {
+                            Button("Dnes") {
+                                let today = calendar.startOfDay(for: Date())
+                                withAnimation(.easeInOut(duration: 0.22)) { selectedDate = today }
+                                scrollToDate = today
+                            }
+                        }
                     }
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
@@ -176,14 +186,7 @@ struct CalendarView: View {
     private var mainList: some View {
         List {
             Section {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(Self.monthTitleFormatter.string(from: selectedDate ?? Date()).capitalized)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundStyle(.secondary)
-                    weekStrip
-                }
-                .padding(.vertical, 4)
+                weekStrip(scrollToDate: $scrollToDate)
             }
             .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16))
             .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
@@ -245,15 +248,15 @@ struct CalendarView: View {
     private static let weekdayFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "cs_CZ")
-        f.dateFormat = "EEEEE"
+        f.dateFormat = "EEE"
         return f
     }()
 
+    /// Rozsah pásu: cca 1 rok zpět a 2 roky dopředu (nekonečný pocit scrollování).
     private func daysForStrip() -> [(weekdaySymbol: String, day: Int, date: Date)] {
         let today = calendar.startOfDay(for: Date())
-        let selected = selectedDate ?? today
-        let from = calendar.date(byAdding: .day, value: -10, to: min(today, selected)) ?? today
-        let to = calendar.date(byAdding: .day, value: 16, to: max(today, selected)) ?? selected
+        let from = calendar.date(byAdding: .day, value: -365, to: today) ?? today
+        let to = calendar.date(byAdding: .day, value: 730, to: today) ?? today
         var result: [(String, Int, Date)] = []
         var d = calendar.startOfDay(for: from)
         while d <= to {
@@ -268,12 +271,12 @@ struct CalendarView: View {
         return result
     }
 
-    private var weekStrip: some View {
+    private func weekStrip(scrollToDate: Binding<Date?>) -> some View {
         let days = daysForStrip()
         let selectedIdx = selectedDate.flatMap { sel in days.firstIndex { calendar.isDate($0.date, inSameDayAs: sel) } } ?? 0
         return ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
+                LazyHStack(spacing: 14) {
                     ForEach(Array(days.enumerated()), id: \.offset) { idx, cell in
                         DayCell(
                             weekday: cell.weekdaySymbol,
@@ -287,10 +290,17 @@ struct CalendarView: View {
                         .id(idx)
                     }
                 }
-                .padding(.horizontal, 4)
+                .padding(.horizontal, 12)
             }
-            .frame(height: 58)
+            .frame(height: 96)
             .onAppear { proxy.scrollTo(selectedIdx, anchor: .center) }
+            .onChange(of: scrollToDate.wrappedValue) { _, date in
+                guard let date else { return }
+                if let idx = days.firstIndex(where: { calendar.isDate($0.date, inSameDayAs: date) }) {
+                    withAnimation(.easeInOut(duration: 0.22)) { proxy.scrollTo(idx, anchor: .center) }
+                }
+                scrollToDate.wrappedValue = nil
+            }
         }
     }
 
@@ -331,9 +341,9 @@ private struct DayCell: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 6) {
+            VStack(spacing: 8) {
                 Text(weekday)
-                    .font(.caption2)
+                    .font(.caption)
                     .fontWeight(.medium)
                     .foregroundStyle(isSelected ? .white.opacity(0.9) : .secondary)
                 ZStack {
@@ -343,23 +353,23 @@ private struct DayCell: View {
                         Circle().stroke(Color.accentColor, lineWidth: 2)
                     }
                     Text("\(day)")
-                        .font(.body)
+                        .font(.title3)
                         .fontWeight(isSelected || isToday ? .semibold : .regular)
                         .foregroundColor(isSelected ? .white : (isToday ? Color.accentColor : .primary))
                 }
-                .frame(width: 36, height: 36)
+                .frame(width: 44, height: 44)
                 Group {
                     if isSelected {
-                        Circle().fill(Color.accentColor).frame(width: 4, height: 4)
+                        Circle().fill(Color.accentColor).frame(width: 5, height: 5)
                     } else if isToday {
-                        Text("Dnes").font(.caption2).fontWeight(.medium).foregroundStyle(Color.accentColor)
+                        Text("Dnes").font(.caption).fontWeight(.medium).foregroundStyle(Color.accentColor)
                     } else {
                         Color.clear
                     }
                 }
-                .frame(height: 14)
+                .frame(height: 16)
             }
-            .frame(width: 44)
+            .frame(width: 56)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
