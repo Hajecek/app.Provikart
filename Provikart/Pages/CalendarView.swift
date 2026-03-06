@@ -44,8 +44,6 @@ struct CalendarView: View {
     @State private var errorMessage: String?
     @State private var selectedDate: Date?
     @State private var selectedItem: OrderItemByInstallationDate?
-    @State private var scrollToDate: Date?
-
     private let service = OrderItemsByInstallationDateService()
     private let calendar = Calendar.current
 
@@ -125,7 +123,6 @@ struct CalendarView: View {
                             Button("Dnes") {
                                 let today = calendar.startOfDay(for: Date())
                                 withAnimation(.easeInOut(duration: 0.22)) { selectedDate = today }
-                                scrollToDate = today
                             }
                         }
                     }
@@ -186,7 +183,7 @@ struct CalendarView: View {
     private var mainList: some View {
         List {
             Section {
-                weekStrip(scrollToDate: $scrollToDate)
+                monthGridSection
             }
             .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16))
             .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
@@ -243,65 +240,54 @@ struct CalendarView: View {
         .scrollContentBackground(.visible)
     }
 
-    // MARK: - Pás dnů (vždy zahrnuje dnes i vybraný den)
+    // MARK: - Měsíční mřížka
 
-    private static let weekdayFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "cs_CZ")
-        f.dateFormat = "EEE"
-        return f
-    }()
-
-    /// Rozsah pásu: cca 1 rok zpět a 2 roky dopředu (nekonečný pocit scrollování).
-    private func daysForStrip() -> [(weekdaySymbol: String, day: Int, date: Date)] {
-        let today = calendar.startOfDay(for: Date())
-        let from = calendar.date(byAdding: .day, value: -365, to: today) ?? today
-        let to = calendar.date(byAdding: .day, value: 730, to: today) ?? today
-        var result: [(String, Int, Date)] = []
-        var d = calendar.startOfDay(for: from)
-        while d <= to {
-            result.append((
-                Self.weekdayFormatter.string(from: d),
-                calendar.component(.day, from: d),
-                d
-            ))
-            guard let next = calendar.date(byAdding: .day, value: 1, to: d) else { break }
-            d = next
+    private var monthGridSection: some View {
+        let base = selectedDate ?? Date()
+        let firstOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: base)) ?? base
+        return VStack(spacing: 12) {
+            HStack {
+                Button {
+                    if let prev = calendar.date(byAdding: .month, value: -1, to: firstOfMonth) {
+                        withAnimation(.easeInOut(duration: 0.2)) { selectedDate = prev }
+                    }
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(Color.accentColor)
+                        .frame(width: 44, height: 44)
+                }
+                Spacer()
+                Button {
+                    if let next = calendar.date(byAdding: .month, value: 1, to: firstOfMonth) {
+                        withAnimation(.easeInOut(duration: 0.2)) { selectedDate = next }
+                    }
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(Color.accentColor)
+                        .frame(width: 44, height: 44)
+                }
+            }
+            MonthGridView(
+                monthDate: firstOfMonth,
+                selectedDate: $selectedDate,
+                calendar: calendar,
+                hasItems: { daysWithItems.contains(calendar.startOfDay(for: $0)) }
+            )
         }
-        return result
-    }
-
-    private func weekStrip(scrollToDate: Binding<Date?>) -> some View {
-        let days = daysForStrip()
-        let selectedIdx = selectedDate.flatMap { sel in days.firstIndex { calendar.isDate($0.date, inSameDayAs: sel) } } ?? 0
-        return ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 14) {
-                    ForEach(Array(days.enumerated()), id: \.offset) { idx, cell in
-                        DayCell(
-                            weekday: cell.weekdaySymbol,
-                            day: cell.day,
-                            isSelected: selectedDate.map { calendar.isDate(cell.date, inSameDayAs: $0) } ?? false,
-                            isToday: calendar.isDateInToday(cell.date)
-                        ) {
-                            withAnimation(.easeInOut(duration: 0.22)) { selectedDate = cell.date }
-                            proxy.scrollTo(idx, anchor: .center)
-                        }
-                        .id(idx)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 40)
+                .onEnded { value in
+                    let threshold: CGFloat = 50
+                    if value.translation.width < -threshold, let next = calendar.date(byAdding: .month, value: 1, to: firstOfMonth) {
+                        withAnimation(.easeInOut(duration: 0.25)) { selectedDate = next }
+                    } else if value.translation.width > threshold, let prev = calendar.date(byAdding: .month, value: -1, to: firstOfMonth) {
+                        withAnimation(.easeInOut(duration: 0.25)) { selectedDate = prev }
                     }
                 }
-                .padding(.horizontal, 12)
-            }
-            .frame(height: 96)
-            .onAppear { proxy.scrollTo(selectedIdx, anchor: .center) }
-            .onChange(of: scrollToDate.wrappedValue) { _, date in
-                guard let date else { return }
-                if let idx = days.firstIndex(where: { calendar.isDate($0.date, inSameDayAs: date) }) {
-                    withAnimation(.easeInOut(duration: 0.22)) { proxy.scrollTo(idx, anchor: .center) }
-                }
-                scrollToDate.wrappedValue = nil
-            }
-        }
+        )
     }
 
     private func loadItems() async {
@@ -330,49 +316,92 @@ struct CalendarView: View {
     }
 }
 
-// MARK: - Buňka dne (iOS styl – přehledná, přívětivá)
+// MARK: - Mřížka celého měsíce
 
-private struct DayCell: View {
-    let weekday: String
-    let day: Int
-    let isSelected: Bool
-    let isToday: Bool
-    let action: () -> Void
+private struct MonthGridView: View {
+    let monthDate: Date
+    @Binding var selectedDate: Date?
+    let calendar: Calendar
+    let hasItems: (Date) -> Bool
+
+    private static var czechCalendar: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.locale = Locale(identifier: "cs_CZ")
+        return c
+    }
+
+    private var monthStart: Date {
+        calendar.date(from: calendar.dateComponents([.year, .month], from: monthDate)) ?? monthDate
+    }
+
+    private var numberOfDays: Int {
+        calendar.range(of: .day, in: .month, for: monthStart)?.count ?? 31
+    }
+
+    /// První den v týdnu: 1 = neděle (Apple), pro zobrazení Po první je offset (weekday - 2 + 7) % 7
+    private var firstWeekdayOffset: Int {
+        let w = calendar.component(.weekday, from: monthStart)
+        return (w - 2 + 7) % 7
+    }
+
+    /// Po, Út, St, Čt, Pá, So, Ne (česky, pondělí první)
+    private var weekdaySymbols: [String] {
+        let syms = Self.czechCalendar.shortWeekdaySymbols
+        return [1, 2, 3, 4, 5, 6, 0].map { syms[$0] }
+    }
+
+    /// Buňky pro mřížku: nil = prázdné, 1...31 = den v měsíci
+    private var gridDays: [Int?] {
+        var out: [Int?] = Array(repeating: nil, count: firstWeekdayOffset)
+        for d in 1...numberOfDays { out.append(d) }
+        while out.count < 42 { out.append(nil) }
+        return out
+    }
 
     var body: some View {
-        Button(action: action) {
-            VStack(spacing: 8) {
-                Text(weekday)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundStyle(isSelected ? .white.opacity(0.9) : .secondary)
-                ZStack {
-                    if isSelected {
-                        Circle().fill(Color.accentColor)
-                    } else if isToday {
-                        Circle().stroke(Color.accentColor, lineWidth: 2)
-                    }
-                    Text("\(day)")
-                        .font(.title3)
-                        .fontWeight(isSelected || isToday ? .semibold : .regular)
-                        .foregroundColor(isSelected ? .white : (isToday ? Color.accentColor : .primary))
+        VStack(spacing: 8) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 6) {
+                ForEach(Array(weekdaySymbols.enumerated()), id: \.offset) { _, symbol in
+                    Text(symbol)
+                        .font(.caption2)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.secondary)
                 }
-                .frame(width: 44, height: 44)
-                Group {
-                    if isSelected {
-                        Circle().fill(Color.accentColor).frame(width: 5, height: 5)
-                    } else if isToday {
-                        Text("Dnes").font(.caption).fontWeight(.medium).foregroundStyle(Color.accentColor)
+                ForEach(Array(gridDays.enumerated()), id: \.offset) { _, dayOpt in
+                    if let day = dayOpt,
+                       let date = calendar.date(byAdding: .day, value: day - 1, to: monthStart) {
+                        let isSelected = selectedDate.map { calendar.isDate(date, inSameDayAs: $0) } ?? false
+                        let isToday = calendar.isDateInToday(date)
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) { selectedDate = date }
+                        } label: {
+                            ZStack {
+                                if isSelected {
+                                    Circle().fill(Color.accentColor)
+                                } else if isToday {
+                                    Circle().stroke(Color.accentColor, lineWidth: 2)
+                                }
+                                Text("\(day)")
+                                    .font(.caption)
+                                    .fontWeight(isSelected || isToday ? .semibold : .regular)
+                                    .foregroundColor(isSelected ? .white : (isToday ? Color.accentColor : .primary))
+                                if hasItems(date) && !isSelected {
+                                    Circle()
+                                        .fill(Color.accentColor)
+                                        .frame(width: 4, height: 4)
+                                        .offset(x: 10, y: -10)
+                                }
+                            }
+                            .frame(height: 32)
+                        }
+                        .buttonStyle(.plain)
                     } else {
                         Color.clear
+                            .frame(height: 32)
                     }
                 }
-                .frame(height: 16)
             }
-            .frame(width: 56)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
     }
 }
 
