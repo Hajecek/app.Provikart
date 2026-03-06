@@ -378,11 +378,17 @@ private struct AIOrderFlowView: View {
                 .animation(.easeInOut(duration: 0.25), value: isRecording)
                 .padding(24)
             } else {
-                ScrollView {
-                    aiResultView
-                        .padding(24)
+                VStack(spacing: 0) {
+                    ScrollView {
+                        aiResultScrollContent
+                            .padding(24)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    aiResultBottomBar
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -416,7 +422,7 @@ private struct AIOrderFlowView: View {
     }
 
     @ViewBuilder
-    private var aiResultView: some View {
+    private var aiResultScrollContent: some View {
         if let resp = parsedResponse,
            let orderNumber = resp.order_number,
            let items = resp.items,
@@ -466,34 +472,56 @@ private struct AIOrderFlowView: View {
                         .font(.headline)
                 }
                 .padding(.vertical, 8)
+            }
+        } else {
+            EmptyView()
+        }
+    }
 
-                Button {
-                    showCreateConfirm = true
-                } label: {
-                    Label("Přidat do objednávek", systemImage: "checkmark.circle.fill")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(isCreating)
-
+    @ViewBuilder
+    private var aiResultBottomBar: some View {
+        if parsedResponse != nil {
+            VStack(spacing: 12) {
                 if isCreating {
                     HStack(spacing: 6) {
                         ProgressView()
+                            .scaleEffect(0.9)
                         Text("Vytvářím objednávku…")
-                            .font(.caption)
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
                 }
 
-                Button("Zpět") {
+                Button {
+                    showCreateConfirm = true
+                } label: {
+                    Text("Přidat do objednávek")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                .disabled(isCreating)
+
+                Button(role: .destructive) {
                     parsedResponse = nil
                     errorMessage = nil
+                } label: {
+                    Text("Zrušit")
+                        .font(.subheadline.weight(.medium))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .contentShape(Rectangle())
                 }
-                .foregroundStyle(.secondary)
+                .buttonStyle(.bordered)
+                .tint(.red)
+                .controlSize(.regular)
             }
-        } else {
-            EmptyView()
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+            .padding(.bottom, 12)
         }
     }
 
