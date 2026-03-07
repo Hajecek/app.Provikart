@@ -264,7 +264,6 @@ private struct AIOrderFlowView: View {
     @State private var isRecording = false
     @State private var errorMessage: String?
     @State private var parsedResponse: AIParseOrderResponse?
-    @State private var showCreateConfirm = false
     @State private var isCreating = false
     @State private var createSuccessOrderId: Int?
     @State private var createSuccessOrderNumber: String?
@@ -400,12 +399,6 @@ private struct AIOrderFlowView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("Pro hlasové zadání povolte přístup k mikrofonu v Nastavení.")
-        }
-        .confirmationDialog("Vytvořit objednávku?", isPresented: $showCreateConfirm) {
-            Button("Vytvořit") {
-                createOrder()
-            }
-            Button("Zrušit", role: .cancel) { }
         }
         .alert("Objednávka byla úspěšně vytvořena", isPresented: .init(
             get: { createSuccessOrderNumber != nil },
@@ -545,7 +538,7 @@ private struct AIOrderFlowView: View {
                 }
 
                 Button {
-                    showCreateConfirm = true
+                    createOrder()
                 } label: {
                     Text("Přidat do objednávek")
                         .font(.subheadline.weight(.semibold))
@@ -645,7 +638,6 @@ private struct AIOrderFlowView: View {
 
     private func createOrder() {
         guard let resp = parsedResponse, let orderNumber = resp.order_number, let items = resp.items, !items.isEmpty else { return }
-        showCreateConfirm = false
         isCreating = true
         Task {
             do {
