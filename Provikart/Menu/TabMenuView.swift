@@ -31,6 +31,7 @@ struct TabMenuView: View {
     @State var selectedTab: Tabs = .home
     @State private var showAddSheet = false
     @State private var showAddAIModeSheet = false
+    @State private var showReportIssue = false
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -63,8 +64,12 @@ struct TabMenuView: View {
             AddTypeSheetView(
                 isPresented: $showAddSheet,
                 onSelectAIMode: { showAddSheet = false; showAddAIModeSheet = true },
-                onSelectReportProblem: { showAddSheet = false; selectedTab = .problems }
+                onSelectReportProblem: { showAddSheet = false; showReportIssue = true }
             )
+        }
+        .fullScreenCover(isPresented: $showReportIssue) {
+            ReportIssueView(isPresented: $showReportIssue)
+                .environmentObject(authState)
         }
         .fullScreenCover(isPresented: $showAddAIModeSheet) {
             AddView(
