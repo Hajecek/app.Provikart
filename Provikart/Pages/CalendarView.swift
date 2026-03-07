@@ -273,7 +273,7 @@ struct CalendarView: View {
                 monthDate: firstOfMonth,
                 selectedDate: $selectedDate,
                 calendar: calendar,
-                hasItems: { daysWithItems.contains(calendar.startOfDay(for: $0)) }
+                daysWithItems: daysWithItems
             )
         }
         .contentShape(Rectangle())
@@ -302,7 +302,11 @@ struct CalendarView: View {
                 items = fetched
                 isLoading = false
                 WidgetDataStore.saveInstallations(items: fetched)
-                let today = calendar.startOfDay(for: Date())
+            }
+            // Nastavení selectedDate v dalším run loopu, aby nedocházelo k rekurzi v layoutu
+            // (List + LazyVGrid při současné změně items a selectedDate na macOS).
+            let today = calendar.startOfDay(for: Date())
+            await MainActor.run {
                 if selectedDate == nil {
                     selectedDate = today
                 }
@@ -323,7 +327,8 @@ private struct MonthGridView: View {
     let monthDate: Date
     @Binding var selectedDate: Date?
     let calendar: Calendar
-    let hasItems: (Date) -> Bool
+    /// Dny, které mají alespoň jednu instalaci (pro tečku v buňce). Set místo closure kvůli stabilnímu layoutu.
+    let daysWithItems: Set<Date>
 
     private static var czechCalendar: Calendar {
         var c = Calendar(identifier: .gregorian)
@@ -386,7 +391,7 @@ private struct MonthGridView: View {
                                     .font(.caption)
                                     .fontWeight(isSelected || isToday ? .semibold : .regular)
                                     .foregroundColor(isSelected ? .white : (isToday ? Color.accentColor : .primary))
-                                if hasItems(date) && !isSelected {
+                                if daysWithItems.contains(calendar.startOfDay(for: date)) && !isSelected {
                                     Circle()
                                         .fill(Color.accentColor)
                                         .frame(width: 4, height: 4)
