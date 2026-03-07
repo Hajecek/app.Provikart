@@ -14,6 +14,8 @@ struct ReportIssueView: View {
 
     @State private var orderNumber = ""
     @State private var description = ""
+    @State private var remark = ""
+    @State private var isTermSelectionIssue = false
     @State private var isSubmitting = false
     @State private var errorMessage: String?
     @State private var showSuccess = false
@@ -32,8 +34,17 @@ struct ReportIssueView: View {
 
                         TextField("Popis problému", text: $description, axis: .vertical)
                             .lineLimit(3...8)
+
+                        TextField("Poznámka", text: $remark, axis: .vertical)
+                            .lineLimit(2...6)
+
+                        Toggle(isOn: $isTermSelectionIssue) {
+                            Text("Jen problém s výběrem termínu")
+                        }
                     } header: {
                         Text("Údaje")
+                    } footer: {
+                        Text("Zaškrtněte, pokud jde pouze o nemožnost nebo potíže s výběrem termínu instalace.")
                     }
 
                     if let errorMessage {
@@ -90,19 +101,24 @@ struct ReportIssueView: View {
 
     private func submitReport() {
         let order = orderNumber.trimmingCharacters(in: .whitespaces)
-        let note = description.trimmingCharacters(in: .whitespaces)
+        let userNote = description.trimmingCharacters(in: .whitespaces)
         guard !order.isEmpty else { return }
 
         errorMessage = nil
         isSubmitting = true
 
+        let remarkTrimmed = remark.trimmingCharacters(in: .whitespaces)
+        // Popis problému → note, volitelná poznámka → user_note.
+        let payload = ReportIssuePayload(
+            order_number: order,
+            note: userNote.isEmpty ? nil : userNote,
+            user_note: remarkTrimmed.isEmpty ? nil : remarkTrimmed,
+            is_term_selection_issue: isTermSelectionIssue
+        )
+
         Task { @MainActor in
             do {
-                try await service.submitReport(
-                    orderNumber: order,
-                    note: note.isEmpty ? nil : note,
-                    token: authState.authToken
-                )
+                try await service.submitReport(payload: payload, token: authState.authToken)
                 showSuccess = true
             } catch {
                 errorMessage = error.localizedDescription
