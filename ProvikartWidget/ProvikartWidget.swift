@@ -824,21 +824,41 @@ struct ProvikartInstallationsWidgetEntryView: View {
             }
         }
         .containerBackground(for: .widget) {
-            Color(uiColor: .secondarySystemGroupedBackground)
+            installationsWidgetBackground
         }
         .widgetURL(URL(string: "provikart://calendar"))
     }
 
+    /// Tmavé pozadí widgetu instalací (antracit #363332) s jemným světlejším obrysem.
+    private var installationsWidgetBackground: some View {
+        let fill = Color(red: 0.212, green: 0.2, blue: 0.196)
+        let stroke = Color(red: 0.878, green: 0.827, blue: 0.78).opacity(0.15)
+        return RoundedRectangle(cornerRadius: 20)
+            .fill(fill)
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(stroke, lineWidth: 0.5)
+            )
+    }
+
+    /// Světlá barva textu (teplá bílá #E0D3C7).
+    private static let installationsTextColor = Color(red: 0.878, green: 0.827, blue: 0.78)
+
     private var installationsAccessoryInlineView: some View {
         Group {
-            if entry.hasData, !entry.items.isEmpty {
+            if !entry.hasData {
+                Text("Instalace – přihlaste se")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(Self.installationsTextColor.opacity(0.8))
+            } else if entry.items.isEmpty {
+                Text("Dnes se nic neinstaluje")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(Self.installationsTextColor)
+            } else {
                 let count = entry.items.count
                 Text(count == 1 ? "1 instalace" : "\(count) instalací")
                     .font(.system(size: 14, weight: .medium))
-            } else {
-                Text("Instalace – přihlaste se")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(Self.installationsTextColor)
             }
         }
     }
@@ -847,90 +867,87 @@ struct ProvikartInstallationsWidgetEntryView: View {
         VStack(alignment: .leading, spacing: 4) {
             Label("Instalace", systemImage: "calendar.badge.clock")
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
-            if entry.hasData, !entry.items.isEmpty {
+                .foregroundColor(Self.installationsTextColor.opacity(0.9))
+            if !entry.hasData {
+                Text("Přihlaste se")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(Self.installationsTextColor.opacity(0.8))
+            } else if entry.items.isEmpty {
+                Text("Dnes se nic neinstaluje")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(Self.installationsTextColor)
+            } else {
                 let total = entry.items.count
                 Text(total == 1 ? "1 instalace v plánu" : "\(total) instalací v plánu")
                     .font(.system(size: 14, weight: .semibold))
-            } else {
-                Text("Přihlaste se")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(Self.installationsTextColor)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 
     private var installationsSmallView: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "calendar.badge.clock")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Text("Instalace")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-            }
-            if entry.hasData, !entry.items.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(displayGroupedByDay.prefix(3), id: \.dayStart.timeIntervalSince1970) { pair in
-                        Text(dayLabelString(pair.dayStart))
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                        ForEach(pair.items.prefix(2)) { item in
-                            Text(installationLine(item))
-                                .font(.system(size: 12, weight: .medium))
-                                .lineLimit(1)
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                Spacer(minLength: 6)
-                Text("Přihlaste se")
+        let displayDate = now
+        let dayName = dayOfWeekString(displayDate)
+        let dayNumber = dayOfMonthWithDot(displayDate)
+        let todayItems = itemsForDate(displayDate)
+        let statusMessage = statusMessageForToday(count: todayItems.count)
+
+        return VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(dayName)
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(Self.installationsTextColor)
+                Text(dayNumber)
+                    .font(.system(size: 42, weight: .thin))
+                    .foregroundColor(Self.installationsTextColor)
             }
+            Spacer(minLength: 8)
+            Text(statusMessage)
+                .font(.system(size: 13, weight: .regular))
+                .foregroundColor(Self.installationsTextColor)
+                .frame(maxWidth: .infinity)
+                .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .padding(16)
+        .padding(20)
     }
 
     private var installationsMediumView: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                Image(systemName: "calendar.badge.clock")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Text("Kdy se co spouští")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
+        let displayDate = now
+        let dayName = dayOfWeekString(displayDate)
+        let dayNumber = dayOfMonthWithDot(displayDate)
+        let todayItems = itemsForDate(displayDate)
+        let statusMessage = statusMessageForToday(count: todayItems.count)
+
+        return VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(dayName)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(Self.installationsTextColor)
+                Text(dayNumber)
+                    .font(.system(size: 36, weight: .thin))
+                    .foregroundColor(Self.installationsTextColor)
             }
-            if entry.hasData, !entry.items.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    ForEach(displayGroupedByDay, id: \.dayStart.timeIntervalSince1970) { pair in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(dayLabelString(pair.dayStart))
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                            ForEach(pair.items.prefix(4)) { item in
-                                Text(installationLine(item))
-                                    .font(.system(size: 13, weight: .medium))
-                                    .lineLimit(1)
-                            }
-                        }
-                        .padding(.vertical, 2)
+            Spacer(minLength: 6)
+            Text(statusMessage)
+                .font(.system(size: 13, weight: .regular))
+                .foregroundColor(Self.installationsTextColor)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if entry.hasData, !entry.items.isEmpty, !todayItems.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(todayItems.prefix(4)) { item in
+                        Text(installationLine(item))
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(Self.installationsTextColor.opacity(0.9))
+                            .lineLimit(1)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                Text("Přihlaste se v aplikaci")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.secondary)
+                .padding(.top, 8)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .padding(16)
+        .padding(20)
     }
 
     private func dayLabelString(_ date: Date) -> String {
@@ -940,6 +957,46 @@ struct ProvikartInstallationsWidgetEntryView: View {
         f.locale = Locale(identifier: "cs_CZ")
         f.dateFormat = "d. M."
         return f.string(from: date)
+    }
+
+    /// Název dne v týdnu (např. „Sobota“).
+    private func dayOfWeekString(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "cs_CZ")
+        f.dateFormat = "EEEE"
+        return f.string(from: date)
+    }
+
+    /// Den v měsíci s tečkou (např. „07.“).
+    private func dayOfMonthWithDot(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "cs_CZ")
+        f.dateFormat = "dd."
+        return f.string(from: date)
+    }
+
+    /// Počet instalací na daný den.
+    private func itemsForDate(_ date: Date) -> [WidgetInstallationItem] {
+        let start = calendar.startOfDay(for: date)
+        return itemsGroupedByDay.first(where: { calendar.isDate($0.dayStart, inSameDayAs: start) })?.items ?? []
+    }
+
+    /// Statusová zpráva pro hlavní widget: přihlášení, „Dnes se nic neinstaluje“, nebo počet instalací.
+    private func statusMessageForToday(count: Int) -> String {
+        if !entry.hasData {
+            return "Přihlaste se"
+        }
+        // Přihlášen, ale žádné instalace vůbec, nebo dnes nic na plánu
+        if entry.items.isEmpty || count == 0 {
+            return "Dnes se nic neinstaluje"
+        }
+        if count == 1 {
+            return "1 instalace"
+        }
+        if count >= 2 && count <= 4 {
+            return "\(count) instalace"
+        }
+        return "\(count) instalací"  // 5+
     }
 
     private func installationLine(_ item: WidgetInstallationItem) -> String {
