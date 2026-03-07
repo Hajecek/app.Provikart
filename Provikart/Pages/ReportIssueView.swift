@@ -150,7 +150,10 @@ struct ReportIssueView: View {
                     Button {
                         submitReport()
                     } label: {
-                        Label("Odeslat", systemImage: "paperplane.fill")
+                        HStack(spacing: 6) {
+                            Image(systemName: "paperplane.fill")
+                            Text("Poslat")
+                        }
                     }
                     .disabled(orderNumber.trimmingCharacters(in: .whitespaces).isEmpty || isSubmitting)
                 }
