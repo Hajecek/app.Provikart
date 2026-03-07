@@ -1050,7 +1050,7 @@ struct ProvikartInstallationsWidgetEntryView: View {
         return parts.joined(separator: " · ")
     }
 
-    /// Jen co se spouští a v kolik (název + čas).
+    /// Jen co se spouští a v kolik (název + čas). Čas z DB/API je už lokální HH:MM.
     private func installationNameAndTime(_ item: WidgetInstallationItem) -> String {
         guard let t = item.installation_time, !t.isEmpty else { return item.item_name }
         return "\(item.item_name) · \(t)"
