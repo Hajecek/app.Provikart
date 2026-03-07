@@ -81,27 +81,40 @@ final class ReportIssueService {
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = (payload.images?.isEmpty == false) ? 90 : 30
 
-        // Prázdná pole posíláme jako null. Obrázky jako pole "data:image/jpeg;base64,…" (max 5).
-        struct Body: Encodable {
-            let order_number: String
-            let note: String?
-            let user_note: String?
-            let is_term_selection_issue: Bool
-            let images: [String]?
-            let token: String
+        if let images = payload.images, !images.isEmpty {
+            let (bodyData, boundary) = buildMultipartBody(
+                orderNumber: payload.order_number,
+                note: payload.note,
+                userNote: payload.user_note,
+                isTermSelectionIssue: payload.is_term_selection_issue,
+                token: token,
+                imageDataUris: images
+            )
+            request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+            request.httpBody = bodyData
+        } else {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            struct Body: Encodable {
+                let order_number: String
+                let note: String?
+                let user_note: String?
+                let is_term_selection_issue: Bool
+                let images: [String]?
+                let token: String
+            }
+            let body = Body(
+                order_number: payload.order_number,
+                note: payload.note,
+                user_note: payload.user_note,
+                is_term_selection_issue: payload.is_term_selection_issue,
+                images: nil,
+                token: token
+            )
+            request.httpBody = try JSONEncoder().encode(body)
         }
-        let body = Body(
-            order_number: payload.order_number,
-            note: payload.note,
-            user_note: payload.user_note,
-            is_term_selection_issue: payload.is_term_selection_issue,
-            images: payload.images?.isEmpty == true ? nil : payload.images,
-            token: token
-        )
-        request.httpBody = try JSONEncoder().encode(body)
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
@@ -137,6 +150,54 @@ final class ReportIssueService {
               start < end else { return data }
         let slice = trimmed[start ... end]
         return Data(slice.utf8)
+    }
+
+    /// Sestaví tělo multipart/form-data pro odeslání s obrázky (obchází QUIC „Message too long“).
+    private func buildMultipartBody(
+        orderNumber: String,
+        note: String?,
+        userNote: String?,
+        isTermSelectionIssue: Bool,
+        token: String,
+        imageDataUris: [String]
+    ) -> (Data, String) {
+        let boundary = "Boundary-\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
+        var body = Data()
+
+        func append(_ string: String) {
+            body.append(Data(string.utf8))
+        }
+        func appendField(name: String, value: String) {
+            append("--\(boundary)\r\n")
+            append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n")
+            append("\(value)\r\n")
+        }
+
+        appendField(name: "order_number", value: orderNumber)
+        appendField(name: "note", value: note ?? "")
+        appendField(name: "user_note", value: userNote ?? "")
+        appendField(name: "is_term_selection_issue", value: isTermSelectionIssue ? "1" : "0")
+        appendField(name: "token", value: token)
+
+        for (index, dataUri) in imageDataUris.prefix(5).enumerated() {
+            guard let imageData = decodeDataUriToData(dataUri) else { continue }
+            append("--\(boundary)\r\n")
+            append("Content-Disposition: form-data; name=\"images[]\"; filename=\"image\(index).jpg\"\r\n")
+            append("Content-Type: image/jpeg\r\n\r\n")
+            body.append(imageData)
+            append("\r\n")
+        }
+
+        append("--\(boundary)--\r\n")
+        return (body, boundary)
+    }
+
+    /// Z řetězce "data:image/jpeg;base64,..." vrátí dekódovaná data, jinak nil.
+    private func decodeDataUriToData(_ dataUri: String) -> Data? {
+        let prefix = "base64,"
+        guard let range = dataUri.range(of: prefix) else { return nil }
+        let base64 = String(dataUri[range.upperBound...])
+        return Data(base64Encoded: base64, options: .ignoreUnknownCharacters)
     }
 
     /// Zkusí z odpovědi (JSON nebo text) vyčíst chybovou zprávu, když standardní dekódování selže.

@@ -91,7 +91,7 @@ struct ReportIssueView: View {
                     Section {
                         PhotosPicker(
                             selection: $selectedPhotoItems,
-                            maxSelectionCount: 5,
+                            maxSelectionCount: 2,
                             matching: .images
                         ) {
                             Label("Přidat fotky", systemImage: "photo.on.rectangle.angled")
@@ -108,7 +108,7 @@ struct ReportIssueView: View {
                     } header: {
                         Text("Přílohy")
                     } footer: {
-                        Text("Volitelně až 5 fotek. Obrázky se zmenší kvůli odeslání.")
+                        Text("Max. 2 fotky (kvůli spolehlivému odeslání přes mobilní síť).")
                     }
 
                     if let errorMessage {
@@ -140,21 +140,15 @@ struct ReportIssueView: View {
                     ProfileBarButton()
                 }
                 ToolbarItemGroup(placement: .bottomBar) {
-                    Button {
+                    Button("Zrušit") {
                         isPresented = false
                         dismiss()
-                    } label: {
-                        Label("Zrušit", systemImage: "xmark.circle")
                     }
                     Spacer()
-                    Button {
+                    Button("Poslat") {
                         submitReport()
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "paperplane.fill")
-                            Text("Poslat")
-                        }
                     }
+                    .fontWeight(.semibold)
                     .disabled(orderNumber.trimmingCharacters(in: .whitespaces).isEmpty || isSubmitting)
                 }
             }
@@ -200,12 +194,12 @@ struct ReportIssueView: View {
         }
     }
 
-    /// Načte vybrané fotky a vrátí pole řetězců "data:image/jpeg;base64,…". Obrázky se zmenší a zkomprimují,
-    /// aby request nepřekročil síťové limity („Message too long“).
+    /// Načte vybrané fotky a vrátí pole řetězců "data:image/jpeg;base64,…". Max 2 obrázky, malá velikost,
+    /// aby request nepřekročil QUIC/MTU limity („Message too long“).
     private func loadSelectedImagesAsBase64() async -> [String] {
-        let maxSizePerImage = 800 * 1024 // 800 KB na obrázek (5× ≈ 4 MB celkem)
+        let maxSizePerImage = 200 * 1024 // 200 KB na obrázek, max 2 obrázky ≈ 400 KB celkem
         var result: [String] = []
-        for item in selectedPhotoItems.prefix(5) {
+        for item in selectedPhotoItems.prefix(2) {
             guard let loaded = try? await item.loadTransferable(type: ImageDataTransfer.self),
                   let data = loaded.jpegData(maxBytes: maxSizePerImage) else { continue }
             result.append("data:image/jpeg;base64,\(data.base64EncodedString())")
@@ -226,12 +220,12 @@ private struct ImageDataTransfer: Transferable {
 }
 
 extension ImageDataTransfer {
-    /// Převod na JPEG s omezením velikosti. Obrázek se zmenší (max 1200 px) a zkomprimuje,
-    /// aby celý request nepřekročil síťové limity („Message too long“ / MTU).
+    /// Převod na JPEG s omezením velikosti. Obrázek se zmenší (max 1024 px) a zkomprimuje,
+    /// aby celý request nepřekročil síťové limity („Message too long“ / connection lost).
     func jpegData(maxBytes: Int) -> Data? {
         guard let uiImage = UIImage(data: data) else { return nil }
-        let resized = uiImage.resizedForUpload(maxLongEdge: 1200)
-        var quality: CGFloat = 0.6
+        let resized = uiImage.resizedForUpload(maxLongEdge: 800)
+        var quality: CGFloat = 0.4
         var result = resized.jpegData(compressionQuality: quality)
         while let data = result, data.count > maxBytes, quality > 0.15 {
             quality -= 0.05
