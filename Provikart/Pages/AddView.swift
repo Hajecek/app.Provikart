@@ -463,19 +463,49 @@ private struct AIOrderFlowView: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                        HStack(alignment: .top) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(item.item_name)
-                                    .font(.subheadline.weight(.medium))
-                                Text(itemTypeLabel(item.item_type))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(alignment: .top) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(item.item_name)
+                                        .font(.subheadline.weight(.medium))
+                                    Text(itemTypeLabel(item.item_type))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Text("\(formatNumber(item.commission)) Kč")
+                                    .font(.subheadline.weight(.semibold))
                             }
-                            Spacer()
-                            Text("\(formatNumber(item.commission)) Kč")
-                                .font(.subheadline.weight(.semibold))
+                            HStack(spacing: 16) {
+                                VStack(alignment: .leading, spacing: 0) {
+                                    Text("Zákl. provize")
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                    Text("\(formatNumber(item.base_commission ?? 0)) Kč")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                VStack(alignment: .leading, spacing: 0) {
+                                    Text("Sleva")
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                    Text(item.discount > 0 ? "−\(formatNumber(item.discount)) Kč" : "0 Kč")
+                                        .font(.caption)
+                                        .foregroundStyle(item.discount > 0 ? .secondary : .tertiary)
+                                }
+                                Spacer()
+                                VStack(alignment: .trailing, spacing: 0) {
+                                    Text("Výsledná provize")
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                    Text("\(formatNumber(item.commission)) Kč")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                }
+                            }
+                            .padding(.top, 2)
                         }
-                        .padding(.vertical, 6)
+                        .padding(.vertical, 10)
                         .padding(.horizontal, 12)
                         .background(Color(uiColor: .secondarySystemGroupedBackground))
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
