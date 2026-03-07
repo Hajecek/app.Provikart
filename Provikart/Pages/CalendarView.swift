@@ -366,47 +366,64 @@ private struct MonthGridView: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 6) {
+            // Řádek s názvy dnů (Po–Ne)
+            HStack(spacing: 4) {
                 ForEach(Array(weekdaySymbols.enumerated()), id: \.offset) { _, symbol in
                     Text(symbol)
                         .font(.caption2)
                         .fontWeight(.medium)
                         .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
                 }
-                ForEach(Array(gridDays.enumerated()), id: \.offset) { _, dayOpt in
-                    if let day = dayOpt,
-                       let date = calendar.date(byAdding: .day, value: day - 1, to: monthStart) {
-                        let isSelected = selectedDate.map { calendar.isDate(date, inSameDayAs: $0) } ?? false
-                        let isToday = calendar.isDateInToday(date)
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) { selectedDate = date }
-                        } label: {
-                            ZStack {
-                                if isSelected {
-                                    Circle().fill(Color.accentColor)
-                                } else if isToday {
-                                    Circle().stroke(Color.accentColor, lineWidth: 2)
-                                }
-                                Text("\(day)")
-                                    .font(.caption)
-                                    .fontWeight(isSelected || isToday ? .semibold : .regular)
-                                    .foregroundColor(isSelected ? .white : (isToday ? Color.accentColor : .primary))
-                                if daysWithItems.contains(calendar.startOfDay(for: date)) && !isSelected {
-                                    Circle()
-                                        .fill(Color.accentColor)
-                                        .frame(width: 4, height: 4)
-                                        .offset(x: 10, y: -10)
-                                }
-                            }
-                            .frame(height: 32)
-                        }
-                        .buttonStyle(.plain)
-                    } else {
-                        Color.clear
-                            .frame(height: 32)
+            }
+            // 6 řádků dnů – VStack+HStack místo LazyVGrid kvůli rekurzi layoutu na macOS (List + LazyVGrid)
+            let days = gridDays
+            ForEach(0..<6, id: \.self) { row in
+                HStack(spacing: 4) {
+                    ForEach(0..<7, id: \.self) { col in
+                        let idx = row * 7 + col
+                        let dayOpt = idx < days.count ? days[idx] : nil
+                        dayCell(dayOpt: dayOpt)
                     }
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func dayCell(dayOpt: Int?) -> some View {
+        if let day = dayOpt,
+           let date = calendar.date(byAdding: .day, value: day - 1, to: monthStart) {
+            let isSelected = selectedDate.map { calendar.isDate(date, inSameDayAs: $0) } ?? false
+            let isToday = calendar.isDateInToday(date)
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { selectedDate = date }
+            } label: {
+                ZStack {
+                    if isSelected {
+                        Circle().fill(Color.accentColor)
+                    } else if isToday {
+                        Circle().stroke(Color.accentColor, lineWidth: 2)
+                    }
+                    Text("\(day)")
+                        .font(.caption)
+                        .fontWeight(isSelected || isToday ? .semibold : .regular)
+                        .foregroundColor(isSelected ? .white : (isToday ? Color.accentColor : .primary))
+                    if daysWithItems.contains(calendar.startOfDay(for: date)) && !isSelected {
+                        Circle()
+                            .fill(Color.accentColor)
+                            .frame(width: 4, height: 4)
+                            .offset(x: 10, y: -10)
+                    }
+                }
+                .frame(height: 32)
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.plain)
+        } else {
+            Color.clear
+                .frame(height: 32)
+                .frame(maxWidth: .infinity)
         }
     }
 }
