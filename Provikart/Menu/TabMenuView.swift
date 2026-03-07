@@ -73,7 +73,13 @@ struct TabMenuView: View {
         }
         .fullScreenCover(isPresented: $showAddAIModeSheet) {
             AddView(
-                selectedTab: Binding(get: { .add }, set: { _ in showAddAIModeSheet = false }),
+                selectedTab: Binding(
+                    get: { selectedTab },
+                    set: { newValue in
+                        showAddAIModeSheet = false
+                        selectedTab = newValue
+                    }
+                ),
                 isAIMode: .constant(true)
             )
             .environmentObject(authState)

@@ -83,6 +83,7 @@ struct AddView: View {
                 : "\(timeGreeting), \(userName), vlož text objednávky a rozpoznám ho."
             AIOrderFlowView(
                 isAIMode: $isAIMode,
+                selectedTab: $selectedTab,
                 authToken: authState.authToken,
                 greetingText: greeting
             )
@@ -254,6 +255,7 @@ struct AddView: View {
 
 private struct AIOrderFlowView: View {
     @Binding var isAIMode: Bool
+    @Binding var selectedTab: Tabs
     let authToken: String?
     let greetingText: String
 
@@ -404,17 +406,19 @@ private struct AIOrderFlowView: View {
                 createOrder()
             }
             Button("Zrušit", role: .cancel) { }
-        } message: {
-            Text("Objednávka bude vytvořena s prázdnými údaji o zákazníkovi. Můžete je doplnit později.")
         }
-        .alert("Objednávka vytvořena", isPresented: .init(
-            get: { createSuccessOrderId != nil },
+        .alert("Objednávka byla úspěšně vytvořena", isPresented: .init(
+            get: { createSuccessOrderNumber != nil },
             set: { if !$0 { createSuccessOrderId = nil; createSuccessOrderNumber = nil } }
         )) {
             Button("OK") {
                 createSuccessOrderId = nil
                 createSuccessOrderNumber = nil
+                parsedResponse = nil
+                customerName = ""
+                errorMessage = nil
                 isAIMode = false
+                selectedTab = .home
             }
         } message: {
             if let num = createSuccessOrderNumber {
