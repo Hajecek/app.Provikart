@@ -65,6 +65,8 @@ private extension KeyedDecodingContainer where Key == AIParsedItem.CodingKeys {
 struct AIParseOrderResponse: Codable {
     let success: Bool?
     let order_number: String?
+    /// Jméno a příjmení zákazníka z AI parsování (např. „Michal Hájek“), nebo null.
+    let user_name: String?
     let items: [AIParsedItem]?
     let error: String?
 }
@@ -166,8 +168,8 @@ final class AIOrderService {
         return nil
     }
 
-    /// Vytvoří objednávku přímo v databázi (order_number + položky). Položky musí být ve formátu vráceném z parse_order.
-    func createOrderDirect(orderNumber: String, items: [AIParsedItem], token: String?) async throws -> AICreateOrderResponse {
+    /// Vytvoří objednávku přímo v databázi (order_number + položky + volitelně jméno zákazníka). Položky musí být ve formátu vráceném z parse_order.
+    func createOrderDirect(orderNumber: String, items: [AIParsedItem], customerName: String?, token: String?) async throws -> AICreateOrderResponse {
         guard let url = addAIURL else { throw AIOrderError.invalidURL }
         guard let token = token, !token.isEmpty else { throw AIOrderError.notAuthenticated }
 
@@ -180,9 +182,13 @@ final class AIOrderService {
 
         let itemsData = try JSONEncoder().encode(items)
         let itemsJson = String(data: itemsData, encoding: .utf8) ?? "[]"
+        let nameToSend = (customerName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         var body = "action=create_order_direct"
         body += "&order_number=\(orderNumber.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
         body += "&items=\(itemsJson.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
+        if !nameToSend.isEmpty {
+            body += "&customer_name=\(nameToSend.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
+        }
         body += "&token_api=\(token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
         request.httpBody = body.data(using: .utf8)
 

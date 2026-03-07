@@ -266,6 +266,8 @@ private struct AIOrderFlowView: View {
     @State private var isCreating = false
     @State private var createSuccessOrderId: Int?
     @State private var createSuccessOrderNumber: String?
+    /// Jméno a příjmení zákazníka – z AI nebo ručně; předává se do create_order_direct jako customer_name.
+    @State private var customerName: String = ""
 
     @StateObject private var audioMeter = AudioLevelMeter()
     private let service = AIOrderService()
@@ -433,6 +435,7 @@ private struct AIOrderFlowView: View {
                     Button {
                         parsedResponse = nil
                         errorMessage = nil
+                        customerName = ""
                     } label: {
                         Image(systemName: "arrow.left")
                     }
@@ -440,6 +443,21 @@ private struct AIOrderFlowView: View {
                     Text("Objednávka: \(orderNumber)")
                         .font(.headline)
                 }
+
+                HStack(alignment: .center, spacing: 12) {
+                    Text("Zákazník:")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    TextField("Jméno a příjmení", text: $customerName)
+                        .textFieldStyle(.plain)
+                        .textContentType(.name)
+                        .autocapitalization(.words)
+                        .font(.subheadline)
+                }
+                .padding(.vertical, 10)
+                .padding(.horizontal, 14)
+                .background(Color(uiColor: .secondarySystemGroupedBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
                 let totalCommission = items.reduce(0.0) { $0 + $1.commission }
 
@@ -508,6 +526,7 @@ private struct AIOrderFlowView: View {
                 Button(role: .destructive) {
                     parsedResponse = nil
                     errorMessage = nil
+                    customerName = ""
                 } label: {
                     Text("Zrušit")
                         .font(.subheadline.weight(.medium))
@@ -571,6 +590,7 @@ private struct AIOrderFlowView: View {
                        response.order_number != nil,
                        let items = response.items, !items.isEmpty {
                         parsedResponse = response
+                        customerName = response.user_name ?? ""
                     } else {
                         let msg = response.error ?? "AI nevrátilo platná data."
                         errorMessage = friendlyAIErrorMessage(msg)
@@ -595,7 +615,8 @@ private struct AIOrderFlowView: View {
         isCreating = true
         Task {
             do {
-                let response = try await service.createOrderDirect(orderNumber: orderNumber, items: items, token: authToken)
+                let nameToSend = customerName.trimmingCharacters(in: .whitespacesAndNewlines)
+                let response = try await service.createOrderDirect(orderNumber: orderNumber, items: items, customerName: nameToSend.isEmpty ? nil : nameToSend, token: authToken)
                 await MainActor.run {
                     isCreating = false
                     if response.success != false {
