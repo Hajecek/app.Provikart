@@ -145,11 +145,22 @@ struct ReportIssueView: View {
                         dismiss()
                     }
                     Spacer()
-                    Button("Poslat") {
+                    Button {
                         submitReport()
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "paperplane.fill")
+                                .font(.subheadline.weight(.semibold))
+                            Text("Poslat")
+                        }
+                        .frame(minWidth: 72)
                     }
                     .fontWeight(.semibold)
-                    .disabled(orderNumber.trimmingCharacters(in: .whitespaces).isEmpty || isSubmitting)
+                    .disabled(
+                        orderNumber.trimmingCharacters(in: .whitespaces).isEmpty ||
+                        description.trimmingCharacters(in: .whitespaces).isEmpty ||
+                        isSubmitting
+                    )
                 }
             }
             .toolbar(.hidden, for: .tabBar)
