@@ -32,21 +32,58 @@ struct ReportIssueView: View {
                 Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
                 Form {
                     Section {
-                        TextField("Číslo objednávky", text: $orderNumber)
-                            .textContentType(.none)
-                            .keyboardType(.numberPad)
-
-                        TextField("Popis problému", text: $description, axis: .vertical)
-                            .lineLimit(3...8)
-
-                        TextField("Poznámka", text: $remark, axis: .vertical)
-                            .lineLimit(2...6)
-
-                        Toggle(isOn: $isTermSelectionIssue) {
-                            Text("Jen problém s výběrem termínu")
+                        HStack(spacing: 12) {
+                            Image(systemName: "number.circle.fill")
+                                .font(.title2)
+                                .foregroundStyle(.tint)
+                            TextField("Např. O7MQ8Z82", text: $orderNumber)
+                                .textContentType(.none)
+                                .keyboardType(.asciiCapable)
+                                .autocorrectionDisabled()
                         }
                     } header: {
-                        Text("Údaje")
+                        Text("Číslo objednávky")
+                    } footer: {
+                        Text("Zadejte číslo objednávky z Moje O2.")
+                    }
+
+                    Section {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Label("Co je problém?", systemImage: "text.alignleft")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(.secondary)
+                            TextField("Popište problém k objednávce…", text: $description, axis: .vertical)
+                                .lineLimit(4...10)
+                                .textFieldStyle(.plain)
+                        }
+                        .padding(.vertical, 4)
+                    } header: {
+                        Text("Popis problému")
+                    } footer: {
+                        Text("Hlavní popis bude uložen k reportu.")
+                    }
+
+                    Section {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Label("Volitelná poznámka", systemImage: "note.text")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(.secondary)
+                            TextField("Poznámka pro sebe nebo manažera…", text: $remark, axis: .vertical)
+                                .lineLimit(2...6)
+                                .textFieldStyle(.plain)
+                        }
+                        .padding(.vertical, 4)
+                    } header: {
+                        Text("Poznámka")
+                    }
+
+                    Section {
+                        Toggle(isOn: $isTermSelectionIssue) {
+                            Label("Jen problém s výběrem termínu", systemImage: "calendar.badge.clock")
+                        }
+                        .tint(.accentColor)
+                    } header: {
+                        Text("Typ problému")
                     } footer: {
                         Text("Zaškrtněte, pokud jde pouze o nemožnost nebo potíže s výběrem termínu instalace.")
                     }
@@ -60,23 +97,32 @@ struct ReportIssueView: View {
                             Label("Přidat fotky", systemImage: "photo.on.rectangle.angled")
                         }
                         if !selectedPhotoItems.isEmpty {
-                            Text("Vybráno \(selectedPhotoItems.count) \(selectedPhotoItems.count == 1 ? "fotek" : "fotek")")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            HStack {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(.green)
+                                Text("Vybráno \(selectedPhotoItems.count) \(selectedPhotoItems.count == 1 ? "fotka" : "fotek")")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     } header: {
-                        Text("Obrázky")
+                        Text("Přílohy")
                     } footer: {
-                        Text("Volitelně až 5 fotek. Obrázky se zmenší a zkomprimují kvůli odeslání (max. cca 800 KB každý).")
+                        Text("Volitelně až 5 fotek. Obrázky se zmenší kvůli odeslání.")
                     }
 
                     if let errorMessage {
                         Section {
-                            Text(errorMessage)
-                                .foregroundStyle(.red)
+                            HStack(spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(.red)
+                                Text(errorMessage)
+                                    .foregroundStyle(.red)
+                            }
                         }
                     }
                 }
+                .scrollContentBackground(.hidden)
             }
             .navigationTitle("Nahlásit problém")
             .navigationBarTitleDisplayMode(.inline)
