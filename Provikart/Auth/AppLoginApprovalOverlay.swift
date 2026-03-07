@@ -84,6 +84,8 @@ final class AppLoginApprovalState: ObservableObject {
     /// Pokud uživatel sheet zavřel „bokem“, neotvírat ho automaticky z pollingu,
     /// dokud si ho sám z accessory znovu neotevře, nebo dokud fronta úplně nezmizí.
     private var userDismissedSheetUntilInteraction = false
+    /// Krátce po zavření sheetu – neprepisovat presentation z pollingu, aby se accessory neobjevil během animace.
+    private var isInSheetDismissalTransition = false
 
     var presentedRequest: AppLoginRequest? {
         if case .sheet(let r) = presentation { return r }
@@ -149,10 +151,10 @@ final class AppLoginApprovalState: ObservableObject {
                         // Už se něco zobrazuje, jen držíme aktuální list
                         break
                     case .none:
-                        if userDismissedSheetUntilInteraction {
-                            // Po uživatelském zavření nikdy neotevírej automaticky.
+                        if userDismissedSheetUntilInteraction && !isInSheetDismissalTransition {
+                            // Po uživatelském zavření zobraz accessory (ne během přechodu po swipe/tap).
                             presentation = .accessory
-                        } else if let first = list.first {
+                        } else if !isInSheetDismissalTransition, let first = list.first {
                             presentation = .sheet(first)
                         }
                     }
@@ -198,7 +200,7 @@ final class AppLoginApprovalState: ObservableObject {
         }
     }
 
-    /// Uživatel zavřel sheet (swipe/tap bokem) → okamžitě zobraz jen accessory a neotevírej znovu.
+    /// Uživatel zavřel sheet (swipe/tap bokem) → zobraz accessory až po doběhnutí animace sheetu.
     func dismissedSheetByUser() {
         // Nastav flag hned, aby případný souběžný fetchPending už neotevřel sheet.
         userDismissedSheetUntilInteraction = true
@@ -208,8 +210,16 @@ final class AppLoginApprovalState: ObservableObject {
             userDismissedSheetUntilInteraction = false
             presentation = .none
         } else {
-            // Okamžitě přepni do accessory (bez mezistavu .none), aby binding sheetu byl hned nil.
-            presentation = .accessory
+            isInSheetDismissalTransition = true
+            presentation = .none
+            // Accessory zobraz až po doběhnutí animace zavření sheetu (~0.35 s), aby nedošlo k „roztáhnutí“ tab baru během animace.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+                guard let self else { return }
+                self.isInSheetDismissalTransition = false
+                if !self.pendingRequests.isEmpty && self.userDismissedSheetUntilInteraction {
+                    self.presentation = .accessory
+                }
+            }
         }
     }
 
