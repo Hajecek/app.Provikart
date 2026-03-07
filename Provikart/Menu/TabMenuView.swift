@@ -62,7 +62,8 @@ struct TabMenuView: View {
         .sheet(isPresented: $showAddSheet) {
             AddTypeSheetView(
                 isPresented: $showAddSheet,
-                onSelectAIMode: { showAddSheet = false; showAddAIModeSheet = true }
+                onSelectAIMode: { showAddSheet = false; showAddAIModeSheet = true },
+                onSelectReportProblem: { showAddSheet = false; selectedTab = .problems }
             )
         }
         .fullScreenCover(isPresented: $showAddAIModeSheet) {

@@ -680,24 +680,28 @@ private struct VoiceRecordingBarView: View {
 struct AddTypeSheetView: View {
     @Binding var isPresented: Bool
     var onSelectAIMode: (() -> Void)?
+    var onSelectReportProblem: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             List {
-                Button {
-                    // TODO: Normální přidání
-                    isPresented = false
-                    dismiss()
-                } label: {
-                    Label("Normální přidání", systemImage: "plus.circle.fill")
+                Section("Objednávka") {
+                    Button {
+                        onSelectAIMode?()
+                        dismiss()
+                    } label: {
+                        Label("AI objednávka", systemImage: "sparkles")
+                    }
                 }
 
-                Button {
-                    onSelectAIMode?()
-                    dismiss()
-                } label: {
-                    Label("AI objednávka", systemImage: "sparkles")
+                Section("Problémy") {
+                    Button {
+                        onSelectReportProblem?()
+                        dismiss()
+                    } label: {
+                        Label("Nahlásit problém", systemImage: "exclamationmark.bubble")
+                    }
                 }
             }
             .navigationTitle("Přidat")
