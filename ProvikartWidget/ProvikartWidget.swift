@@ -891,26 +891,45 @@ struct ProvikartInstallationsWidgetEntryView: View {
         let dayName = dayOfWeekString(displayDate)
         let dayNumber = dayOfMonthWithDot(displayDate)
         let todayItems = itemsForDate(displayDate)
-        let statusMessage = statusMessageForToday(count: todayItems.count)
+        let countLabel = countLabelForToday(count: todayItems.count)
 
-        return VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 2) {
+        return HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: -2) {
                 Text(dayName)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundColor(Self.installationsTextColor)
                 Text(dayNumber)
-                    .font(.system(size: 42, weight: .thin))
+                    .font(.system(size: 40, weight: .thin))
+                    .foregroundColor(Self.installationsTextColor)
+                Text(countLabel)
+                    .font(.system(size: 14, weight: .regular))
                     .foregroundColor(Self.installationsTextColor)
             }
-            Spacer(minLength: 8)
-            Text(statusMessage)
-                .font(.system(size: 13, weight: .regular))
-                .foregroundColor(Self.installationsTextColor)
-                .frame(maxWidth: .infinity)
-                .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 4) {
+                if !entry.hasData {
+                    EmptyView()
+                } else if todayItems.isEmpty {
+                    Text("Dnes se nic neinstaluje")
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundColor(Self.installationsTextColor.opacity(0.9))
+                        .minimumScaleFactor(0.7)
+                        .lineLimit(2)
+                } else {
+                    ForEach(todayItems.prefix(3)) { item in
+                        Text(installationNameAndTime(item))
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(Self.installationsTextColor)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(14)
     }
 
     private var installationsMediumView: some View {
@@ -918,36 +937,45 @@ struct ProvikartInstallationsWidgetEntryView: View {
         let dayName = dayOfWeekString(displayDate)
         let dayNumber = dayOfMonthWithDot(displayDate)
         let todayItems = itemsForDate(displayDate)
-        let statusMessage = statusMessageForToday(count: todayItems.count)
+        let countLabel = countLabelForToday(count: todayItems.count)
 
-        return VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 2) {
+        return HStack(alignment: .top, spacing: 14) {
+            VStack(alignment: .leading, spacing: -2) {
                 Text(dayName)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 15, weight: .medium))
                     .foregroundColor(Self.installationsTextColor)
                 Text(dayNumber)
-                    .font(.system(size: 36, weight: .thin))
+                    .font(.system(size: 38, weight: .thin))
+                    .foregroundColor(Self.installationsTextColor)
+                Text(countLabel)
+                    .font(.system(size: 15, weight: .regular))
                     .foregroundColor(Self.installationsTextColor)
             }
-            Spacer(minLength: 6)
-            Text(statusMessage)
-                .font(.system(size: 13, weight: .regular))
-                .foregroundColor(Self.installationsTextColor)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            if entry.hasData, !entry.items.isEmpty, !todayItems.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(todayItems.prefix(4)) { item in
-                        Text(installationLine(item))
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(Self.installationsTextColor.opacity(0.9))
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 6) {
+                if !entry.hasData {
+                    EmptyView()
+                } else if todayItems.isEmpty {
+                    Text("Dnes se nic neinstaluje")
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundColor(Self.installationsTextColor.opacity(0.9))
+                        .minimumScaleFactor(0.8)
+                        .lineLimit(2)
+                } else {
+                    ForEach(todayItems.prefix(6)) { item in
+                        Text(installationNameAndTime(item))
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(Self.installationsTextColor)
                             .lineLimit(1)
+                            .minimumScaleFactor(0.75)
                     }
                 }
-                .padding(.top, 8)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(16)
     }
 
     private func dayLabelString(_ date: Date) -> String {
@@ -981,12 +1009,28 @@ struct ProvikartInstallationsWidgetEntryView: View {
         return itemsGroupedByDay.first(where: { calendar.isDate($0.dayStart, inSameDayAs: start) })?.items ?? []
     }
 
+    /// Nápis pod datem vlevo: „Přihlaste se“, „0 instalací“, nebo „X instalace/instalací“.
+    private func countLabelForToday(count: Int) -> String {
+        if !entry.hasData {
+            return "Přihlaste se"
+        }
+        if entry.items.isEmpty || count == 0 {
+            return "0 instalací"
+        }
+        if count == 1 {
+            return "1 instalace"
+        }
+        if count >= 2 && count <= 4 {
+            return "\(count) instalace"
+        }
+        return "\(count) instalací"  // 5+
+    }
+
     /// Statusová zpráva pro hlavní widget: přihlášení, „Dnes se nic neinstaluje“, nebo počet instalací.
     private func statusMessageForToday(count: Int) -> String {
         if !entry.hasData {
             return "Přihlaste se"
         }
-        // Přihlášen, ale žádné instalace vůbec, nebo dnes nic na plánu
         if entry.items.isEmpty || count == 0 {
             return "Dnes se nic neinstaluje"
         }
@@ -1004,6 +1048,12 @@ struct ProvikartInstallationsWidgetEntryView: View {
         if let t = item.installation_time, !t.isEmpty { parts.append(t) }
         parts.append("Obj. \(item.displayOrder)")
         return parts.joined(separator: " · ")
+    }
+
+    /// Jen co se spouští a v kolik (název + čas).
+    private func installationNameAndTime(_ item: WidgetInstallationItem) -> String {
+        guard let t = item.installation_time, !t.isEmpty else { return item.item_name }
+        return "\(item.item_name) · \(t)"
     }
 }
 
