@@ -340,7 +340,7 @@ struct AppLoginApprovalAccessoryView: View {
     }
 }
 
-/// Modifier pro zobrazení čekajícího přihlášení jako tabViewBottomAccessory (iOS 26+).
+/// Modifier: nativní tabViewBottomAccessory (iOS 26+) – zobrazí se jen při čekajícím požadavku.
 struct LoginApprovalBottomAccessoryModifier: ViewModifier {
     @ObservedObject var approvalState: AppLoginApprovalState
 
@@ -352,6 +352,7 @@ struct LoginApprovalBottomAccessoryModifier: ViewModifier {
         if #available(iOS 26.0, *) {
             if showAccessory {
                 content
+                    .tabBarMinimizeBehavior(.onScrollDown)
                     .tabViewBottomAccessory {
                         AppLoginApprovalAccessoryView(approvalState: approvalState)
                     }
