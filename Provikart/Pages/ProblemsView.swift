@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import PhotosUI
 
 enum ReportFilter: String, CaseIterable {
     case all = "Vše"
@@ -21,6 +22,7 @@ final class ProblemsViewModel: ObservableObject {
 
     var getToken: (() -> String?)?
     private let service = UserReportsService()
+    private let updateService = ReportUpdateService()
     private var pollingTask: Task<Void, Never>?
 
     func startPolling() {
@@ -40,6 +42,23 @@ final class ProblemsViewModel: ObservableObject {
     func stopPolling() {
         pollingTask?.cancel()
         pollingTask = nil
+    }
+
+    /// Smaže report na serveru a při úspěchu ho odebere ze seznamu. Při chybě nastaví errorMessage.
+    func deleteReport(id: Int) async {
+        guard let token = getToken?(), !token.isEmpty else {
+            errorMessage = "Nejste přihlášeni."
+            return
+        }
+        do {
+            try await updateService.deleteReport(id: id, token: token)
+            errorMessage = nil
+            reports.removeAll { $0.id == id }
+            let incomplete = reports.filter { !$0.isCompleted }.count
+            WidgetDataStore.saveReports(incompleteCount: incomplete)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     func loadReports(silent: Bool = false) async {
@@ -87,6 +106,7 @@ struct ProblemsView: View {
     @Environment(\.openAddSheet) private var openAddSheet
     @StateObject private var viewModel = ProblemsViewModel()
     @State private var filter: ReportFilter = .incomplete
+    @State private var path = NavigationPath()
 
     private var filteredReports: [UserReport] {
         switch filter {
@@ -102,7 +122,7 @@ struct ProblemsView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Group {
                 if !authState.isLoggedIn {
                     ContentUnavailableView(
@@ -155,6 +175,23 @@ struct ProblemsView: View {
                                 Section {
                                     NavigationLink(value: report) {
                                         ReportRow(report: report)
+                                    }
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                        Button(role: .destructive) {
+                                            Task {
+                                                await viewModel.deleteReport(id: report.id)
+                                            }
+                                        } label: {
+                                            Label("Smazat", systemImage: "trash")
+                                        }
+                                    }
+                                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                                        Button {
+                                            path.append(report)
+                                        } label: {
+                                            Label("Upravit", systemImage: "pencil")
+                                        }
+                                        .tint(Color(uiColor: .systemBlue))
                                     }
                                 }
                             }
@@ -553,6 +590,8 @@ private struct ShareSheetView: UIViewControllerRepresentable {
 
 struct ReportDetailView: View {
     let report: UserReport
+    @EnvironmentObject private var authState: AuthState
+    @State private var showEditSheet = false
 
     var body: some View {
         List {
@@ -618,6 +657,19 @@ struct ReportDetailView: View {
         .listStyle(.insetGrouped)
         .navigationTitle(report.order_number.map { "Obj. \($0)" } ?? "Report #\(report.id)")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Upravit") {
+                    showEditSheet = true
+                }
+            }
+        }
+        .sheet(isPresented: $showEditSheet) {
+            EditReportView(report: report) {
+                showEditSheet = false
+            }
+            .environmentObject(authState)
+        }
     }
 
     private func formatDate(_ dateString: String) -> String {
@@ -635,6 +687,206 @@ struct ReportDetailView: View {
             }
         }
         return dateString
+    }
+}
+
+// MARK: - Úprava reportu (formulář + volání PATCH report_update.php)
+
+private struct EditReportView: View {
+    let report: UserReport
+    var onSaved: () -> Void
+    @EnvironmentObject private var authState: AuthState
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var orderNumber: String = ""
+    @State private var note: String = ""
+    @State private var userNote: String = ""
+    @State private var isTermSelectionIssue: Bool = false
+    @State private var deletedImagePaths: Set<String> = []
+    @State private var newPhotoItems: [PhotosPickerItem] = []
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+    @State private var showSuccess = false
+
+    private let updateService = ReportUpdateService()
+    private let reportImagesBaseURL = "https://provikart.cz/"
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Číslo objednávky", text: $orderNumber)
+                        .textContentType(.none)
+                        .keyboardType(.asciiCapable)
+                } header: {
+                    Text("Obj. číslo")
+                }
+                Section {
+                    TextField("Poznámka (povinné)", text: $note, axis: .vertical)
+                        .lineLimit(3...8)
+                } header: {
+                    Text("Poznámka")
+                }
+                Section {
+                    TextField("Volitelná poznámka", text: $userNote, axis: .vertical)
+                        .lineLimit(2...6)
+                } header: {
+                    Text("Vaše poznámka")
+                }
+                Section {
+                    Toggle("Jen problém s výběrem termínu", isOn: $isTermSelectionIssue)
+                        .tint(.accentColor)
+                }
+                if let images = report.images, !images.isEmpty {
+                    Section {
+                        ForEach(images, id: \.self) { path in
+                            if !deletedImagePaths.contains(path) {
+                                HStack {
+                                    Text(path.split(separator: "/").last.map(String.init) ?? path)
+                                        .font(.subheadline)
+                                        .lineLimit(1)
+                                    Spacer()
+                                    Button(role: .destructive) {
+                                        deletedImagePaths.insert(path)
+                                    } label: {
+                                        Image(systemName: "trash")
+                                    }
+                                }
+                            }
+                        }
+                    } header: {
+                        Text("Odebrat fotky")
+                    } footer: {
+                        Text("Odebrání se projeví po uložení.")
+                    }
+                }
+                Section {
+                    PhotosPicker(
+                        selection: $newPhotoItems,
+                        maxSelectionCount: 5,
+                        matching: .images
+                    ) {
+                        Label("Přidat fotky", systemImage: "photo.badge.plus")
+                    }
+                    if !newPhotoItems.isEmpty {
+                        Text("Vybráno \(newPhotoItems.count) \(newPhotoItems.count == 1 ? "fotka" : "fotek")")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("Nové fotky")
+                } footer: {
+                    Text("Max. 5 obrázků celkem, každý max 5 MB.")
+                }
+                if let errorMessage {
+                    Section {
+                        Text(errorMessage)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle("Upravit report")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Zrušit") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Uložit") {
+                        saveReport()
+                    }
+                    .disabled(orderNumber.trimmingCharacters(in: .whitespaces).isEmpty || note.trimmingCharacters(in: .whitespaces).isEmpty || isSaving)
+                    .fontWeight(.semibold)
+                }
+            }
+            .alert("Uloženo", isPresented: $showSuccess) {
+                Button("OK") {
+                    onSaved()
+                    dismiss()
+                }
+            } message: {
+                Text("Report byl aktualizován.")
+            }
+            .onAppear {
+                orderNumber = report.order_number ?? ""
+                note = report.note ?? ""
+                userNote = report.user_note ?? ""
+                isTermSelectionIssue = report.is_term_selection_issue
+            }
+        }
+    }
+
+    private func saveReport() {
+        errorMessage = nil
+        isSaving = true
+        Task { @MainActor in
+            do {
+                let newBase64 = await loadNewImagesAsBase64()
+                let payload = ReportUpdatePayload(
+                    id: report.id,
+                    order_number: orderNumber.trimmingCharacters(in: .whitespaces),
+                    note: note.trimmingCharacters(in: .whitespaces),
+                    user_note: userNote.trimmingCharacters(in: .whitespaces).isEmpty ? nil : userNote.trimmingCharacters(in: .whitespaces),
+                    is_term_selection_issue: isTermSelectionIssue,
+                    deleted_images: deletedImagePaths.isEmpty ? nil : Array(deletedImagePaths),
+                    images: newBase64.isEmpty ? nil : newBase64
+                )
+                try await updateService.updateReport(payload: payload, token: authState.authToken)
+                showSuccess = true
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            isSaving = false
+        }
+    }
+
+    private func loadNewImagesAsBase64() async -> [String] {
+        let maxSizePerImage = 5 * 1024 * 1024
+        var result: [String] = []
+        for item in newPhotoItems.prefix(5) {
+            guard let loaded = try? await item.loadTransferable(type: EditImageTransfer.self),
+                  let data = loaded.jpegData(maxBytes: maxSizePerImage) else { continue }
+            result.append("data:image/jpeg;base64,\(data.base64EncodedString())")
+        }
+        return result
+    }
+}
+
+private struct EditImageTransfer: Transferable {
+    let data: Data
+    static var transferRepresentation: some TransferRepresentation {
+        DataRepresentation(importedContentType: .image) { data in
+            EditImageTransfer(data: data)
+        }
+    }
+}
+
+extension EditImageTransfer {
+    func jpegData(maxBytes: Int) -> Data? {
+        guard let uiImage = UIImage(data: data) else { return nil }
+        let resized = uiImage.resizedForEdit(maxLongEdge: 1600)
+        var quality: CGFloat = 0.5
+        var result = resized.jpegData(compressionQuality: quality)
+        while let d = result, d.count > maxBytes, quality > 0.15 {
+            quality -= 0.05
+            result = resized.jpegData(compressionQuality: quality)
+        }
+        return result
+    }
+}
+
+extension UIImage {
+    fileprivate func resizedForEdit(maxLongEdge: CGFloat) -> UIImage {
+        let size = self.size
+        guard size.width > maxLongEdge || size.height > maxLongEdge else { return self }
+        let ratio = min(maxLongEdge / size.width, maxLongEdge / size.height)
+        let newSize = CGSize(width: size.width * ratio, height: size.height * ratio)
+        let renderer = UIGraphicsImageRenderer(size: newSize)
+        return renderer.image { _ in
+            draw(in: CGRect(origin: .zero, size: newSize))
+        }
     }
 }
 
