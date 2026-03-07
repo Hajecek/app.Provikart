@@ -44,9 +44,19 @@ struct TabMenuView: View {
                     .environment(\.openAddSheet, { showAddSheet = true })
             }
 
+            Tab("Přidat", systemImage: "plus", value: .add, role: .search) {
+                Color.clear
+            }
+
             Tab("Problémy", systemImage: "exclamationmark.triangle", value: .problems) {
                 ProblemsView()
                     .environment(\.openAddSheet, { showAddSheet = true })
+            }
+        }
+        .onChange(of: selectedTab) { oldValue, newValue in
+            if newValue == .add {
+                showAddSheet = true
+                selectedTab = oldValue
             }
         }
         .sheet(isPresented: $showAddSheet) {
@@ -71,4 +81,3 @@ struct TabMenuView: View {
         .environmentObject(AuthState())
         .environmentObject(AppLoginApprovalState())
 }
-
