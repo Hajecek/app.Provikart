@@ -12,6 +12,12 @@ enum ReportFilter: String, CaseIterable {
     case completed = "Dokončené"
 }
 
+/// Cíl navigace na detail reportu – při openEditOnAppear == true se po otevření ihned zobrazí sheet Úpravy.
+private struct ReportDetailDestination: Hashable {
+    let report: UserReport
+    var openEditOnAppear: Bool
+}
+
 // MARK: - ViewModel: vlastní pollovací Task, nezávislý na životnosti view – změny v DB se vždy projeví v UI
 
 @MainActor
@@ -173,7 +179,7 @@ struct ProblemsView: View {
                         } else {
                             ForEach(filteredReports, id: \.id) { report in
                                 Section {
-                                    NavigationLink(value: report) {
+                                    NavigationLink(value: ReportDetailDestination(report: report, openEditOnAppear: false)) {
                                         ReportRow(report: report)
                                     }
                                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
@@ -187,7 +193,7 @@ struct ProblemsView: View {
                                     }
                                     .swipeActions(edge: .leading, allowsFullSwipe: false) {
                                         Button {
-                                            path.append(report)
+                                            path.append(ReportDetailDestination(report: report, openEditOnAppear: true))
                                         } label: {
                                             Label("Upravit", systemImage: "pencil")
                                         }
@@ -200,8 +206,8 @@ struct ProblemsView: View {
                     .id(listContentId)
                     .listStyle(.insetGrouped)
                     .listSectionSpacing(.compact)
-                    .navigationDestination(for: UserReport.self) { report in
-                        ReportDetailView(report: report)
+                    .navigationDestination(for: ReportDetailDestination.self) { destination in
+                        ReportDetailView(report: destination.report, openEditOnAppear: destination.openEditOnAppear)
                     }
                 }
             }
@@ -590,6 +596,8 @@ private struct ShareSheetView: UIViewControllerRepresentable {
 
 struct ReportDetailView: View {
     let report: UserReport
+    /// Když true, po zobrazení detailu se ihned otevře sheet na úpravu (např. po swipe „Upravit“).
+    var openEditOnAppear: Bool = false
     @EnvironmentObject private var authState: AuthState
     @State private var showEditSheet = false
 
@@ -669,6 +677,11 @@ struct ReportDetailView: View {
                 showEditSheet = false
             }
             .environmentObject(authState)
+        }
+        .onAppear {
+            if openEditOnAppear {
+                showEditSheet = true
+            }
         }
     }
 
