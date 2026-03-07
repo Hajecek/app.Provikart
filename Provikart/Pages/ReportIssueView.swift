@@ -2,10 +2,13 @@
 //  ReportIssueView.swift
 //  Provikart
 //
-//  Obrazovka pro nahlášení problému k objednávce. Napojení na API připraveno v ReportIssueService.
+//  Obrazovka pro nahlášení problému k objednávce. Podporuje obrázky (max 5) odesílané jako base64.
 //
 
 import SwiftUI
+import PhotosUI
+import UIKit
+import UniformTypeIdentifiers
 
 struct ReportIssueView: View {
     @Binding var isPresented: Bool
@@ -16,6 +19,7 @@ struct ReportIssueView: View {
     @State private var description = ""
     @State private var remark = ""
     @State private var isTermSelectionIssue = false
+    @State private var selectedPhotoItems: [PhotosPickerItem] = []
     @State private var isSubmitting = false
     @State private var errorMessage: String?
     @State private var showSuccess = false
@@ -45,6 +49,25 @@ struct ReportIssueView: View {
                         Text("Údaje")
                     } footer: {
                         Text("Zaškrtněte, pokud jde pouze o nemožnost nebo potíže s výběrem termínu instalace.")
+                    }
+
+                    Section {
+                        PhotosPicker(
+                            selection: $selectedPhotoItems,
+                            maxSelectionCount: 5,
+                            matching: .images
+                        ) {
+                            Label("Přidat fotky", systemImage: "photo.on.rectangle.angled")
+                        }
+                        if !selectedPhotoItems.isEmpty {
+                            Text("Vybráno \(selectedPhotoItems.count) \(selectedPhotoItems.count == 1 ? "fotek" : "fotek")")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    } header: {
+                        Text("Obrázky")
+                    } footer: {
+                        Text("Volitelně až 5 fotek. Obrázky se zmenší a zkomprimují kvůli odeslání (max. cca 800 KB každý).")
                     }
 
                     if let errorMessage {
@@ -108,22 +131,77 @@ struct ReportIssueView: View {
         isSubmitting = true
 
         let remarkTrimmed = remark.trimmingCharacters(in: .whitespaces)
-        // Popis problému → note, volitelná poznámka → user_note.
-        let payload = ReportIssuePayload(
-            order_number: order,
-            note: userNote.isEmpty ? nil : userNote,
-            user_note: remarkTrimmed.isEmpty ? nil : remarkTrimmed,
-            is_term_selection_issue: isTermSelectionIssue
-        )
 
         Task { @MainActor in
             do {
+                let imageDataUris = await loadSelectedImagesAsBase64()
+                let payload = ReportIssuePayload(
+                    order_number: order,
+                    note: userNote.isEmpty ? nil : userNote,
+                    user_note: remarkTrimmed.isEmpty ? nil : remarkTrimmed,
+                    is_term_selection_issue: isTermSelectionIssue,
+                    images: imageDataUris.isEmpty ? nil : imageDataUris
+                )
                 try await service.submitReport(payload: payload, token: authState.authToken)
                 showSuccess = true
             } catch {
                 errorMessage = error.localizedDescription
             }
             isSubmitting = false
+        }
+    }
+
+    /// Načte vybrané fotky a vrátí pole řetězců "data:image/jpeg;base64,…". Obrázky se zmenší a zkomprimují,
+    /// aby request nepřekročil síťové limity („Message too long“).
+    private func loadSelectedImagesAsBase64() async -> [String] {
+        let maxSizePerImage = 800 * 1024 // 800 KB na obrázek (5× ≈ 4 MB celkem)
+        var result: [String] = []
+        for item in selectedPhotoItems.prefix(5) {
+            guard let loaded = try? await item.loadTransferable(type: ImageDataTransfer.self),
+                  let data = loaded.jpegData(maxBytes: maxSizePerImage) else { continue }
+            result.append("data:image/jpeg;base64,\(data.base64EncodedString())")
+        }
+        return result
+    }
+}
+
+// MARK: - Načtení obrázku z PhotosPickerItem
+private struct ImageDataTransfer: Transferable {
+    let data: Data
+
+    static var transferRepresentation: some TransferRepresentation {
+        DataRepresentation(importedContentType: .image) { data in
+            ImageDataTransfer(data: data)
+        }
+    }
+}
+
+extension ImageDataTransfer {
+    /// Převod na JPEG s omezením velikosti. Obrázek se zmenší (max 1200 px) a zkomprimuje,
+    /// aby celý request nepřekročil síťové limity („Message too long“ / MTU).
+    func jpegData(maxBytes: Int) -> Data? {
+        guard let uiImage = UIImage(data: data) else { return nil }
+        let resized = uiImage.resizedForUpload(maxLongEdge: 1200)
+        var quality: CGFloat = 0.6
+        var result = resized.jpegData(compressionQuality: quality)
+        while let data = result, data.count > maxBytes, quality > 0.15 {
+            quality -= 0.05
+            result = resized.jpegData(compressionQuality: quality)
+        }
+        return result
+    }
+}
+
+extension UIImage {
+    /// Zmenší obrázek tak, aby delší strana byla max `maxLongEdge` px (zachová poměr stran).
+    fileprivate func resizedForUpload(maxLongEdge: CGFloat) -> UIImage {
+        let size = self.size
+        guard size.width > maxLongEdge || size.height > maxLongEdge else { return self }
+        let ratio = min(maxLongEdge / size.width, maxLongEdge / size.height)
+        let newSize = CGSize(width: size.width * ratio, height: size.height * ratio)
+        let renderer = UIGraphicsImageRenderer(size: newSize)
+        return renderer.image { _ in
+            draw(in: CGRect(origin: .zero, size: newSize))
         }
     }
 }
