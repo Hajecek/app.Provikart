@@ -102,6 +102,16 @@ private enum Metric: String, CaseIterable, Identifiable {
     var displayName: String { rawValue }
 }
 
+private func colorForCategory(_ category: ProductCategory) -> Color {
+    switch category {
+    case .postpaid: return .blue
+    case .family: return .purple
+    case .internet: return .teal
+    case .oneplay: return .orange
+    case .ostatni: return .gray
+    }
+}
+
 // MARK: - View
 
 struct StatisticsView: View {
@@ -383,7 +393,7 @@ struct StatisticsView: View {
                         x: .value("Kategorie", row.category.displayName),
                         y: .value(selectedMetric.displayName, row.value)
                     )
-                    .foregroundStyle(by: .value("Kategorie", row.category.displayName))
+                    .foregroundStyle(colorForCategory(row.category))
                     .annotation(position: .top, alignment: .center) {
                         if row.value > 0 {
                             Text(selectedMetric == .count ? "\(Int(row.value))" : shortPrice(row.value))
@@ -491,17 +501,8 @@ private struct SummaryRow: View {
     let value: Double
     let metric: Metric
 
-    private var accent: Color {
-        switch category {
-        case .postpaid: return Color.blue
-        case .family: return Color.purple
-        case .internet: return Color.teal
-        case .oneplay: return Color.orange
-        case .ostatni: return Color.gray
-        }
-    }
-
     var body: some View {
+        let accent = colorForCategory(category)
         HStack(spacing: 12) {
             ZStack {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
