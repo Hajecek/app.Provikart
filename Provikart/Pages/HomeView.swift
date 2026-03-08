@@ -13,8 +13,11 @@ struct HomeView: View {
     @State private var commission: CommissionResponse?
     @State private var commissionError: String?
     @State private var isLoadingCommission = false
+    /// Počet položek po termínu instalace čekajících na dokončení. nil = nenačteno, 0 = žádné, >0 = zobrazit container.
+    @State private var pendingCompletionCount: Int?
 
     private let commissionService = CommissionService()
+    private let pendingCompletionService = OrderItemsPendingCompletionService()
 
     var body: some View {
         NavigationStack {
@@ -24,6 +27,20 @@ struct HomeView: View {
                 } header: {
                     Text("Provize")
                         .textCase(nil)
+                }
+
+                if (pendingCompletionCount ?? 0) > 0 {
+                    Section {
+                        NavigationLink {
+                            PendingCompletionListView()
+                                .environmentObject(authState)
+                        } label: {
+                            pendingCompletionRowContent
+                        }
+                    } header: {
+                        Text("Čekající na dokončení")
+                            .textCase(nil)
+                    }
                 }
             }
             .listStyle(.insetGrouped)
@@ -56,15 +73,18 @@ struct HomeView: View {
         }
         .task {
             await loadCommission()
-            // Periodické obnovení provize na pozadí (každých 30 s), dokud je obrazovka viditelná
+            await loadPendingCompletion()
+            // Periodické obnovení provize a nedokončených na pozadí (každých 5 s)
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 5_000_000_000) // 30 sekund
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
                 if Task.isCancelled { break }
                 await loadCommission(silent: true)
+                await loadPendingCompletion()
             }
         }
         .refreshable {
             await loadCommission()
+            await loadPendingCompletion()
         }
     }
 
@@ -119,6 +139,33 @@ struct HomeView: View {
         .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityBannerLabel)
+    }
+
+    // MARK: - Pending completion row (zobrazí se jen když count > 0)
+
+    private var pendingCompletionRowContent: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "clock.badge.exclamationmark")
+                .font(.title2)
+                .foregroundStyle(Color.orange)
+                .frame(width: 28, alignment: .center)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Položky po termínu instalace")
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                Text("\(pendingCompletionCount ?? 0) nedokončených")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Text("\(pendingCompletionCount ?? 0)")
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(.primary)
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(pendingCompletionCount ?? 0) položek čeká na dokončení po termínu instalace")
     }
 
     private var periodText: String {
@@ -245,6 +292,21 @@ struct HomeView: View {
         formatter.maximumFractionDigits = 2
         formatter.minimumFractionDigits = 0
         return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
+    }
+
+    /// Načte počet položek čekajících na dokončení. Při chybě nastaví 0 (container se nezobrazí).
+    private func loadPendingCompletion() async {
+        let token = await MainActor.run { authState.authToken }
+        guard let token, !token.isEmpty else {
+            await MainActor.run { pendingCompletionCount = nil }
+            return
+        }
+        do {
+            let count = try await pendingCompletionService.fetchPendingCount(token: token)
+            await MainActor.run { pendingCompletionCount = count }
+        } catch {
+            await MainActor.run { pendingCompletionCount = 0 }
+        }
     }
 }
 
