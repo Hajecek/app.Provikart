@@ -122,19 +122,7 @@ struct LoginView: View {
                     authState.setLoggedIn(true, user: response.user, token: response.token)
                     print("[Login] Úspěch – přihlášení dokončeno")
                     print("[Login] Token: \(response.token ?? "—")")
-                    if let u = response.user {
-                        print("[Login] Uživatel:")
-                        print("  id: \(u.id ?? 0)")
-                        print("  email: \(u.email ?? "—")")
-                        print("  name: \(u.name ?? "—")")
-                        print("  username: \(u.username ?? "—")")
-                        print("  personal_number: \(u.personal_number ?? "—")")
-                        print("  firstname: \(u.firstname ?? "—")")
-                        print("  lastname: \(u.lastname ?? "—")")
-                        print("  profile_image: \(u.profile_image ?? "—")")
-                        print("  role: \(u.role ?? "—")")
-                        print("  plan: \(u.plan ?? "—")")
-                    } else {
+                    if response.user == nil {
                         print("[Login] Uživatel: (API nevrátilo objekt user)")
                     }
                 }

@@ -60,6 +60,7 @@ final class AuthState: ObservableObject {
         isLoggedIn = value
         if let user = user {
             currentUser = user
+            user.logToConsole()
         } else if !value {
             currentUser = nil
         }
@@ -82,5 +83,6 @@ final class AuthState: ObservableObject {
         } else {
             currentUser = user
         }
+        currentUser?.logToConsole()
     }
 }

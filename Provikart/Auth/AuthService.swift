@@ -46,6 +46,26 @@ struct UserInfo: Codable {
         role = api.role ?? existing?.role
         plan = api.plan ?? existing?.plan
     }
+
+    /// Sjednocený výpis profilu do konzole (tag [Profil]) – používá se při přihlášení i při obnovení uživatele napříč aplikací.
+    func logToConsole() {
+        print("[Profil] Uživatel:")
+        print("  id: \(id ?? 0)")
+        print("  email: \(email ?? "—")")
+        print("  name: \(name ?? "—")")
+        print("  username: \(username ?? "—")")
+        print("  personal_number: \(personal_number ?? "—")")
+        print("  firstname: \(firstname ?? "—")")
+        print("  lastname: \(lastname ?? "—")")
+        print("  profile_image: \(profile_image ?? "—")")
+        if let url = profileImageURL {
+            print("  profile_image_url: \(url.absoluteString)")
+        } else {
+            print("  profile_image_url: —")
+        }
+        print("  role: \(role ?? "—")")
+        print("  plan: \(plan ?? "—")")
+    }
 }
 
 enum AuthError: LocalizedError {
