@@ -15,6 +15,8 @@ struct PendingCompletionListView: View {
     @State private var completingIds: Set<Int> = []
     /// Chyba z akce „Dokončit“ – zobrazí se v alertu i když je seznam neprázdný.
     @State private var completionError: String?
+    /// Položka, u které uživatel zadal dokončit – zobrazí se potvrzovací dialog.
+    @State private var itemToComplete: PendingCompletionItem?
 
     private let pendingService = OrderItemsPendingCompletionService()
     private let completeService = OrderItemCompleteService()
@@ -48,14 +50,19 @@ struct PendingCompletionListView: View {
             } else {
                 List {
                     ForEach(items) { item in
-                        PendingCompletionRow(
-                            item: item,
-                            isCompleting: completingIds.contains(item.id),
-                            onComplete: { Task { await completeItem(item) } }
-                        )
+                        Section {
+                            PendingCompletionRow(
+                                item: item,
+                                isCompleting: completingIds.contains(item.id),
+                                onRequestComplete: { itemToComplete = $0 }
+                            )
+                        }
+                        .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+                        .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
                     }
                 }
                 .listStyle(.insetGrouped)
+                .listSectionSpacing(12)
             }
         }
         .navigationTitle("Čekající na dokončení")
@@ -71,6 +78,21 @@ struct PendingCompletionListView: View {
             Button("OK") { completionError = nil }
         } message: {
             Text(completionError ?? "Neznámá chyba")
+        }
+        .alert("Dokončit položku?", isPresented: Binding(
+            get: { itemToComplete != nil },
+            set: { if !$0 { itemToComplete = nil } }
+        )) {
+            Button("Zrušit", role: .cancel) {
+                itemToComplete = nil
+            }
+            Button("Dokončit") {
+                guard let item = itemToComplete else { return }
+                itemToComplete = nil
+                Task { await completeItem(item) }
+            }
+        } message: {
+            Text("Opravdu chcete označit tuto položku jako dokončenou?")
         }
     }
 
@@ -115,79 +137,89 @@ struct PendingCompletionListView: View {
     }
 }
 
-// MARK: - Řádek položky s tlačítkem Dokončit
+// MARK: - Řádek položky (iOS styl, v rámci Section = jedna karta)
 
 private struct PendingCompletionRow: View {
     let item: PendingCompletionItem
     let isCompleting: Bool
-    let onComplete: () -> Void
+    /// Uživatel klepl na Dokončit – rodič zobrazí potvrzení a pak volá completeItem.
+    let onRequestComplete: (PendingCompletionItem) -> Void
 
-    private var installationText: String {
-        var parts: [String] = []
-        if let d = item.installation_day, !d.isEmpty { parts.append(d) }
-        if let t = item.installation_time, !t.isEmpty { parts.append(t) }
-        return parts.joined(separator: " ")
+    /// České formátování data z installation_day (YYYY-MM-DD) a installation_time (HH:MM).
+    private var installationDateFormatted: String? {
+        guard let day = item.installation_day, !day.isEmpty else { return nil }
+        guard let date = parseDate(day) else { return day + (item.installation_time.map { " \($0)" } ?? "") }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "cs_CZ")
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        let dateStr = formatter.string(from: date)
+        if let time = item.installation_time, !time.isEmpty {
+            return dateStr + ", " + time
+        }
+        return dateStr
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(item.item_name ?? "Položka")
-                        .font(.body.weight(.medium))
-                        .foregroundStyle(.primary)
-                    Text("Obj. \(item.displayOrderNumber)")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    if let name = item.customer_name, !name.isEmpty {
-                        Text(name)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    if !installationText.isEmpty {
-                        Text(installationText)
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(item.item_name ?? "Položka")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.primary)
                 Spacer(minLength: 8)
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    onComplete()
+                    onRequestComplete(item)
                 } label: {
                     if isCompleting {
                         ProgressView()
-                            .scaleEffect(0.9)
-                            .frame(minWidth: 88, minHeight: 32)
+                            .scaleEffect(0.8)
+                            .frame(width: 20, height: 20)
                     } else {
                         Text("Dokončit")
                             .font(.subheadline.weight(.medium))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.bordered)
                 .tint(.green)
+                .controlSize(.small)
                 .disabled(isCompleting)
             }
-            if item.commission > 0 || item.base_price > 0 {
-                HStack(spacing: 12) {
-                    if item.commission > 0 {
-                        Label(priceString(item.commission), systemImage: "creditcard")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    if item.base_price > 0 {
-                        Text(priceString(item.base_price))
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
+
+            VStack(alignment: .leading, spacing: 8) {
+                LabeledContent("Objednávka", value: item.displayOrderNumber)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                if let name = item.customer_name, !name.isEmpty {
+                    LabeledContent("Zákazník", value: name)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+
+                if let dateStr = installationDateFormatted {
+                    LabeledContent("Termín", value: dateStr)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+
+                if item.commission > 0 {
+                    LabeledContent("Provize", value: priceString(item.commission))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
-        .padding(.vertical, 6)
-        .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
+        .listRowSeparator(.hidden)
     }
+}
+
+private func parseDate(_ yyyyMMdd: String) -> Date? {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyy-MM-dd"
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone.current
+    return formatter.date(from: yyyyMMdd.trimmingCharacters(in: .whitespaces))
 }
 
 private func priceString(_ value: Double) -> String {
