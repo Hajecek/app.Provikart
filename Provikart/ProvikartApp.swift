@@ -11,6 +11,7 @@ import FirebaseMessaging
 import UserNotifications
 
 private let onboardingCompletedKey = "Provikart.hasCompletedOnboarding"
+private let appearanceModeKey = "settings.appearance.mode"
 
 /// API: POST s Authorization: Bearer <api_token>, body { "token": "<FCM token>" }
 private let updateFCMTokenURL = "https://provikart.cz/api/update_fcm_token.php"
@@ -160,6 +161,7 @@ struct ProvikartApp: App {
     @StateObject private var appLoginApprovalState = AppLoginApprovalState()
     @StateObject private var networkMonitor = NetworkMonitor()
     @AppStorage(onboardingCompletedKey) private var hasCompletedOnboarding = false
+    @AppStorage(appearanceModeKey) private var appearanceModeRaw: String = "system"
     @State private var showLaunchScreen = true
     @State private var showBiometricVerification = false
     @State private var hasVerifiedBiometricThisSession = false
@@ -171,6 +173,14 @@ struct ProvikartApp: App {
         if showBiometricVerification { return true }
         if !showLaunchScreen, hasCompletedOnboarding, !hasVerifiedBiometricThisSession { return true }
         return false
+    }
+
+    private var preferredColorScheme: ColorScheme? {
+        switch appearanceModeRaw {
+        case "light": return .light
+        case "dark": return .dark
+        default: return nil // system
+        }
     }
 
     var body: some Scene {
@@ -200,6 +210,7 @@ struct ProvikartApp: App {
                     .zIndex(3)
                 }
             }
+            .preferredColorScheme(preferredColorScheme)
             .environmentObject(authState)
             .environmentObject(appDelegate)
             .environmentObject(appLoginApprovalState)
