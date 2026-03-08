@@ -135,7 +135,7 @@ struct StatisticsView: View {
             let name = item.item_name.isEmpty ? "—" : item.item_name
             var t = byCategoryAndName[cat]![name] ?? (0, 0)
             t.0 += 1
-            t.1 += item.base_price
+            t.1 += item.revenueForStats  // zapojená provize (commission_earned), ne base_price
             byCategoryAndName[cat]![name] = t
         }
         return byCategoryAndName.mapValues { dict in
@@ -173,7 +173,7 @@ struct StatisticsView: View {
     }
 
     private var totalRevenueInMonth: Double {
-        itemsInMonth.reduce(0) { $0 + $1.base_price }
+        itemsInMonth.reduce(0) { $0 + $1.revenueForStats }
     }
 
     // MARK: - Graf: rozložení v měsíci (sloupce)

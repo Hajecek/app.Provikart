@@ -25,11 +25,18 @@ struct OrderItemByInstallationDate: Decodable, Identifiable {
     let base_price: Double
     let discount: Double
     let commission: Double
+    /// Část provize vyplacená hned (při podpisu); zbytek při dokončení.
+    let commission_upfront: Double?
+    /// Skutečně zapojená provize: u completed celá commission, jinak commission_upfront.
+    let commission_earned: Double?
+    /// Čekající provize („při zapojení“).
+    let commission_pending: Double?
     let status: String
 
     enum CodingKeys: String, CodingKey {
         case id, order_id, order_number, item_name, item_type, installation_date, installation_time, base_price, discount, commission, status
         case installation_day
+        case commission_upfront, commission_earned, commission_pending
     }
 
     init(from decoder: Decoder) throws {
@@ -49,7 +56,16 @@ struct OrderItemByInstallationDate: Decodable, Identifiable {
         base_price = try c.decodeDoubleOrString(forKey: .base_price)
         discount = try c.decodeDoubleOrString(forKey: .discount)
         commission = try c.decodeDoubleOrString(forKey: .commission)
+        commission_upfront = try? c.decodeDoubleOrStringIfPresent(forKey: .commission_upfront)
+        commission_earned = try? c.decodeDoubleOrStringIfPresent(forKey: .commission_earned)
+        commission_pending = try? c.decodeDoubleOrStringIfPresent(forKey: .commission_pending)
         status = (try c.decodeIfPresent(String.self, forKey: .status)) ?? ""
+    }
+
+    /// Pro statistiky „Tržba“: zapojená provize (commission_earned), nebo base_price pokud API neposílá commission_earned.
+    var revenueForStats: Double {
+        if let earned = commission_earned { return earned }
+        return base_price
     }
 
     /// Zobrazované číslo objednávky: order_number z API, jinak order_id.
@@ -114,6 +130,17 @@ private extension KeyedDecodingContainer {
             return Double(normalized) ?? 0
         }
         return 0
+    }
+
+    func decodeDoubleOrStringIfPresent(forKey key: Key) -> Double? {
+        guard contains(key) else { return nil }
+        if let d = try? decode(Double.self, forKey: key) { return d }
+        if let i = try? decode(Int.self, forKey: key) { return Double(i) }
+        if let s = try? decode(String.self, forKey: key) {
+            let normalized = s.replacingOccurrences(of: ",", with: ".")
+            return Double(normalized)
+        }
+        return nil
     }
 }
 
