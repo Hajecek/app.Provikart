@@ -138,6 +138,10 @@ struct HomeView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
+                if let c = commission, !isCommissionHidden {
+                    CommissionProgressBarView(value: c.commission, goal: 100_000)
+                }
+
                 HStack(spacing: 4) {
                     Image(systemName: "calendar")
                         .font(.caption2)
