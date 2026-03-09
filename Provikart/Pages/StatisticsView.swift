@@ -46,14 +46,12 @@ private enum ProductCategory: String, CaseIterable, Hashable {
 
     static func from(itemType: String?) -> ProductCategory? {
         guard let raw = itemType?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !raw.isEmpty else { return nil }
-        switch raw {
-        case "postpaid": return .postpaid
-        case "i_family", "i family", "ifamily": return .family
-        case "internet": return .internet
-        case "televize", "oneplay": return .oneplay
-        case "pevna_linka": return .ostatni
-        default: return nil
-        }
+        if raw == "postpaid" || raw == "mobil" || raw == "sim" { return .postpaid }
+        if raw.contains("family") || raw == "i_family" { return .family }
+        if raw == "internet" || raw == "fwa" || raw == "dsl" || raw == "ftth" { return .internet }
+        if raw == "televize" || raw == "oneplay" || raw == "tv" || raw == "one_play" { return .oneplay }
+        if raw == "pevna_linka" || raw == "pevná linka" { return .ostatni }
+        return nil
     }
 }
 
@@ -66,13 +64,14 @@ private struct SoldItemGroup: Identifiable, Hashable {
 
 private func categoryFromItemName(_ name: String) -> ProductCategory {
     let lower = name.lowercased()
-    if lower.contains("i family") || lower.contains("ifamily") { return .family }
+    if lower.contains("family") { return .family }
     if lower.contains("postpaid") || lower.contains("předplacen") || lower.contains("tarif") ||
        lower.contains("mobil") || lower.contains("paušál") || lower.contains("sim ") ||
        lower.contains("sim.") || lower.contains("karta") { return .postpaid }
     if lower.contains("internet") || lower.contains("připojení") || lower.contains("wifi") ||
        lower.contains("optik") || lower.contains("pevná linka") || lower.contains(" net ") { return .internet }
-    if lower.contains("televize") || lower.contains("oneplay") || lower.contains(" tv ") || lower.contains("tv ") ||
+    if lower.contains("televize") || lower.contains("oneplay") || lower.contains("one play") ||
+       lower.contains(" tv ") || lower.contains("tv ") ||
        lower.contains("příjem") || lower.contains("set-top") || lower.contains("set top") ||
        lower.contains("decoder") || lower.contains("receiv") { return .oneplay }
     return .ostatni
@@ -132,7 +131,8 @@ struct StatisticsView: View {
 
     private var itemsInMonth: [OrderItemByInstallationDate] {
         items.filter { item in
-            guard let d = parseInstallationDate(item.installation_date) else { return false }
+            guard item.status.lowercased() == "completed",
+                  let d = parseInstallationDate(item.installation_date) else { return false }
             return calendar.isDate(d, equalTo: monthStart, toGranularity: .month)
         }
     }
@@ -140,8 +140,14 @@ struct StatisticsView: View {
     private var groupedByCategory: [ProductCategory: [SoldItemGroup]] {
         var byCategoryAndName: [ProductCategory: [String: (Int, Double)]] = [:]
         for cat in ProductCategory.allCases { byCategoryAndName[cat] = [:] }
+        var loggedTypes: Set<String> = []
         for item in itemsInMonth {
             let cat = ProductCategory.from(itemType: item.item_type) ?? categoryFromItemName(item.item_name)
+            let typeKey = item.item_type ?? "(nil)"
+            if !loggedTypes.contains(typeKey) {
+                loggedTypes.insert(typeKey)
+                print("[Stats] item_type=\(typeKey) item_name=\(item.item_name) → \(cat.rawValue)")
+            }
             let name = item.item_name.isEmpty ? "—" : item.item_name
             var t = byCategoryAndName[cat]![name] ?? (0, 0)
             t.0 += 1
