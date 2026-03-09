@@ -291,7 +291,9 @@ struct HomeView: View {
         do {
             let response = try await commissionService.fetchCommission(token: token)
             await MainActor.run {
-                commission = response
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    commission = response
+                }
                 isLoadingCommission = false
                 WidgetDataStore.saveCommission(response.commission, currency: response.currency, monthLabel: response.month_label)
                 PhoneSessionManager.shared.sendCommissionUpdate(commission: response.commission, currency: response.currency, monthLabel: response.month_label)
