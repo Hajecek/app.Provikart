@@ -29,22 +29,15 @@ struct WatchContentView: View {
     @State private var isRequestingToken = false
 
     private var notAuthenticatedView: some View {
-        ZStack {
-            LinearGradient(
-                colors: [Color(.darkGray), Color.black],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
-
-            VStack(spacing: 12) {
+        NavigationStack {
+            VStack(spacing: 14) {
                 Image(systemName: "iphone.and.arrow.forward")
                     .font(.system(size: 28))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(.secondary)
 
                 Text("Přihlaste se\nna iPhonu")
                     .font(.footnote)
-                    .foregroundStyle(.white.opacity(0.6))
+                    .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
 
                 Button {
@@ -55,15 +48,16 @@ struct WatchContentView: View {
                     }
                 } label: {
                     if isRequestingToken {
-                        ProgressView().tint(.white)
+                        ProgressView()
                     } else {
                         Image(systemName: "arrow.triangle.2.circlepath")
                             .font(.caption)
                     }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.bordered)
                 .disabled(isRequestingToken)
             }
+            .navigationTitle("Provikart")
         }
         .task {
             while !Task.isCancelled && !sessionManager.isAuthenticated {
@@ -75,25 +69,33 @@ struct WatchContentView: View {
         }
     }
 
-    // MARK: - Commission
+    // MARK: - Commission View
 
     private var commissionView: some View {
-        ZStack {
-            backgroundGradient
-                .ignoresSafeArea()
+        NavigationStack {
+            VStack(spacing: 0) {
+                Spacer()
 
-            if isLoading && commission == nil {
-                ProgressView()
-                    .tint(.white)
-                    .scaleEffect(1.2)
-            } else if let c = commission {
-                commissionDisplay(c)
-            } else if let err = errorMessage {
-                errorView(err)
-            } else {
-                ProgressView()
-                    .tint(.white)
-                    .scaleEffect(1.2)
+                if isLoading && commission == nil {
+                    ProgressView()
+                        .scaleEffect(1.1)
+                } else if let c = commission {
+                    commissionDisplay(c)
+                } else if let err = errorMessage {
+                    errorView(err)
+                } else {
+                    ProgressView()
+                        .scaleEffect(1.1)
+                }
+
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .navigationTitle("Provize")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    profileImage
+                }
             }
         }
         .task {
@@ -124,63 +126,138 @@ struct WatchContentView: View {
         }
     }
 
-    private var backgroundGradient: some View {
-        LinearGradient(
-            colors: [
-                Color(red: 0.10, green: 0.45, blue: 0.95),
-                Color(red: 0.05, green: 0.25, blue: 0.65)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+    // MARK: - Profile Image (toolbar)
+
+    private var profileImage: some View {
+        Group {
+            if let url = sessionManager.profileImageURL {
+                WatchProfileImageView(
+                    url: url,
+                    token: sessionManager.authToken,
+                    size: 28
+                )
+            } else {
+                Image(systemName: "person.circle.fill")
+                    .font(.system(size: 24))
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
+    // MARK: - Commission Display
+
+    private let goal: Double = 100_000
+
     private func commissionDisplay(_ c: WatchCommissionResponse) -> some View {
-        VStack(spacing: 6) {
-            Spacer()
-
-            Text(formatCommission(c.commission))
-                .font(.system(size: 38, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
-                .minimumScaleFactor(0.5)
-                .lineLimit(1)
-                .contentTransition(.numericText())
-
-            Text(c.currency)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.white.opacity(0.7))
-
-            Spacer()
+        VStack(spacing: 10) {
+            commissionBarGraph(value: c.commission)
 
             if let label = c.month_label, !label.isEmpty {
                 Text(label)
                     .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.5))
-                    .padding(.bottom, 4)
+                    .foregroundStyle(.tertiary)
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                Text(formatCommission(c.commission))
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .minimumScaleFactor(0.5)
+                    .lineLimit(1)
+                    .contentTransition(.numericText())
+
+                Text(c.currency)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+
+    // MARK: - Bar Graph
+
+    private let barCount = 25
+    private let barSpacing: CGFloat = 2
+    @State private var animatedProgress: Double = 0
+
+    private func commissionBarGraph(value: Double) -> some View {
+        let targetProgress = min(value / goal, 1.0)
+
+        return VStack(spacing: 4) {
+            HStack(alignment: .bottom, spacing: barSpacing) {
+                ForEach(0..<barCount, id: \.self) { index in
+                    let barProgress = Double(index + 1) / Double(barCount)
+                    let isFilled = barProgress <= animatedProgress
+                    let barHeight = barHeightFor(index: index)
+
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(isFilled ? barColor(forIndex: index) : Color.white.opacity(0.15))
+                        .frame(height: barHeight)
+                }
+            }
+            .frame(height: 32)
+
+            HStack {
+                Text("0")
+                Spacer()
+                Text("50k")
+                Spacer()
+                Text("100k")
+            }
+            .font(.system(size: 9, weight: .medium, design: .rounded))
+            .foregroundStyle(.tertiary)
+        }
+        .padding(.horizontal, 4)
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.8)) {
+                animatedProgress = targetProgress
+            }
+        }
+        .onChange(of: value) { _, newValue in
+            let newTarget = min(newValue / goal, 1.0)
+            withAnimation(.easeInOut(duration: 0.6)) {
+                animatedProgress = newTarget
+            }
+        }
+    }
+
+    private func barHeightFor(index: Int) -> CGFloat {
+        let mid = barCount / 2
+        let distFromCenter = abs(index - mid)
+        let maxH: CGFloat = 32
+        let minH: CGFloat = 14
+        let factor = 1.0 - (Double(distFromCenter) / Double(mid)) * 0.5
+        return minH + (maxH - minH) * factor
+    }
+
+    /// Barvy přechází od zelené (nízké) přes žlutou (střed) po červenou/oranžovou (vysoké) -- jako Noise app.
+    private func barColor(forIndex index: Int) -> Color {
+        let ratio = Double(index) / Double(barCount - 1)
+        if ratio < 0.4 {
+            return .green
+        } else if ratio < 0.7 {
+            return .yellow
+        } else {
+            return .orange
+        }
+    }
+
+    // MARK: - Error View
 
     private func errorView(_ message: String) -> some View {
         VStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.title3)
-                .foregroundStyle(.yellow)
+                .foregroundStyle(.orange)
 
             Text(message)
                 .font(.caption2)
-                .foregroundStyle(.white.opacity(0.7))
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
-            Button {
+            Button("Zkusit znovu") {
                 Task { await loadCommission() }
-            } label: {
-                Text("Zkusit znovu")
-                    .font(.caption2)
-                    .foregroundStyle(.white)
             }
-            .buttonStyle(.plain)
+            .font(.caption2)
+            .buttonStyle(.bordered)
         }
     }
 

@@ -19,16 +19,25 @@ final class WatchSessionManager: NSObject, ObservableObject {
         }
     }
 
+    @Published private(set) var userName: String? {
+        didSet { UserDefaults.standard.set(userName, forKey: "Provikart.watchUserName") }
+    }
+
+    @Published private(set) var profileImageURL: URL? {
+        didSet { UserDefaults.standard.set(profileImageURL?.absoluteString, forKey: "Provikart.watchProfileImageURL") }
+    }
+
     private let appGroupIdentifier = "group.com.hajecek.provikartApp"
 
     private override init() {
-        // Zkusíme načíst token z lokálních UserDefaults (z minulého spuštění)
         if let local = UserDefaults.standard.string(forKey: "Provikart.watchAuthToken"), !local.isEmpty {
             self.authToken = local
-        }
-        // Fallback: zkusíme App Group (na simulátoru sdílí kontejner s iPhone)
-        else if let shared = UserDefaults(suiteName: "group.com.hajecek.provikartApp")?.string(forKey: "widget_auth_token"), !shared.isEmpty {
+        } else if let shared = UserDefaults(suiteName: "group.com.hajecek.provikartApp")?.string(forKey: "widget_auth_token"), !shared.isEmpty {
             self.authToken = shared
+        }
+        self.userName = UserDefaults.standard.string(forKey: "Provikart.watchUserName")
+        if let urlStr = UserDefaults.standard.string(forKey: "Provikart.watchProfileImageURL"), !urlStr.isEmpty {
+            self.profileImageURL = URL(string: urlStr)
         }
         super.init()
         print("[WC-Watch] Init – token: \(authToken != nil ? "nalezen" : "žádný")")
@@ -68,6 +77,7 @@ final class WatchSessionManager: NSObject, ObservableObject {
             if let token = response["authToken"] as? String {
                 DispatchQueue.main.async {
                     self.authToken = token.isEmpty ? nil : token
+                    self.updateUserInfo(from: response)
                     print("[WC-Watch] Token přijat přes sendMessage: \(token.isEmpty ? "prázdný" : "OK")")
                 }
             }
@@ -85,6 +95,16 @@ final class WatchSessionManager: NSObject, ObservableObject {
             print("[WC-Watch] Token načten z App Group fallback")
         } else {
             print("[WC-Watch] App Group fallback: žádný token")
+        }
+    }
+
+    /// Aktualizuje profil z přijatého dictionary (applicationContext / sendMessage reply).
+    func updateUserInfo(from dict: [String: Any]) {
+        if let name = dict["userName"] as? String, !name.isEmpty {
+            self.userName = name
+        }
+        if let urlStr = dict["profileImageURL"] as? String, !urlStr.isEmpty {
+            self.profileImageURL = URL(string: urlStr)
         }
     }
 
@@ -111,6 +131,7 @@ extension WatchSessionManager: WCSessionDelegate {
         if let token = context["authToken"] as? String, !token.isEmpty {
             DispatchQueue.main.async {
                 self.authToken = token
+                self.updateUserInfo(from: context)
                 print("[WC-Watch] Token z applicationContext: přijat")
             }
             return
@@ -132,6 +153,7 @@ extension WatchSessionManager: WCSessionDelegate {
         if let token = applicationContext["authToken"] as? String {
             DispatchQueue.main.async {
                 self.authToken = token.isEmpty ? nil : token
+                self.updateUserInfo(from: applicationContext)
                 print("[WC-Watch] Token přijat přes applicationContext: \(token.isEmpty ? "odhlášení" : "přihlášení")")
             }
         }
