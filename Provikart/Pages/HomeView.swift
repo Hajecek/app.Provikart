@@ -290,6 +290,7 @@ struct HomeView: View {
                 commission = response
                 isLoadingCommission = false
                 WidgetDataStore.saveCommission(response.commission, currency: response.currency, monthLabel: response.month_label)
+                PhoneSessionManager.shared.sendCommissionUpdate(commission: response.commission, currency: response.currency, monthLabel: response.month_label)
             }
         } catch {
             await MainActor.run {

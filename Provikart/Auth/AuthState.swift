@@ -42,6 +42,7 @@ final class AuthState: ObservableObject {
                 UserDefaults.standard.removeObject(forKey: tokenKey)
                 WidgetDataStore.clearAuthToken()
             }
+            PhoneSessionManager.shared.sendToken(authToken)
         }
     }
 

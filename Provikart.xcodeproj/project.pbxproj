@@ -8,12 +8,34 @@
 
 /* Begin PBXBuildFile section */
 		0726DB072F5219D2000CC7F6 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 0726DB062F5219D2000CC7F6 /* FirebaseMessaging */; };
+		078298702F5EEA3B005CB0C9 /* ProvikartWatch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 078298502F5EEA3A005CB0C9 /* ProvikartWatch Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		07FAA3352F55074E00FDE731 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 07FAA3342F55074E00FDE731 /* WidgetKit.framework */; };
 		07FAA3372F55074E00FDE731 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 07FAA3362F55074E00FDE731 /* SwiftUI.framework */; };
 		07FAA3482F55074F00FDE731 /* ProvikartWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 07FAA3322F55074E00FDE731 /* ProvikartWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		0782985D2F5EEA3B005CB0C9 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 07EB0A232E16A17200204AFA /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0782984F2F5EEA3A005CB0C9;
+			remoteInfo = "ProvikartWatch Watch App";
+		};
+		078298672F5EEA3B005CB0C9 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 07EB0A232E16A17200204AFA /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0782984F2F5EEA3A005CB0C9;
+			remoteInfo = "ProvikartWatch Watch App";
+		};
+		0782986E2F5EEA3B005CB0C9 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 07EB0A232E16A17200204AFA /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0782984F2F5EEA3A005CB0C9;
+			remoteInfo = "ProvikartWatch Watch App";
+		};
 		07EB0A392E16A17300204AFA /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 07EB0A232E16A17200204AFA /* Project object */;
@@ -38,6 +60,17 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		078298742F5EEA3B005CB0C9 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				078298702F5EEA3B005CB0C9 /* ProvikartWatch Watch App.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		07FAA34D2F55074F00FDE731 /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -52,6 +85,9 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		078298502F5EEA3A005CB0C9 /* ProvikartWatch Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "ProvikartWatch Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		0782985C2F5EEA3B005CB0C9 /* ProvikartWatch Watch AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "ProvikartWatch Watch AppTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		078298662F5EEA3B005CB0C9 /* ProvikartWatch Watch AppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "ProvikartWatch Watch AppUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		07EB0A2B2E16A17200204AFA /* Provikart.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Provikart.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		07EB0A382E16A17300204AFA /* ProvikartTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ProvikartTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		07EB0A422E16A17300204AFA /* ProvikartUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ProvikartUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -79,6 +115,21 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		078298512F5EEA3A005CB0C9 /* ProvikartWatch Watch App */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "ProvikartWatch Watch App";
+			sourceTree = "<group>";
+		};
+		0782985F2F5EEA3B005CB0C9 /* ProvikartWatch Watch AppTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "ProvikartWatch Watch AppTests";
+			sourceTree = "<group>";
+		};
+		078298692F5EEA3B005CB0C9 /* ProvikartWatch Watch AppUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "ProvikartWatch Watch AppUITests";
+			sourceTree = "<group>";
+		};
 		07EB0A2D2E16A17200204AFA /* Provikart */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -108,6 +159,27 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		0782984D2F5EEA3A005CB0C9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		078298592F5EEA3B005CB0C9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		078298632F5EEA3B005CB0C9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		07EB0A282E16A17200204AFA /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -150,6 +222,9 @@
 				07EB0A3B2E16A17300204AFA /* ProvikartTests */,
 				07EB0A452E16A17300204AFA /* ProvikartUITests */,
 				07FAA3382F55074E00FDE731 /* ProvikartWidget */,
+				078298512F5EEA3A005CB0C9 /* ProvikartWatch Watch App */,
+				0782985F2F5EEA3B005CB0C9 /* ProvikartWatch Watch AppTests */,
+				078298692F5EEA3B005CB0C9 /* ProvikartWatch Watch AppUITests */,
 				07FAA3332F55074E00FDE731 /* Frameworks */,
 				07EB0A2C2E16A17200204AFA /* Products */,
 			);
@@ -162,6 +237,9 @@
 				07EB0A382E16A17300204AFA /* ProvikartTests.xctest */,
 				07EB0A422E16A17300204AFA /* ProvikartUITests.xctest */,
 				07FAA3322F55074E00FDE731 /* ProvikartWidgetExtension.appex */,
+				078298502F5EEA3A005CB0C9 /* ProvikartWatch Watch App.app */,
+				0782985C2F5EEA3B005CB0C9 /* ProvikartWatch Watch AppTests.xctest */,
+				078298662F5EEA3B005CB0C9 /* ProvikartWatch Watch AppUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -178,6 +256,74 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		0782984F2F5EEA3A005CB0C9 /* ProvikartWatch Watch App */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 078298712F5EEA3B005CB0C9 /* Build configuration list for PBXNativeTarget "ProvikartWatch Watch App" */;
+			buildPhases = (
+				0782984C2F5EEA3A005CB0C9 /* Sources */,
+				0782984D2F5EEA3A005CB0C9 /* Frameworks */,
+				0782984E2F5EEA3A005CB0C9 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				078298512F5EEA3A005CB0C9 /* ProvikartWatch Watch App */,
+			);
+			name = "ProvikartWatch Watch App";
+			packageProductDependencies = (
+			);
+			productName = "ProvikartWatch Watch App";
+			productReference = 078298502F5EEA3A005CB0C9 /* ProvikartWatch Watch App.app */;
+			productType = "com.apple.product-type.application";
+		};
+		0782985B2F5EEA3B005CB0C9 /* ProvikartWatch Watch AppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 078298752F5EEA3B005CB0C9 /* Build configuration list for PBXNativeTarget "ProvikartWatch Watch AppTests" */;
+			buildPhases = (
+				078298582F5EEA3B005CB0C9 /* Sources */,
+				078298592F5EEA3B005CB0C9 /* Frameworks */,
+				0782985A2F5EEA3B005CB0C9 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				0782985E2F5EEA3B005CB0C9 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				0782985F2F5EEA3B005CB0C9 /* ProvikartWatch Watch AppTests */,
+			);
+			name = "ProvikartWatch Watch AppTests";
+			packageProductDependencies = (
+			);
+			productName = "ProvikartWatch Watch AppTests";
+			productReference = 0782985C2F5EEA3B005CB0C9 /* ProvikartWatch Watch AppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		078298652F5EEA3B005CB0C9 /* ProvikartWatch Watch AppUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 078298782F5EEA3B005CB0C9 /* Build configuration list for PBXNativeTarget "ProvikartWatch Watch AppUITests" */;
+			buildPhases = (
+				078298622F5EEA3B005CB0C9 /* Sources */,
+				078298632F5EEA3B005CB0C9 /* Frameworks */,
+				078298642F5EEA3B005CB0C9 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				078298682F5EEA3B005CB0C9 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				078298692F5EEA3B005CB0C9 /* ProvikartWatch Watch AppUITests */,
+			);
+			name = "ProvikartWatch Watch AppUITests";
+			packageProductDependencies = (
+			);
+			productName = "ProvikartWatch Watch AppUITests";
+			productReference = 078298662F5EEA3B005CB0C9 /* ProvikartWatch Watch AppUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		07EB0A2A2E16A17200204AFA /* Provikart */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 07EB0A4C2E16A17300204AFA /* Build configuration list for PBXNativeTarget "Provikart" */;
@@ -186,11 +332,13 @@
 				07EB0A282E16A17200204AFA /* Frameworks */,
 				07EB0A292E16A17200204AFA /* Resources */,
 				07FAA34D2F55074F00FDE731 /* Embed Foundation Extensions */,
+				078298742F5EEA3B005CB0C9 /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				07FAA3472F55074F00FDE731 /* PBXTargetDependency */,
+				0782986F2F5EEA3B005CB0C9 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				07EB0A2D2E16A17200204AFA /* Provikart */,
@@ -281,6 +429,17 @@
 				LastSwiftUpdateCheck = 2600;
 				LastUpgradeCheck = 1640;
 				TargetAttributes = {
+					0782984F2F5EEA3A005CB0C9 = {
+						CreatedOnToolsVersion = 26.0;
+					};
+					0782985B2F5EEA3B005CB0C9 = {
+						CreatedOnToolsVersion = 26.0;
+						TestTargetID = 0782984F2F5EEA3A005CB0C9;
+					};
+					078298652F5EEA3B005CB0C9 = {
+						CreatedOnToolsVersion = 26.0;
+						TestTargetID = 0782984F2F5EEA3A005CB0C9;
+					};
 					07EB0A2A2E16A17200204AFA = {
 						CreatedOnToolsVersion = 16.4;
 					};
@@ -318,11 +477,35 @@
 				07EB0A372E16A17300204AFA /* ProvikartTests */,
 				07EB0A412E16A17300204AFA /* ProvikartUITests */,
 				07FAA3312F55074E00FDE731 /* ProvikartWidgetExtension */,
+				0782984F2F5EEA3A005CB0C9 /* ProvikartWatch Watch App */,
+				0782985B2F5EEA3B005CB0C9 /* ProvikartWatch Watch AppTests */,
+				078298652F5EEA3B005CB0C9 /* ProvikartWatch Watch AppUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		0782984E2F5EEA3A005CB0C9 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0782985A2F5EEA3B005CB0C9 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		078298642F5EEA3B005CB0C9 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		07EB0A292E16A17200204AFA /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -354,6 +537,27 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		0782984C2F5EEA3A005CB0C9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		078298582F5EEA3B005CB0C9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		078298622F5EEA3B005CB0C9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		07EB0A272E16A17200204AFA /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -385,6 +589,21 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		0782985E2F5EEA3B005CB0C9 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0782984F2F5EEA3A005CB0C9 /* ProvikartWatch Watch App */;
+			targetProxy = 0782985D2F5EEA3B005CB0C9 /* PBXContainerItemProxy */;
+		};
+		078298682F5EEA3B005CB0C9 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0782984F2F5EEA3A005CB0C9 /* ProvikartWatch Watch App */;
+			targetProxy = 078298672F5EEA3B005CB0C9 /* PBXContainerItemProxy */;
+		};
+		0782986F2F5EEA3B005CB0C9 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0782984F2F5EEA3A005CB0C9 /* ProvikartWatch Watch App */;
+			targetProxy = 0782986E2F5EEA3B005CB0C9 /* PBXContainerItemProxy */;
+		};
 		07EB0A3A2E16A17300204AFA /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 07EB0A2A2E16A17200204AFA /* Provikart */;
@@ -403,6 +622,164 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		078298722F5EEA3B005CB0C9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "ProvikartWatch Watch App/ProvikartWatch Watch App.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = W6R3HZD7R4;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = ProvikartWatch;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.hajecek.provikartApp;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.hajecek.provikartApp.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Debug;
+		};
+		078298732F5EEA3B005CB0C9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "ProvikartWatch Watch App/ProvikartWatch Watch App.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = W6R3HZD7R4;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = ProvikartWatch;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.hajecek.provikartApp;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.hajecek.provikartApp.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
+		078298762F5EEA3B005CB0C9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = W6R3HZD7R4;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.hajecek.ProvikartWatch-Watch-AppTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ProvikartWatch Watch App.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ProvikartWatch Watch App";
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Debug;
+		};
+		078298772F5EEA3B005CB0C9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = W6R3HZD7R4;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.hajecek.ProvikartWatch-Watch-AppTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ProvikartWatch Watch App.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ProvikartWatch Watch App";
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
+		078298792F5EEA3B005CB0C9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = W6R3HZD7R4;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.hajecek.ProvikartWatch-Watch-AppUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_TARGET_NAME = "ProvikartWatch Watch App";
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Debug;
+		};
+		0782987A2F5EEA3B005CB0C9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = W6R3HZD7R4;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.hajecek.ProvikartWatch-Watch-AppUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_TARGET_NAME = "ProvikartWatch Watch App";
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
 		07EB0A4A2E16A17300204AFA /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -531,7 +908,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Provikart/Provikart.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = W6R3HZD7R4;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -565,7 +942,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Provikart/Provikart.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = W6R3HZD7R4;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -731,6 +1108,33 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		078298712F5EEA3B005CB0C9 /* Build configuration list for PBXNativeTarget "ProvikartWatch Watch App" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				078298722F5EEA3B005CB0C9 /* Debug */,
+				078298732F5EEA3B005CB0C9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		078298752F5EEA3B005CB0C9 /* Build configuration list for PBXNativeTarget "ProvikartWatch Watch AppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				078298762F5EEA3B005CB0C9 /* Debug */,
+				078298772F5EEA3B005CB0C9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		078298782F5EEA3B005CB0C9 /* Build configuration list for PBXNativeTarget "ProvikartWatch Watch AppUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				078298792F5EEA3B005CB0C9 /* Debug */,
+				0782987A2F5EEA3B005CB0C9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		07EB0A262E16A17200204AFA /* Build configuration list for PBXProject "Provikart" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

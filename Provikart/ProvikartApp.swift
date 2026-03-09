@@ -183,6 +183,10 @@ struct ProvikartApp: App {
         }
     }
 
+    init() {
+        PhoneSessionManager.shared.activate()
+    }
+
     var body: some Scene {
         WindowGroup {
             ZStack {
@@ -229,6 +233,7 @@ struct ProvikartApp: App {
               if authState.isLoggedIn, let user = authState.currentUser {
                 appDelegate.updateUserInfo(userId: user.id ?? 0, role: user.role ?? "", authToken: authState.authToken)
               }
+              PhoneSessionManager.shared.sendCurrentTokenIfNeeded()
             }
             .onChange(of: scenePhase) { _, newPhase in
                 switch newPhase {
