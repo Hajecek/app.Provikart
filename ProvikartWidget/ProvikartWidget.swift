@@ -25,6 +25,7 @@ private enum WidgetKeys {
     static let reportsIncompleteCount = "widget_reports_incomplete_count"
     static let authToken = "widget_auth_token"
     static let installations = "widget_installations"
+    static let commissionHidden = "widget_commission_hidden"
 }
 
 // MARK: - Data
@@ -35,13 +36,14 @@ struct WidgetCommissionEntry: TimelineEntry {
     let currency: String
     let monthLabel: String?
     let hasData: Bool
+    let isHidden: Bool
 }
 
 // MARK: - Timeline Provider
 
 struct ProvikartWidgetProvider: TimelineProvider {
     func placeholder(in context: Context) -> WidgetCommissionEntry {
-        WidgetCommissionEntry(date: Date(), commission: 12_450, currency: "Kč", monthLabel: "Březen 2025", hasData: true)
+        WidgetCommissionEntry(date: Date(), commission: 12_450, currency: "Kč", monthLabel: "Březen 2025", hasData: true, isHidden: false)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (WidgetCommissionEntry) -> Void) {
@@ -90,12 +92,14 @@ struct ProvikartWidgetProvider: TimelineProvider {
         let currency = suite?.string(forKey: WidgetKeys.currency) ?? "Kč"
         let monthLabel = suite?.string(forKey: WidgetKeys.monthLabel)
         let hasData = suite?.object(forKey: WidgetKeys.commission) != nil
+        let isHidden = suite?.bool(forKey: WidgetKeys.commissionHidden) ?? false
         return WidgetCommissionEntry(
             date: Date(),
             commission: commission,
             currency: currency,
             monthLabel: monthLabel,
-            hasData: hasData
+            hasData: hasData,
+            isHidden: isHidden
         )
     }
 
@@ -136,12 +140,15 @@ struct ProvikartWidgetProvider: TimelineProvider {
 
             await MainActor.run { saveCommissionToCache(decoded) }
 
+            let suite = UserDefaults(suiteName: appGroupIdentifier)
+            let isHidden = suite?.bool(forKey: WidgetKeys.commissionHidden) ?? false
             return WidgetCommissionEntry(
                 date: Date(),
                 commission: decoded.commission,
                 currency: decoded.currency,
                 monthLabel: decoded.month_label,
-                hasData: true
+                hasData: true,
+                isHidden: isHidden
             )
         } catch {
             return nil
@@ -192,13 +199,15 @@ struct ProvikartWidgetEntryView: View {
         ZStack {
             if entry.hasData, let value = entry.commission {
                 VStack(spacing: 0) {
-                    Text(formatCommission(value))
+                    Text(entry.isHidden ? "••••" : formatCommission(value))
                         .font(.system(size: 18, weight: .semibold, design: .rounded))
                         .minimumScaleFactor(0.5)
                         .lineLimit(1)
-                    Text(entry.currency)
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(.secondary)
+                    if !entry.isHidden {
+                        Text(entry.currency)
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(.secondary)
+                    }
                 }
             } else {
                 Image(systemName: "creditcard.fill")
@@ -215,7 +224,7 @@ struct ProvikartWidgetEntryView: View {
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.secondary)
             if entry.hasData, let value = entry.commission {
-                Text(formatCommission(value) + " " + entry.currency)
+                Text(entry.isHidden ? "••••••" : (formatCommission(value) + " " + entry.currency))
                     .font(.system(size: 16, weight: .semibold, design: .rounded))
                     .minimumScaleFactor(0.7)
             } else {
@@ -230,7 +239,7 @@ struct ProvikartWidgetEntryView: View {
     // Zamykací obrazovka – jeden řádek
     private var accessoryInlineView: some View {
         if entry.hasData, let value = entry.commission {
-            Text("Provize \(formatCommission(value)) \(entry.currency)")
+            Text(entry.isHidden ? "Provize ••••••" : "Provize \(formatCommission(value)) \(entry.currency)")
                 .font(.system(size: 14, weight: .medium))
         } else {
             Text("Provikart – přihlaste se")
@@ -255,13 +264,15 @@ struct ProvikartWidgetEntryView: View {
             Spacer(minLength: 8)
             if entry.hasData, let value = entry.commission {
                 HStack(alignment: .lastTextBaseline, spacing: 4) {
-                    Text(formatCommission(value))
+                    Text(entry.isHidden ? "••••••" : formatCommission(value))
                         .font(.system(size: 22, weight: .semibold, design: .rounded))
                         .minimumScaleFactor(0.6)
                         .lineLimit(1)
-                    Text(entry.currency)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.secondary)
+                    if !entry.isHidden {
+                        Text(entry.currency)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.secondary)
+                    }
                 }
             } else {
                 Text("Přihlaste se")
@@ -294,13 +305,15 @@ struct ProvikartWidgetEntryView: View {
             Spacer(minLength: 12)
             if entry.hasData, let value = entry.commission {
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(formatCommission(value))
+                    Text(entry.isHidden ? "••••••" : formatCommission(value))
                         .font(.system(size: 26, weight: .semibold, design: .rounded))
                         .minimumScaleFactor(0.5)
                         .lineLimit(1)
-                    Text(entry.currency)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.secondary)
+                    if !entry.isHidden {
+                        Text(entry.currency)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.secondary)
+                    }
                 }
             } else {
                 Text("Přihlaste se")

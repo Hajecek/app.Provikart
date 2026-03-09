@@ -13,6 +13,7 @@ struct HomeView: View {
     @State private var commission: CommissionResponse?
     @State private var commissionError: String?
     @State private var isLoadingCommission = false
+    @State private var isCommissionHidden = WidgetDataStore.isCommissionHidden
     /// Počet položek po termínu instalace čekajících na dokončení. nil = nenačteno, 0 = žádné, >0 = zobrazit container.
     @State private var pendingCompletionCount: Int?
 
@@ -25,8 +26,22 @@ struct HomeView: View {
                 Section {
                     commissionRow
                 } header: {
-                    Text("Provize")
-                        .textCase(nil)
+                    HStack {
+                        Text("Provize")
+                        Spacer()
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                isCommissionHidden.toggle()
+                            }
+                            WidgetDataStore.setCommissionHidden(isCommissionHidden)
+                        } label: {
+                            Image(systemName: isCommissionHidden ? "eye.slash" : "eye")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .textCase(nil)
                 }
 
                 if (pendingCompletionCount ?? 0) > 0 {
@@ -237,14 +252,17 @@ struct HomeView: View {
     @ViewBuilder
     private func valueRow(commission c: CommissionResponse) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(formatCommission(c.commission))
+            Text(isCommissionHidden ? "••••••" : formatCommission(c.commission))
                 .font(.system(.largeTitle, design: .rounded).weight(.semibold))
                 .minimumScaleFactor(0.7)
                 .lineLimit(1)
+                .contentTransition(.numericText())
 
-            Text(c.currency)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            if !isCommissionHidden {
+                Text(c.currency)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 

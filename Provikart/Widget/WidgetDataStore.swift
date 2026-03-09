@@ -30,6 +30,7 @@ enum WidgetDataStore {
         static let reportsIncompleteCount = "widget_reports_incomplete_count"
         static let authToken = "widget_auth_token"
         static let installations = "widget_installations"
+        static let commissionHidden = "widget_commission_hidden"
     }
 
     /// Položka pro widget instalací (minimální payload pro App Group).
@@ -38,6 +39,17 @@ enum WidgetDataStore {
         let installation_time: String?
         let item_name: String
         let order_display: String
+    }
+
+    /// Vrátí, zda je provize skrytá.
+    static var isCommissionHidden: Bool {
+        suite?.bool(forKey: Keys.commissionHidden) ?? false
+    }
+
+    /// Přepne viditelnost provize a aktualizuje widget.
+    static func setCommissionHidden(_ hidden: Bool) {
+        suite?.set(hidden, forKey: Keys.commissionHidden)
+        WidgetCenter.shared.reloadTimelines(ofKind: widgetKindCommission)
     }
 
     /// Uloží token do App Group, aby si widget mohl data stáhnout i bez spuštění aplikace.
