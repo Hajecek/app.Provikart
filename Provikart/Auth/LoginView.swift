@@ -19,7 +19,10 @@ struct LoginView: View {
 
     var body: some View {
         ZStack {
-            Color(.systemBackground).ignoresSafeArea()
+            Image("background-login")
+                .resizable()
+                .scaledToFill()
+                .ignoresSafeArea()
 
             VStack(spacing: 20) {
                 Spacer(minLength: 20)
@@ -87,13 +90,9 @@ struct LoginView: View {
                         authState.setLoggedIn(true)
                     } label: {
                         Text("Pokračovat bez přihlášení")
-                            .fontWeight(.medium)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .foregroundStyle(.secondary)
+                            .font(.subheadline)
+                            .foregroundStyle(Color.accentColor)
                     }
-                    .padding(.horizontal, 20)
                     .padding(.bottom, 4)
                 }
 
