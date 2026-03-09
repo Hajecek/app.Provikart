@@ -17,6 +17,8 @@ struct ContentView: View {
         Group {
             if networkMonitor.isOffline {
                 OfflineView()
+            } else if authState.authToken == nil {
+                FreeEntryView()
             } else {
                 TabMenuView()
             }

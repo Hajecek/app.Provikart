@@ -83,18 +83,17 @@ struct LoginView: View {
                     .disabled(isLoading || email.isEmpty || password.isEmpty)
                     .opacity(isLoading || email.isEmpty || password.isEmpty ? 0.7 : 1)
 
-                    // Linky
-                    VStack(spacing: 8) {
-                        Button("Zapomenuté heslo?") {
-                            // TODO: reset hesla
-                        }
-                        .font(.footnote)
-
-                        Button("Vytvořit nový účet") {
-                            // TODO: registrace
-                        }
-                        .font(.footnote)
+                    Button {
+                        authState.setLoggedIn(true)
+                    } label: {
+                        Text("Pokračovat bez přihlášení")
+                            .fontWeight(.medium)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .foregroundStyle(.secondary)
                     }
+                    .padding(.horizontal, 20)
                     .padding(.bottom, 4)
                 }
 
