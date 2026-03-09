@@ -199,7 +199,7 @@ struct ProvikartWidgetEntryView: View {
         ZStack {
             if entry.hasData, let value = entry.commission {
                 VStack(spacing: 0) {
-                    Text(entry.isHidden ? "••••" : formatCommission(value))
+                    Text(entry.isHidden ? "– – –" : formatCommission(value))
                         .font(.system(size: 18, weight: .semibold, design: .rounded))
                         .minimumScaleFactor(0.5)
                         .lineLimit(1)
@@ -224,7 +224,7 @@ struct ProvikartWidgetEntryView: View {
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.secondary)
             if entry.hasData, let value = entry.commission {
-                Text(entry.isHidden ? "••••••" : (formatCommission(value) + " " + entry.currency))
+                Text(entry.isHidden ? "– – – –" : (formatCommission(value) + " " + entry.currency))
                     .font(.system(size: 16, weight: .semibold, design: .rounded))
                     .minimumScaleFactor(0.7)
             } else {
@@ -239,7 +239,7 @@ struct ProvikartWidgetEntryView: View {
     // Zamykací obrazovka – jeden řádek
     private var accessoryInlineView: some View {
         if entry.hasData, let value = entry.commission {
-            Text(entry.isHidden ? "Provize ••••••" : "Provize \(formatCommission(value)) \(entry.currency)")
+            Text(entry.isHidden ? "Provize – – – –" : "Provize \(formatCommission(value)) \(entry.currency)")
                 .font(.system(size: 14, weight: .medium))
         } else {
             Text("Provikart – přihlaste se")
@@ -264,7 +264,7 @@ struct ProvikartWidgetEntryView: View {
             Spacer(minLength: 8)
             if entry.hasData, let value = entry.commission {
                 HStack(alignment: .lastTextBaseline, spacing: 4) {
-                    Text(entry.isHidden ? "••••••" : formatCommission(value))
+                    Text(entry.isHidden ? "– – – –" : formatCommission(value))
                         .font(.system(size: 22, weight: .semibold, design: .rounded))
                         .minimumScaleFactor(0.6)
                         .lineLimit(1)
@@ -305,7 +305,7 @@ struct ProvikartWidgetEntryView: View {
             Spacer(minLength: 12)
             if entry.hasData, let value = entry.commission {
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(entry.isHidden ? "••••••" : formatCommission(value))
+                    Text(entry.isHidden ? "– – – –" : formatCommission(value))
                         .font(.system(size: 26, weight: .semibold, design: .rounded))
                         .minimumScaleFactor(0.5)
                         .lineLimit(1)

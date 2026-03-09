@@ -26,22 +26,8 @@ struct HomeView: View {
                 Section {
                     commissionRow
                 } header: {
-                    HStack {
-                        Text("Provize")
-                        Spacer()
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                isCommissionHidden.toggle()
-                            }
-                            WidgetDataStore.setCommissionHidden(isCommissionHidden)
-                        } label: {
-                            Image(systemName: isCommissionHidden ? "eye.slash" : "eye")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .textCase(nil)
+                    Text("Provize")
+                        .textCase(nil)
                 }
 
                 if (pendingCompletionCount ?? 0) > 0 {
@@ -120,6 +106,18 @@ struct HomeView: View {
                         .font(.body.weight(.medium))
                         .foregroundStyle(.primary)
                     Spacer(minLength: 0)
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isCommissionHidden.toggle()
+                        }
+                        WidgetDataStore.setCommissionHidden(isCommissionHidden)
+                    } label: {
+                        Image(systemName: isCommissionHidden ? "eye.slash" : "eye")
+                            .font(.body)
+                            .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Color(uiColor: .tertiaryLabel))
@@ -252,7 +250,7 @@ struct HomeView: View {
     @ViewBuilder
     private func valueRow(commission c: CommissionResponse) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(isCommissionHidden ? "••••••" : formatCommission(c.commission))
+            Text(isCommissionHidden ? "– – – –" : formatCommission(c.commission))
                 .font(.system(.largeTitle, design: .rounded).weight(.semibold))
                 .minimumScaleFactor(0.7)
                 .lineLimit(1)
