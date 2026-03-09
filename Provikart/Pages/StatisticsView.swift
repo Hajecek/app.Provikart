@@ -88,7 +88,7 @@ private func monthYear(_ date: Date) -> String {
 // MARK: - Datové pomocné struktury pro grafy
 
 private struct CategoryMonthlyValue: Identifiable, Hashable {
-    let id = UUID()
+    var id: String { category.rawValue }
     let monthStart: Date
     let category: ProductCategory
     let value: Double
@@ -152,10 +152,11 @@ struct StatisticsView: View {
             dict.map { SoldItemGroup(id: $0.key, itemName: $0.key, count: $0.value.0, totalBasePrice: $0.value.1) }
                 .sorted { lhs, rhs in
                     if selectedMetric == .count {
-                        return lhs.count > rhs.count
+                        if lhs.count != rhs.count { return lhs.count > rhs.count }
                     } else {
-                        return lhs.totalBasePrice > rhs.totalBasePrice
+                        if lhs.totalBasePrice != rhs.totalBasePrice { return lhs.totalBasePrice > rhs.totalBasePrice }
                     }
+                    return lhs.itemName.localizedCompare(rhs.itemName) == .orderedAscending
                 }
         }
     }
@@ -441,6 +442,7 @@ struct StatisticsView: View {
                     let groups = groupedByCategory[cat] ?? []
                     if !groups.isEmpty {
                         DetailSection(category: cat, groups: groups, metric: selectedMetric)
+                            .animation(nil, value: selectedMetric)
                     }
                 }
             }
