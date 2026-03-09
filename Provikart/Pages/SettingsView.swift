@@ -24,6 +24,7 @@ private enum AppearanceMode: String, CaseIterable, Identifiable {
 }
 
 struct SettingsView: View {
+    @EnvironmentObject private var authState: AuthState
     @AppStorage("settings.appearance.mode") private var appearanceRaw: String = AppearanceMode.system.rawValue
     @AppStorage("settings.notifications.general") private var notificationsGeneral = true
     @AppStorage("settings.notifications.orders") private var notificationsOrders = true
@@ -31,6 +32,10 @@ struct SettingsView: View {
     @State private var showClearCacheConfirm = false
     @State private var showOpenURLAlert = false
     @State private var pendingURL: URL?
+    @State private var showDeleteAccountConfirm = false
+    @State private var isDeletingAccount = false
+    @State private var deleteAccountError: String?
+    @State private var showDeleteError = false
 
     private var appearance: AppearanceMode {
         get { AppearanceMode(rawValue: appearanceRaw) ?? .system }
@@ -115,6 +120,25 @@ struct SettingsView: View {
             } header: {
                 Text("O aplikaci")
             }
+
+            Section {
+                Button(role: .destructive) {
+                    showDeleteAccountConfirm = true
+                } label: {
+                    HStack {
+                        Label("Smazat účet", systemImage: "person.crop.circle.badge.minus")
+                        if isDeletingAccount {
+                            Spacer()
+                            ProgressView()
+                        }
+                    }
+                }
+                .disabled(isDeletingAccount)
+            } header: {
+                Text("Účet")
+            } footer: {
+                Text("Trvale smaže váš účet a všechna data z našich serverů.")
+            }
         }
         .navigationTitle("Nastavení")
         .navigationBarTitleDisplayMode(.inline)
@@ -135,6 +159,48 @@ struct SettingsView: View {
         } message: {
             Text("Otevřít tento odkaz v prohlížeči?")
         }
+        .alert("Opravdu smazat účet?", isPresented: $showDeleteAccountConfirm) {
+            Button("Zrušit", role: .cancel) { }
+            Button("Smazat účet", role: .destructive) {
+                Task { await performDeleteAccount() }
+            }
+        } message: {
+            Text("""
+            Tato akce je nevratná. Budou trvale smazány:
+
+            • Všechny vaše objednávky a jejich položky
+            • Všechny nahlášené problémy
+            • Přihlašovací tokeny a push notifikace
+            • Váš uživatelský účet
+
+            Po smazání se nebudete moci přihlásit a data nelze obnovit.
+            """)
+        }
+        .alert("Chyba při mazání účtu", isPresented: $showDeleteError) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(deleteAccountError ?? "Neznámá chyba. Zkuste to prosím později.")
+        }
+    }
+
+    private func performDeleteAccount() async {
+        isDeletingAccount = true
+        defer { isDeletingAccount = false }
+
+        do {
+            let response = try await DeleteAccountService().deleteAccount(token: authState.authToken)
+            if response.success {
+                await MainActor.run {
+                    authState.logOut()
+                }
+            } else {
+                deleteAccountError = response.error ?? "Nepodařilo se smazat účet."
+                showDeleteError = true
+            }
+        } catch {
+            deleteAccountError = error.localizedDescription
+            showDeleteError = true
+        }
     }
 
     private func clearAppCache() {
@@ -154,4 +220,5 @@ struct SettingsView: View {
             .navigationTitle("Nastavení")
             .navigationBarTitleDisplayMode(.inline)
     }
+    .environmentObject(AuthState())
 }
