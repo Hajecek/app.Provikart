@@ -12,7 +12,6 @@ struct CommissionProgressBarView: View {
     var goal: Double = 100_000
     var barCount: Int = 25
     var barHeight: CGFloat = 40
-    var barMinHeight: CGFloat = 18
     var barSpacing: CGFloat = 3
     var showScaleLabels: Bool = true
     var scaleFontSize: CGFloat = 11
@@ -64,10 +63,7 @@ struct CommissionProgressBarView: View {
     }
 
     private func barHeightFor(index: Int) -> CGFloat {
-        let mid = barCount / 2
-        let distFromCenter = abs(index - mid)
-        let factor = 1.0 - (Double(distFromCenter) / Double(mid)) * 0.5
-        return barMinHeight + (barHeight - barMinHeight) * factor
+        barHeight
     }
 
     /// Tři barvy: od začátku oranžová, pak žlutá, ke konci zelená.
