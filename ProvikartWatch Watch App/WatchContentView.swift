@@ -26,47 +26,23 @@ struct WatchContentView: View {
 
     // MARK: - Not Authenticated
 
-    @State private var isRequestingToken = false
-
     private var notAuthenticatedView: some View {
-        NavigationStack {
-            VStack(spacing: 14) {
-                Image(systemName: "iphone.and.arrow.forward")
-                    .font(.system(size: 28))
-                    .foregroundStyle(.secondary)
+        VStack(spacing: 12) {
+            Spacer()
 
-                Text("Přihlaste se\nna iPhonu")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+            Image(systemName: "iphone.and.arrow.forward")
+                .font(.system(size: 32))
+                .foregroundStyle(.secondary)
 
-                Button {
-                    isRequestingToken = true
-                    sessionManager.requestTokenFromPhone()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                        isRequestingToken = false
-                    }
-                } label: {
-                    if isRequestingToken {
-                        ProgressView()
-                    } else {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.caption)
-                    }
-                }
-                .buttonStyle(.bordered)
-                .disabled(isRequestingToken)
-            }
-            .navigationTitle("Provikart")
+            Text("Přihlaste se přes iPhone")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+
+            Spacer()
         }
-        .task {
-            while !Task.isCancelled && !sessionManager.isAuthenticated {
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
-                if !sessionManager.isAuthenticated {
-                    sessionManager.requestTokenFromPhone()
-                }
-            }
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Commission View
