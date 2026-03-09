@@ -228,15 +228,15 @@ struct WatchContentView: View {
         return minH + (maxH - minH) * factor
     }
 
-    /// Barvy přechází od zelené (nízké) přes žlutou (střed) po červenou/oranžovou (vysoké) -- jako Noise app.
+    /// Tři barvy: od začátku oranžová, pak žlutá, ke konci zelená.
     private func barColor(forIndex index: Int) -> Color {
         let ratio = Double(index) / Double(barCount - 1)
-        if ratio < 0.4 {
-            return .green
-        } else if ratio < 0.7 {
+        if ratio < 1.0 / 3.0 {
+            return .orange
+        } else if ratio < 2.0 / 3.0 {
             return .yellow
         } else {
-            return .orange
+            return .green
         }
     }
 
