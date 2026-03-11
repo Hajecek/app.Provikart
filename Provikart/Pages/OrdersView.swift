@@ -2,13 +2,13 @@
 //  OrdersView.swift
 //  Provikart
 //
-//  Seznam objednávek (položky s datem instalace).
+//  Seznam objednávek a položek objednávek z API user_orders.
 //
 
 import SwiftUI
 
-private func parseInstallationDate(_ raw: String) -> Date? {
-    let trimmed = raw.trimmingCharacters(in: .whitespaces)
+private func parseInstallationDate(_ raw: String?) -> Date? {
+    guard let raw = raw?.trimmingCharacters(in: .whitespaces), !raw.isEmpty else { return nil }
     let ddMMyyyy: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "dd.MM.yyyy"
@@ -21,82 +21,59 @@ private func parseInstallationDate(_ raw: String) -> Date? {
         f.locale = Locale(identifier: "en_US_POSIX")
         return f
     }()
-    return ddMMyyyy.date(from: trimmed) ?? yyyyMMdd.date(from: trimmed)
+    return ddMMyyyy.date(from: raw) ?? yyyyMMdd.date(from: raw)
 }
 
-private func sortDate(for item: OrderItemByInstallationDate) -> Date {
-    guard let day = parseInstallationDate(item.installation_date) else { return .distantPast }
-    guard let timeStr = item.installation_time, !timeStr.isEmpty else { return day }
-    let parts = timeStr.split(separator: ":")
-    guard parts.count >= 2,
-          let h = Int(parts[0]), let m = Int(parts[1]),
-          (0..<24).contains(h), (0..<60).contains(m) else { return day }
-    return Calendar.current.date(bySettingHour: h, minute: m, second: 0, of: day) ?? day
-}
-
-private func formatSectionDate(_ date: Date) -> String {
-    let f = DateFormatter()
-    f.dateStyle = .long
-    f.timeStyle = .none
-    f.locale = Locale(identifier: "cs_CZ")
-    return f.string(from: date)
-}
-
-private func relativeSectionHeader(for date: Date) -> String {
-    let cal = Calendar.current
-    if cal.isDateInToday(date) {
-        return "Dnes"
+private func formatOrderDate(_ raw: String?) -> String {
+    guard let raw = raw, !raw.isEmpty else { return "—" }
+    if let date = parseInstallationDate(raw) {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .none
+        f.locale = Locale(identifier: "cs_CZ")
+        return f.string(from: date)
     }
-    if cal.isDateInTomorrow(date) {
-        return "Zítra"
-    }
-    let dayMonth = DateFormatter()
-    dayMonth.locale = Locale(identifier: "cs_CZ")
-    dayMonth.dateFormat = "d. M."
-    let weekday = DateFormatter()
-    weekday.locale = Locale(identifier: "cs_CZ")
-    weekday.dateFormat = "EEEE"
-    let weekdayLower = weekday.string(from: date).lowercased()
-    return "\(weekdayLower) \(dayMonth.string(from: date))"
+    return raw
 }
+
+private enum OrdersViewFormatting {
+    static func price(_ value: Double?) -> String {
+        guard let value = value else { return "—" }
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "CZK"
+        formatter.currencySymbol = "Kč"
+        formatter.maximumFractionDigits = 0
+        formatter.minimumFractionDigits = 0
+        return formatter.string(from: NSNumber(value: value)) ?? "\(Int(value)) Kč"
+    }
+}
+
+// MARK: - Hlavní view
 
 struct OrdersView: View {
     @EnvironmentObject private var authState: AuthState
     @Environment(\.openAddSheet) private var openAddSheet
 
-    @State private var items: [OrderItemByInstallationDate] = []
+    @State private var orders: [UserOrder] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
-    @State private var selectedItem: OrderItemByInstallationDate?
-    private let service = OrderItemsByInstallationDateService()
-    private let calendar = Calendar.current
-
-    private var sortedDates: [Date] {
-        let dates = Set(items.compactMap { parseInstallationDate($0.installation_date) }.map { calendar.startOfDay(for: $0) })
-        return dates.sorted()
-    }
-
-    private func items(for date: Date) -> [OrderItemByInstallationDate] {
-        let start = calendar.startOfDay(for: date)
-        return items.filter {
-            guard let d = parseInstallationDate($0.installation_date) else { return false }
-            return calendar.isDate(d, inSameDayAs: start)
-        }
-        .sorted { sortDate(for: $0) < sortDate(for: $1) }
-    }
+    @State private var selectedOrder: UserOrder?
+    @State private var selectedItemContext: OrderItemContext?
+    private let service = UserOrdersService()
 
     var body: some View {
         NavigationStack {
             Group {
-                if isLoading && items.isEmpty {
+                if isLoading && orders.isEmpty {
                     ProgressView("Načítám…")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let msg = errorMessage {
                     errorView(msg)
-                } else if items.isEmpty {
+                } else if orders.isEmpty {
                     emptyView
                 } else {
-                    mainList
+                    ordersList
                 }
             }
             .background(Color(uiColor: .systemGroupedBackground))
@@ -133,12 +110,15 @@ struct OrdersView: View {
                 }
             }
             .toolbarBackground(.visible, for: .navigationBar)
+            .navigationDestination(item: $selectedOrder) { order in
+                OrderDetailView(order: order, selectedItemContext: $selectedItemContext)
+            }
         }
-        .sheet(item: $selectedItem) { item in
-            OrderItemDetailSheet(item: item, selectedItem: $selectedItem)
+        .sheet(item: $selectedItemContext) { ctx in
+            UserOrderItemDetailSheet(orderNumber: ctx.order.displayOrderNumber, item: ctx.item)
         }
-        .task { await loadItems() }
-        .refreshable { await loadItems() }
+        .task { await loadOrders() }
+        .refreshable { await loadOrders() }
     }
 
     private func errorView(_ msg: String) -> some View {
@@ -147,7 +127,7 @@ struct OrdersView: View {
         } description: {
             Text(msg)
         } actions: {
-            Button("Zkusit znovu") { Task { await loadItems() } }
+            Button("Zkusit znovu") { Task { await loadOrders() } }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -156,7 +136,7 @@ struct OrdersView: View {
         ContentUnavailableView {
             Label("Žádné objednávky", systemImage: "doc.text.magnifyingglass")
         } description: {
-            Text("Jakmile budete mít položky s datem instalace, objeví se zde.")
+            Text("Zatím nemáte žádné objednávky.")
         } actions: {
             if openAddSheet != nil {
                 Button("Přidat položku") { openAddSheet?() }
@@ -165,52 +145,42 @@ struct OrdersView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var mainList: some View {
+    private var ordersList: some View {
         List {
-            ForEach(sortedDates, id: \.self) { date in
-                Section {
-                    ForEach(items(for: date)) { item in
-                        Button {
-                            selectedItem = item
-                        } label: {
-                            HStack(alignment: .center, spacing: 12) {
-                                OrdersListRow(item: item)
-                                Spacer(minLength: 8)
-                                Image(systemName: "chevron.right")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(Color(uiColor: .tertiaryLabel))
-                            }
-                        }
-                        .buttonStyle(.plain)
+            ForEach(orders) { order in
+                Button {
+                    selectedOrder = order
+                } label: {
+                    HStack(alignment: .center, spacing: 12) {
+                        OrderListRow(order: order)
+                        Spacer(minLength: 8)
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color(uiColor: .tertiaryLabel))
                     }
-                } header: {
-                    Text(relativeSectionHeader(for: date))
-                        .textCase(nil)
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(calendar.isDateInToday(date) ? Color.accentColor : Color.primary)
                 }
+                .buttonStyle(.plain)
             }
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.visible)
     }
 
-    private func loadItems() async {
+    private func loadOrders() async {
         guard authState.authToken != nil else {
             await MainActor.run { errorMessage = "Pro zobrazení objednávek se přihlaste." }
             return
         }
         await MainActor.run { isLoading = true; errorMessage = nil }
         do {
-            let fetched = try await service.fetchOrderItems(token: authState.authToken, installationDate: nil)
+            let fetched = try await service.fetchOrders(token: authState.authToken)
             await MainActor.run {
-                items = fetched
+                orders = fetched
                 isLoading = false
             }
         } catch {
             await MainActor.run {
-                items = []
+                orders = []
                 isLoading = false
                 errorMessage = error.localizedDescription
             }
@@ -218,38 +188,42 @@ struct OrdersView: View {
     }
 }
 
-// MARK: - Řádek objednávky
+// MARK: - Řádek objednávky v seznamu
 
-private struct OrdersListRow: View {
-    let item: OrderItemByInstallationDate
-
-    private var timeAndOrder: String {
-        var parts: [String] = ["Obj. \(item.displayOrderNumber)"]
-        if let t = item.installation_time, !t.isEmpty { parts.append(t) }
-        return parts.joined(separator: " · ")
-    }
+private struct OrderListRow: View {
+    let order: UserOrder
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(item.item_name)
-                .font(.body)
-                .fontWeight(.medium)
-                .foregroundStyle(.primary)
-            Text(timeAndOrder)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            if item.base_price > 0 || !item.status.isEmpty {
-                HStack(spacing: 8) {
-                    if item.base_price > 0 {
-                        Text(OrdersViewFormatting.price(item.base_price))
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
-                    if !item.status.isEmpty {
-                        Text(item.status)
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
+            HStack(alignment: .firstTextBaseline) {
+                Text("Obj. \(order.displayOrderNumber)")
+                    .font(.body)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.primary)
+                if !order.statusDisplay.isEmpty {
+                    Text("· \(order.statusDisplay)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if let name = order.customer_name, !name.isEmpty {
+                Text(name)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            HStack(spacing: 8) {
+                Text(formatOrderDate(order.order_date))
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                if let amount = order.amount, amount > 0 {
+                    Text(OrdersViewFormatting.price(amount))
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                if !order.items.isEmpty {
+                    Text("\(order.items.count) \(order.items.count == 1 ? "položka" : order.items.count < 5 ? "položky" : "položek")")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
                 }
             }
         }
@@ -257,11 +231,100 @@ private struct OrdersListRow: View {
     }
 }
 
-// MARK: - Detail položky (sheet)
+// MARK: - Detail objednávky (položky)
 
-private struct OrderItemDetailSheet: View {
-    let item: OrderItemByInstallationDate
-    @Binding var selectedItem: OrderItemByInstallationDate?
+private struct OrderDetailView: View {
+    let order: UserOrder
+    @Binding var selectedItemContext: OrderItemContext?
+
+    var body: some View {
+        List {
+            Section("Objednávka") {
+                LabeledContent("Číslo", value: order.displayOrderNumber)
+                if let name = order.customer_name, !name.isEmpty {
+                    LabeledContent("Zákazník", value: name)
+                }
+                if let phone = order.customer_phone, !phone.isEmpty {
+                    LabeledContent("Telefon", value: phone)
+                }
+                if let addr = order.customer_address, !addr.isEmpty {
+                    LabeledContent("Adresa", value: addr)
+                }
+                LabeledContent("Datum", value: formatOrderDate(order.order_date))
+                if let amount = order.amount {
+                    LabeledContent("Částka", value: OrdersViewFormatting.price(amount))
+                }
+                if !order.statusDisplay.isEmpty {
+                    LabeledContent("Stav", value: order.statusDisplay)
+                }
+                if let notes = order.notes, !notes.isEmpty {
+                    LabeledContent("Poznámky", value: notes)
+                }
+                if let url = order.order_url, !url.isEmpty, let link = URL(string: url) {
+                    Link("Otevřít objednávku", destination: link)
+                }
+            }
+            Section("Položky (\(order.items.count))") {
+                ForEach(order.items) { item in
+                    Button {
+                        selectedItemContext = OrderItemContext(order: order, item: item)
+                    } label: {
+                        HStack(alignment: .center, spacing: 12) {
+                            UserOrderItemRow(item: item)
+                            Spacer(minLength: 8)
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .navigationTitle("Obj. \(order.displayOrderNumber)")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - Řádek položky v detailu objednávky
+
+private struct UserOrderItemRow: View {
+    let item: UserOrderItem
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(item.item_name)
+                .font(.body)
+                .fontWeight(.medium)
+                .foregroundStyle(.primary)
+            HStack(spacing: 8) {
+                if let type = item.item_type, !type.isEmpty {
+                    Text(type)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if item.base_price > 0 {
+                    Text(OrdersViewFormatting.price(item.base_price))
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                if !item.statusDisplay.isEmpty {
+                    Text(item.statusDisplay)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Sheet s detailem položky
+
+private struct UserOrderItemDetailSheet: View {
+    let orderNumber: String
+    let item: UserOrderItem
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -269,15 +332,19 @@ private struct OrderItemDetailSheet: View {
             List {
                 Section {
                     LabeledContent("Položka", value: item.item_name)
-                    LabeledContent("Objednávka", value: item.displayOrderNumber)
+                    LabeledContent("Objednávka", value: orderNumber)
                     if let type = item.item_type, !type.isEmpty {
                         LabeledContent("Typ", value: type)
                     }
                 }
-                Section("Instalace") {
-                    LabeledContent("Datum", value: formatInstallationDate(item.installation_date))
-                    if let time = item.installation_time, !time.isEmpty {
-                        LabeledContent("Čas", value: time)
+                if !item.installationDateDisplay.isEmpty || (item.installation_time?.isEmpty == false) {
+                    Section("Instalace") {
+                        if !item.installationDateDisplay.isEmpty {
+                            LabeledContent("Datum", value: formatInstallationDate(item.installation_day))
+                        }
+                        if let time = item.installation_time, !time.isEmpty {
+                            LabeledContent("Čas", value: time)
+                        }
                     }
                 }
                 Section("Ceny") {
@@ -287,9 +354,9 @@ private struct OrderItemDetailSheet: View {
                     }
                     LabeledContent("Provize", value: OrdersViewFormatting.price(item.commission))
                 }
-                if !item.status.isEmpty {
+                if !item.statusDisplay.isEmpty {
                     Section {
-                        LabeledContent("Stav", value: item.status)
+                        LabeledContent("Stav", value: item.statusDisplay)
                     }
                 }
             }
@@ -298,19 +365,15 @@ private struct OrderItemDetailSheet: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Hotovo") {
-                        selectedItem = nil
                         dismiss()
                     }
                 }
             }
-            .onDisappear {
-                selectedItem = nil
-            }
         }
     }
 
-    private func formatInstallationDate(_ raw: String) -> String {
-        guard let date = parseInstallationDate(raw) else { return raw }
+    private func formatInstallationDate(_ raw: String?) -> String {
+        guard let date = parseInstallationDate(raw) else { return raw ?? "—" }
         let f = DateFormatter()
         f.dateStyle = .long
         f.timeStyle = .none
@@ -319,19 +382,10 @@ private struct OrderItemDetailSheet: View {
     }
 }
 
-private enum OrdersViewFormatting {
-    static func price(_ value: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = "CZK"
-        formatter.currencySymbol = "Kč"
-        formatter.maximumFractionDigits = 0
-        formatter.minimumFractionDigits = 0
-        return formatter.string(from: NSNumber(value: value)) ?? "\(Int(value)) Kč"
-    }
+/// Kontext vybrané položky pro sheet (Identifiable).
+struct OrderItemContext: Identifiable {
+    let order: UserOrder
+    let item: UserOrderItem
+    var id: Int { order.id * 100000 + item.id }
 }
 
-#Preview {
-    OrdersView()
-        .environmentObject(AuthState())
-}
