@@ -350,7 +350,7 @@ private struct OrderDetailView: View {
     }
 }
 
-// MARK: - Řádek položky v detailu objednávky (tap = detail, ikona = datum instalace)
+// MARK: - Řádek položky v detailu objednávky (přehledný vertikální layout)
 
 private struct OrderDetailItemRow: View {
     let order: UserOrder
@@ -358,28 +358,78 @@ private struct OrderDetailItemRow: View {
     var onSelect: () -> Void
     var onSetInstallation: () -> Void
 
+    /// Text řádku „Instalace: datum, čas“ nebo „Termín: —“
+    private var installationLine: String {
+        let day = item.installation_day?.trimmingCharacters(in: .whitespaces) ?? ""
+        let time = item.installation_time?.trimmingCharacters(in: .whitespaces) ?? ""
+        if day.isEmpty {
+            return "Termín: —"
+        }
+        let dateStr: String = {
+            if let date = parseInstallationDate(day) {
+                let f = DateFormatter()
+                f.dateStyle = .medium
+                f.locale = Locale(identifier: "cs_CZ")
+                return f.string(from: date)
+            }
+            return day
+        }()
+        if time.isEmpty {
+            return "Instalace: \(dateStr)"
+        }
+        return "Instalace: \(dateStr), \(time)"
+    }
+
+    private var hasInstallation: Bool {
+        !(item.installation_day?.trimmingCharacters(in: .whitespaces) ?? "").isEmpty
+    }
+
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             Button(action: onSelect) {
-                HStack(alignment: .center, spacing: 12) {
-                    UserOrderItemRow(item: item)
-                    Spacer(minLength: 8)
+                HStack(alignment: .center, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(item.item_name)
+                            .font(.body)
+                            .fontWeight(.medium)
+                            .foregroundStyle(.primary)
+                        HStack(spacing: 8) {
+                            if let type = item.item_type, !type.isEmpty {
+                                Text(type)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            if item.base_price > 0 {
+                                Text(OrdersViewFormatting.price(item.base_price))
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                            }
+                            if !item.statusDisplay.isEmpty {
+                                OrderStatusBadge(status: item.statusDisplay)
+                                    .fixedSize(horizontal: true, vertical: false)
+                            }
+                        }
+                        Text(installationLine)
+                            .font(.caption)
+                            .foregroundStyle(hasInstallation ? Color(uiColor: .secondaryLabel) : Color(uiColor: .tertiaryLabel))
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Color(uiColor: .tertiaryLabel))
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
             Button(action: onSetInstallation) {
-                Image(systemName: "calendar.badge.clock")
-                    .font(.body)
-                    .foregroundStyle(Color.accentColor)
+                Label(hasInstallation ? "Změnit termín" : "Vybrat termín", systemImage: "calendar.badge.clock")
+                    .font(.subheadline.weight(.medium))
+                    .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.bordered)
         }
+        .padding(.vertical, 6)
     }
 }
 
