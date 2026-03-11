@@ -49,6 +49,51 @@ private enum OrdersViewFormatting {
     }
 }
 
+// MARK: - Badge stavu objednávky / položky
+
+private struct OrderStatusBadge: View {
+    let status: String
+
+    private var isPending: Bool { status.lowercased() == "pending" }
+    private var isCompleted: Bool { status.lowercased() == "completed" }
+
+    var body: some View {
+        if isPending {
+            HStack(spacing: 4) {
+                Image(systemName: "clock")
+                    .font(.caption2.weight(.semibold))
+                Text("Čeká")
+                    .font(.caption)
+                    .fontWeight(.medium)
+            }
+            .foregroundStyle(Color(red: 0.6, green: 0.45, blue: 0))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.yellow.opacity(0.35))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+        } else if isCompleted {
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.caption2)
+                Text("Hotovo")
+                    .font(.caption)
+                    .fontWeight(.medium)
+            }
+            .foregroundStyle(.green)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.green.opacity(0.2))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+        } else if !status.isEmpty {
+            Text(status)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            EmptyView()
+        }
+    }
+}
+
 // MARK: - Hlavní view
 
 struct OrdersView: View {
@@ -195,15 +240,13 @@ private struct OrderListRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("Obj. \(order.displayOrderNumber)")
                     .font(.body)
                     .fontWeight(.semibold)
                     .foregroundStyle(.primary)
                 if !order.statusDisplay.isEmpty {
-                    Text("· \(order.statusDisplay)")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    OrderStatusBadge(status: order.statusDisplay)
                 }
             }
             if let name = order.customer_name, !name.isEmpty {
@@ -255,7 +298,11 @@ private struct OrderDetailView: View {
                     LabeledContent("Částka", value: OrdersViewFormatting.price(amount))
                 }
                 if !order.statusDisplay.isEmpty {
-                    LabeledContent("Stav", value: order.statusDisplay)
+                    HStack {
+                        Text("Stav")
+                        Spacer()
+                        OrderStatusBadge(status: order.statusDisplay)
+                    }
                 }
                 if let notes = order.notes, !notes.isEmpty {
                     LabeledContent("Poznámky", value: notes)
@@ -310,9 +357,7 @@ private struct UserOrderItemRow: View {
                         .foregroundStyle(.tertiary)
                 }
                 if !item.statusDisplay.isEmpty {
-                    Text(item.statusDisplay)
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+                    OrderStatusBadge(status: item.statusDisplay)
                 }
             }
         }
@@ -355,8 +400,13 @@ private struct UserOrderItemDetailSheet: View {
                     LabeledContent("Provize", value: OrdersViewFormatting.price(item.commission))
                 }
                 if !item.statusDisplay.isEmpty {
-                    Section {
-                        LabeledContent("Stav", value: item.statusDisplay)
+                    Section("Stav") {
+                        HStack {
+                            Spacer()
+                            OrderStatusBadge(status: item.statusDisplay)
+                            Spacer()
+                        }
+                        .listRowBackground(Color.clear)
                     }
                 }
             }
