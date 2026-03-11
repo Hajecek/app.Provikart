@@ -66,11 +66,15 @@ private struct OrderStatusBadge: View {
                     .font(.caption)
                     .fontWeight(.medium)
             }
-            .foregroundStyle(Color(red: 0.6, green: 0.45, blue: 0))
+            .foregroundStyle(Color(red: 0.95, green: 0.8, blue: 0.25))
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(Color.yellow.opacity(0.35))
+            .background(Color(red: 0.22, green: 0.2, blue: 0.18))
             .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color(red: 0.65, green: 0.55, blue: 0.35), lineWidth: 1)
+            )
         } else if isCompleted {
             HStack(spacing: 4) {
                 Image(systemName: "checkmark.circle.fill")
@@ -156,7 +160,11 @@ struct OrdersView: View {
             }
             .toolbarBackground(.visible, for: .navigationBar)
             .navigationDestination(item: $selectedOrder) { order in
-                OrderDetailView(order: order, selectedItemContext: $selectedItemContext)
+                OrderDetailView(
+                    order: order,
+                    selectedItemContext: $selectedItemContext,
+                    onOrdersDidUpdate: { Task { await loadOrders() } }
+                )
             }
         }
         .sheet(item: $selectedItemContext) { ctx in
@@ -192,7 +200,7 @@ struct OrdersView: View {
 
     private var ordersList: some View {
         List {
-            ForEach(orders) { order in
+            ForEach(orders, id: \.id) { order in
                 Button {
                     selectedOrder = order
                 } label: {
@@ -279,6 +287,10 @@ private struct OrderListRow: View {
 private struct OrderDetailView: View {
     let order: UserOrder
     @Binding var selectedItemContext: OrderItemContext?
+    var onOrdersDidUpdate: () -> Void
+
+    @State private var itemForInstallation: OrderItemContext?
+    @EnvironmentObject private var authState: AuthState
 
     var body: some View {
         List {
@@ -311,30 +323,67 @@ private struct OrderDetailView: View {
                     Link("Otevřít objednávku", destination: link)
                 }
             }
-            Section("Položky (\(order.items.count))") {
+            Section(header: Text("Položky (\(order.items.count))")) {
                 ForEach(order.items) { item in
-                    Button {
-                        selectedItemContext = OrderItemContext(order: order, item: item)
-                    } label: {
-                        HStack(alignment: .center, spacing: 12) {
-                            UserOrderItemRow(item: item)
-                            Spacer(minLength: 8)
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(Color(uiColor: .tertiaryLabel))
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
+                    OrderDetailItemRow(
+                        order: order,
+                        item: item,
+                        onSelect: { selectedItemContext = OrderItemContext(order: order, item: item) },
+                        onSetInstallation: { itemForInstallation = OrderItemContext(order: order, item: item) }
+                    )
                 }
             }
         }
         .navigationTitle("Obj. \(order.displayOrderNumber)")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $itemForInstallation) { ctx in
+            InstallationDateSheet(
+                item: ctx.item,
+                authToken: authState.authToken,
+                onSaved: {
+                    itemForInstallation = nil
+                    onOrdersDidUpdate()
+                },
+                onDismiss: { itemForInstallation = nil }
+            )
+        }
     }
 }
 
-// MARK: - Řádek položky v detailu objednávky
+// MARK: - Řádek položky v detailu objednávky (tap = detail, ikona = datum instalace)
+
+private struct OrderDetailItemRow: View {
+    let order: UserOrder
+    let item: UserOrderItem
+    var onSelect: () -> Void
+    var onSetInstallation: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Button(action: onSelect) {
+                HStack(alignment: .center, spacing: 12) {
+                    UserOrderItemRow(item: item)
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Button(action: onSetInstallation) {
+                Image(systemName: "calendar.badge.clock")
+                    .font(.body)
+                    .foregroundStyle(Color.accentColor)
+            }
+            .buttonStyle(.borderless)
+        }
+    }
+}
+
+// MARK: - Řádek položky (jen obsah)
 
 private struct UserOrderItemRow: View {
     let item: UserOrderItem
@@ -432,10 +481,148 @@ private struct UserOrderItemDetailSheet: View {
     }
 }
 
+// MARK: - Sheet výběru termínu instalace
+
+private struct InstallationDateSheet: View {
+    let item: UserOrderItem
+    /// Token předaný z rodiče (OrderDetailView), aby sheet měl jistotu přístupu k přihlášení.
+    var authToken: String?
+    var onSaved: () -> Void
+    var onDismiss: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var selectedDate: Date
+    @State private var selectedTime: Date
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+    @State private var showErrorAlert = false
+
+    private static func initialDate(from item: UserOrderItem) -> Date {
+        parseInstallationDate(item.installation_day) ?? Date()
+    }
+
+    private static func initialTime(from item: UserOrderItem) -> Date {
+        guard let timeStr = item.installation_time, !timeStr.isEmpty else {
+            return Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: Date()) ?? Date()
+        }
+        let parts = timeStr.split(separator: ":")
+        let h = parts.isEmpty ? 9 : (Int(parts[0]) ?? 9)
+        let m = parts.count >= 2 ? (Int(parts[1]) ?? 0) : 0
+        return Calendar.current.date(bySettingHour: min(23, max(0, h)), minute: min(59, max(0, m)), second: 0, of: Date()) ?? Date()
+    }
+
+    init(item: UserOrderItem, authToken: String?, onSaved: @escaping () -> Void, onDismiss: @escaping () -> Void) {
+        self.item = item
+        self.authToken = authToken
+        self.onSaved = onSaved
+        self.onDismiss = onDismiss
+        _selectedDate = State(initialValue: Self.initialDate(from: item))
+        _selectedTime = State(initialValue: Self.initialTime(from: item))
+    }
+
+    private var dayString: String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f.string(from: selectedDate)
+    }
+
+    private var timeString: String {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f.string(from: selectedTime)
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Položka") {
+                    Text(item.item_name)
+                        .font(.headline)
+                }
+                Section("Datum instalace") {
+                    DatePicker("Datum", selection: $selectedDate, displayedComponents: .date)
+                        .environment(\.locale, Locale(identifier: "cs_CZ"))
+                }
+                Section("Čas instalace") {
+                    DatePicker("Čas", selection: $selectedTime, displayedComponents: .hourAndMinute)
+                        .environment(\.locale, Locale(identifier: "cs_CZ"))
+                }
+                if let msg = errorMessage {
+                    Section {
+                        Text(msg)
+                            .foregroundStyle(.red)
+                            .font(.caption)
+                    }
+                }
+            }
+            .navigationTitle("Termín instalace")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Zrušit") {
+                        onDismiss()
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Uložit") {
+                        saveInstallation()
+                    }
+                    .disabled(isSaving)
+                }
+            }
+            .onDisappear {
+                onDismiss()
+            }
+            .alert("Chyba ukládání", isPresented: $showErrorAlert) {
+                Button("OK", role: .cancel) {
+                    showErrorAlert = false
+                    errorMessage = nil
+                }
+            } message: {
+                Text(errorMessage ?? "")
+            }
+        }
+    }
+
+    private func saveInstallation() {
+        guard let token = authToken, !token.isEmpty else {
+            errorMessage = "Pro uložení se přihlaste."
+            showErrorAlert = true
+            return
+        }
+        isSaving = true
+        errorMessage = nil
+        showErrorAlert = false
+        Task {
+            do {
+                try await UpdateOrderItemInstallationService().updateInstallation(
+                    orderItemId: item.id,
+                    installationDay: dayString,
+                    installationTime: timeString,
+                    token: token
+                )
+                await MainActor.run {
+                    isSaving = false
+                    onSaved()
+                    dismiss()
+                }
+            } catch {
+                await MainActor.run {
+                    isSaving = false
+                    errorMessage = error.localizedDescription
+                    showErrorAlert = true
+                }
+            }
+        }
+    }
+}
+
 /// Kontext vybrané položky pro sheet (Identifiable).
 struct OrderItemContext: Identifiable {
     let order: UserOrder
     let item: UserOrderItem
     var id: Int { order.id * 100000 + item.id }
 }
-
