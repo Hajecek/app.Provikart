@@ -51,12 +51,21 @@ struct HomeView: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    NavigationLink {
-                        StatisticsView()
-                            .environmentObject(authState)
-                            .environment(\.openAddSheet, openAddSheet)
-                    } label: {
-                        Image(systemName: "chart.bar")
+                    HStack(spacing: 16) {
+                        NavigationLink {
+                            StatisticsView()
+                                .environmentObject(authState)
+                                .environment(\.openAddSheet, openAddSheet)
+                        } label: {
+                            Image(systemName: "chart.bar")
+                        }
+                        NavigationLink {
+                            ProblemsView()
+                                .environmentObject(authState)
+                                .environment(\.openAddSheet, openAddSheet)
+                        } label: {
+                            Image(systemName: "exclamationmark.triangle")
+                        }
                     }
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {

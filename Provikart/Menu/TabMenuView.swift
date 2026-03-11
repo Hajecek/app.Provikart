@@ -11,7 +11,7 @@ enum Tabs: Hashable {
     case home
     case calendar
     case add
-    case problems
+    case orders
 }
 
 private struct OpenAddSheetKey: EnvironmentKey {
@@ -49,8 +49,8 @@ struct TabMenuView: View {
                 Color.clear
             }
 
-            Tab("Problémy", systemImage: "exclamationmark.triangle", value: .problems) {
-                ProblemsView()
+            Tab("Objednávky", systemImage: "doc.text.magnifyingglass", value: .orders) {
+                OrdersView()
                     .environment(\.openAddSheet, { showAddSheet = true })
             }
         }

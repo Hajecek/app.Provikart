@@ -119,6 +119,13 @@ struct CalendarView: View {
                         } label: {
                             Image(systemName: "chart.bar")
                         }
+                        NavigationLink {
+                            ProblemsView()
+                                .environmentObject(authState)
+                                .environment(\.openAddSheet, openAddSheet)
+                        } label: {
+                            Image(systemName: "exclamationmark.triangle")
+                        }
                         if !items.isEmpty {
                             Button("Dnes") {
                                 let today = calendar.startOfDay(for: Date())
