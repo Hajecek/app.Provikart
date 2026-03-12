@@ -101,6 +101,7 @@ struct ProfileBarButton: View {
     var body: some View {
         NavigationLink {
             ProfileView()
+                .environmentObject(authState)
         } label: {
             Group {
                 if let url = authState.currentUser?.profileImageURL {
