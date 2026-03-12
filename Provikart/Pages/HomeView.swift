@@ -16,9 +16,12 @@ struct HomeView: View {
     @State private var isCommissionHidden = WidgetDataStore.isCommissionHidden
     /// Počet položek po termínu instalace čekajících na dokončení. nil = nenačteno, 0 = žádné, >0 = zobrazit container.
     @State private var pendingCompletionCount: Int?
+    /// Celkový počet služeb (order_items bez migrace). nil = nenačteno.
+    @State private var servicesCount: Int?
 
     private let commissionService = CommissionService()
     private let pendingCompletionService = OrderItemsPendingCompletionService()
+    private let orderItemsCountService = OrderItemsCountService()
 
     var body: some View {
         NavigationStack {
@@ -27,6 +30,13 @@ struct HomeView: View {
                     commissionRow
                 } header: {
                     Text("Provize")
+                        .textCase(nil)
+                }
+
+                Section {
+                    servicesCountRow
+                } header: {
+                    Text("Služby")
                         .textCase(nil)
                 }
 
@@ -84,17 +94,20 @@ struct HomeView: View {
         .task {
             await loadCommission()
             await loadPendingCompletion()
+            await loadServicesCount()
             // Periodické obnovení provize a nedokončených na pozadí (každých 5 s)
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
                 if Task.isCancelled { break }
                 await loadCommission(silent: true)
                 await loadPendingCompletion()
+                await loadServicesCount()
             }
         }
         .refreshable {
             await loadCommission()
             await loadPendingCompletion()
+            await loadServicesCount()
         }
     }
 
@@ -165,6 +178,37 @@ struct HomeView: View {
         .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityBannerLabel)
+    }
+
+    // MARK: - Services count row
+
+    private var servicesCountRow: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "list.bullet.rectangle.fill")
+                .font(.title2)
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 28, alignment: .center)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Celkem služeb")
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.primary)
+                Text("Položky objednávek (bez migrací)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if let count = servicesCount {
+                Text("\(count)")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(.primary)
+            } else {
+                ProgressView()
+            }
+        }
+        .padding(.vertical, 4)
+        .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(servicesCount != nil ? "Celkem \(servicesCount!) služeb" : "Načítám počet služeb")
     }
 
     // MARK: - Pending completion row (zobrazí se jen když count > 0)
@@ -338,6 +382,21 @@ struct HomeView: View {
             await MainActor.run { pendingCompletionCount = count }
         } catch {
             await MainActor.run { pendingCompletionCount = 0 }
+        }
+    }
+
+    /// Načte celkový počet služeb uživatele.
+    private func loadServicesCount() async {
+        let token = await MainActor.run { authState.authToken }
+        guard let token, !token.isEmpty else {
+            await MainActor.run { servicesCount = nil }
+            return
+        }
+        do {
+            let count = try await orderItemsCountService.fetchCount(token: token)
+            await MainActor.run { servicesCount = count }
+        } catch {
+            await MainActor.run { servicesCount = nil }
         }
     }
 }
