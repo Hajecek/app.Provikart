@@ -122,94 +122,99 @@ struct ProblemsView: View {
         }
     }
 
-    /// Mění se při změně dat z API – vynutí překreslení Listu (řeší „stejné id, starý obsah“).
-    private var listContentId: String {
-        viewModel.reports.map { "\($0.id)-\($0.order_number ?? "")-\($0.updated_at ?? "")" }.joined(separator: "|")
-    }
-
     var body: some View {
         NavigationStack(path: $path) {
-            Group {
+            List {
                 if !authState.isLoggedIn {
-                    ContentUnavailableView(
-                        "Problémy",
-                        systemImage: "exclamationmark.triangle",
-                        description: Text("Pro zobrazení reportů se přihlaste.")
-                    )
-                } else if viewModel.isLoading && viewModel.reports.isEmpty {
-                    ProgressView("Načítám reporty…")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let err = viewModel.errorMessage {
-                    VStack(spacing: 12) {
+                    Section {
                         ContentUnavailableView(
-                            "Chyba",
+                            "Problémy",
                             systemImage: "exclamationmark.triangle",
-                            description: Text(err)
+                            description: Text("Pro zobrazení reportů se přihlaste.")
                         )
-                        Button("Zkusit znovu") {
-                            Task { await viewModel.loadReports() }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if viewModel.reports.isEmpty {
-                    ContentUnavailableView(
-                        "Žádné reporty",
-                        systemImage: "doc.text",
-                        description: Text("Zatím nemáte žádné reporty.")
-                    )
-                } else {
-                    List {
-                        Section {
-                            Picker("Filtr", selection: $filter) {
-                                ForEach(ReportFilter.allCases, id: \.self) { f in
-                                    Text(f.rawValue).tag(f)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                        }
-                        .listRowInsets(EdgeInsets(top: 24, leading: 16, bottom: 12, trailing: 16))
                         .listRowBackground(Color.clear)
-
-                        if filteredReports.isEmpty {
-                            Section {
-                                Text(filter == .all ? "Žádné reporty." : "V této kategorii žádné reporty.")
-                                    .foregroundStyle(.secondary)
-                                    .frame(maxWidth: .infinity)
+                    }
+                } else if viewModel.isLoading && viewModel.reports.isEmpty {
+                    Section {
+                        ProgressView("Načítám reporty…")
+                            .frame(maxWidth: .infinity)
+                            .listRowBackground(Color.clear)
+                    }
+                } else if let err = viewModel.errorMessage {
+                    Section {
+                        VStack(alignment: .leading, spacing: 12) {
+                            ContentUnavailableView(
+                                "Chyba",
+                                systemImage: "exclamationmark.triangle",
+                                description: Text(err)
+                            )
+                            Button("Zkusit znovu") {
+                                Task { await viewModel.loadReports() }
                             }
-                        } else {
-                            ForEach(filteredReports, id: \.id) { report in
-                                Section {
-                                    NavigationLink(value: ReportDetailDestination(report: report, openEditOnAppear: false)) {
-                                        ReportRow(report: report)
-                                    }
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                        Button(role: .destructive) {
-                                            Task {
-                                                await viewModel.deleteReport(id: report.id)
-                                            }
-                                        } label: {
-                                            Label("Smazat", systemImage: "trash")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .listRowBackground(Color.clear)
+                    }
+                } else if viewModel.reports.isEmpty {
+                    Section {
+                        ContentUnavailableView(
+                            "Žádné reporty",
+                            systemImage: "doc.text",
+                            description: Text("Zatím nemáte žádné reporty.")
+                        )
+                        .listRowBackground(Color.clear)
+                    }
+                } else {
+                    Section {
+                        Picker("Filtr", selection: $filter) {
+                            ForEach(ReportFilter.allCases, id: \.self) { f in
+                                Text(f.rawValue).tag(f)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                    .listRowInsets(EdgeInsets(top: 24, leading: 16, bottom: 12, trailing: 16))
+                    .listRowBackground(Color.clear)
+
+                    if filteredReports.isEmpty {
+                        Section {
+                            Text(filter == .all ? "Žádné reporty." : "V této kategorii žádné reporty.")
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity)
+                        }
+                    } else {
+                        ForEach(filteredReports, id: \.id) { report in
+                            Section {
+                                NavigationLink(value: ReportDetailDestination(report: report, openEditOnAppear: false)) {
+                                    ReportRow(report: report)
+                                }
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) {
+                                        Task {
+                                            await viewModel.deleteReport(id: report.id)
                                         }
+                                    } label: {
+                                        Label("Smazat", systemImage: "trash")
                                     }
-                                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                                        Button {
-                                            path.append(ReportDetailDestination(report: report, openEditOnAppear: true))
-                                        } label: {
-                                            Label("Upravit", systemImage: "pencil")
-                                        }
-                                        .tint(Color(uiColor: .systemBlue))
+                                }
+                                .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                                    Button {
+                                        path.append(ReportDetailDestination(report: report, openEditOnAppear: true))
+                                    } label: {
+                                        Label("Upravit", systemImage: "pencil")
                                     }
+                                    .tint(Color(uiColor: .systemBlue))
                                 }
                             }
                         }
-                    }
-                    .id(listContentId)
-                    .listStyle(.insetGrouped)
-                    .listSectionSpacing(.compact)
-                    .navigationDestination(for: ReportDetailDestination.self) { destination in
-                        ReportDetailView(report: destination.report, openEditOnAppear: destination.openEditOnAppear)
                     }
                 }
+            }
+            .id("problems-list")
+            .listStyle(.insetGrouped)
+            .listSectionSpacing(.compact)
+            .navigationDestination(for: ReportDetailDestination.self) { destination in
+                ReportDetailView(report: destination.report, openEditOnAppear: destination.openEditOnAppear)
             }
             .scrollContentBackground(.visible)
             .background(Color(uiColor: .systemGroupedBackground))
@@ -242,13 +247,20 @@ struct ProblemsView: View {
             }
             .onAppear {
                 viewModel.getToken = { [authState] in authState.authToken }
-                if authState.isLoggedIn {
+                if authState.isLoggedIn, path.isEmpty {
                     viewModel.startPolling()
+                }
+            }
+            .onChange(of: path.count) { _, count in
+                if count == 0 {
+                    if authState.isLoggedIn { viewModel.startPolling() }
+                } else {
+                    viewModel.stopPolling()
                 }
             }
             .onChange(of: authState.isLoggedIn) { _, isLoggedIn in
                 if isLoggedIn {
-                    viewModel.startPolling()
+                    if path.isEmpty { viewModel.startPolling() }
                 } else {
                     viewModel.stopPolling()
                     viewModel.reports = []
@@ -663,6 +675,8 @@ struct ReportDetailView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.visible)
+        .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle(report.order_number.map { "Obj. \($0)" } ?? "Report #\(report.id)")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
