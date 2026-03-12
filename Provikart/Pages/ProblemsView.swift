@@ -12,12 +12,6 @@ enum ReportFilter: String, CaseIterable {
     case completed = "Dokončené"
 }
 
-/// Cíl navigace na detail reportu – při openEditOnAppear == true se po otevření ihned zobrazí sheet Úpravy.
-private struct ReportDetailDestination: Hashable {
-    let report: UserReport
-    var openEditOnAppear: Bool
-}
-
 // MARK: - ViewModel: vlastní pollovací Task, nezávislý na životnosti view – změny v DB se vždy projeví v UI
 
 @MainActor
@@ -112,7 +106,8 @@ struct ProblemsView: View {
     @Environment(\.openAddSheet) private var openAddSheet
     @StateObject private var viewModel = ProblemsViewModel()
     @State private var filter: ReportFilter = .incomplete
-    @State private var path = NavigationPath()
+    @State private var selectedReport: UserReport?
+    @State private var openEditOnAppear = false
 
     private var filteredReports: [UserReport] {
         switch filter {
@@ -123,7 +118,7 @@ struct ProblemsView: View {
     }
 
     var body: some View {
-        NavigationStack(path: $path) {
+        NavigationStack {
             List {
                 if !authState.isLoggedIn {
                     Section {
@@ -185,9 +180,19 @@ struct ProblemsView: View {
                     } else {
                         ForEach(filteredReports, id: \.id) { report in
                             Section {
-                                NavigationLink(value: ReportDetailDestination(report: report, openEditOnAppear: false)) {
-                                    ReportRow(report: report)
+                                Button {
+                                    openEditOnAppear = false
+                                    selectedReport = report
+                                } label: {
+                                    HStack(alignment: .center, spacing: 12) {
+                                        ReportRow(report: report)
+                                        Spacer(minLength: 8)
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                                    }
                                 }
+                                .buttonStyle(.plain)
                                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                     Button(role: .destructive) {
                                         Task {
@@ -199,7 +204,8 @@ struct ProblemsView: View {
                                 }
                                 .swipeActions(edge: .leading, allowsFullSwipe: false) {
                                     Button {
-                                        path.append(ReportDetailDestination(report: report, openEditOnAppear: true))
+                                        openEditOnAppear = true
+                                        selectedReport = report
                                     } label: {
                                         Label("Upravit", systemImage: "pencil")
                                     }
@@ -213,8 +219,12 @@ struct ProblemsView: View {
             .id("problems-list")
             .listStyle(.insetGrouped)
             .listSectionSpacing(.compact)
-            .navigationDestination(for: ReportDetailDestination.self) { destination in
-                ReportDetailView(report: destination.report, openEditOnAppear: destination.openEditOnAppear)
+            .navigationDestination(item: $selectedReport) { report in
+                ReportDetailView(
+                    report: report,
+                    openEditOnAppear: openEditOnAppear,
+                    selectedReport: $selectedReport
+                )
             }
             .scrollContentBackground(.visible)
             .background(Color(uiColor: .systemGroupedBackground))
@@ -247,12 +257,12 @@ struct ProblemsView: View {
             }
             .onAppear {
                 viewModel.getToken = { [authState] in authState.authToken }
-                if authState.isLoggedIn, path.isEmpty {
+                if authState.isLoggedIn, selectedReport == nil {
                     viewModel.startPolling()
                 }
             }
-            .onChange(of: path.count) { _, count in
-                if count == 0 {
+            .onChange(of: selectedReport) { _, new in
+                if new == nil {
                     if authState.isLoggedIn { viewModel.startPolling() }
                 } else {
                     viewModel.stopPolling()
@@ -260,7 +270,7 @@ struct ProblemsView: View {
             }
             .onChange(of: authState.isLoggedIn) { _, isLoggedIn in
                 if isLoggedIn {
-                    if path.isEmpty { viewModel.startPolling() }
+                    if selectedReport == nil { viewModel.startPolling() }
                 } else {
                     viewModel.stopPolling()
                     viewModel.reports = []
@@ -610,6 +620,7 @@ struct ReportDetailView: View {
     let report: UserReport
     /// Když true, po zobrazení detailu se ihned otevře sheet na úpravu (např. po swipe „Upravit“).
     var openEditOnAppear: Bool = false
+    @Binding var selectedReport: UserReport?
     @EnvironmentObject private var authState: AuthState
     @State private var showEditSheet = false
 
@@ -696,6 +707,9 @@ struct ReportDetailView: View {
             if openEditOnAppear {
                 showEditSheet = true
             }
+        }
+        .onDisappear {
+            selectedReport = nil
         }
     }
 
