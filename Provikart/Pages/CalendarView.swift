@@ -111,26 +111,10 @@ struct CalendarView: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    HStack(spacing: 16) {
-                        NavigationLink {
-                            StatisticsView()
-                                .environmentObject(authState)
-                                .environment(\.openAddSheet, openAddSheet)
-                        } label: {
-                            Image(systemName: "chart.bar")
-                        }
-                        NavigationLink {
-                            ProblemsView()
-                                .environmentObject(authState)
-                                .environment(\.openAddSheet, openAddSheet)
-                        } label: {
-                            Image(systemName: "exclamationmark.triangle")
-                        }
-                        if !items.isEmpty {
-                            Button("Dnes") {
-                                let today = calendar.startOfDay(for: Date())
-                                withAnimation(.easeInOut(duration: 0.22)) { selectedDate = today }
-                            }
+                    if !items.isEmpty {
+                        Button("Dnes") {
+                            let today = calendar.startOfDay(for: Date())
+                            withAnimation(.easeInOut(duration: 0.22)) { selectedDate = today }
                         }
                     }
                 }
