@@ -16,6 +16,8 @@ struct HomeView: View {
     @State private var isCommissionHidden = WidgetDataStore.isCommissionHidden
     /// Cíl provize z API (null = použije se výchozí 100k).
     @State private var commissionGoal: Double?
+    /// Cíl počtu služeb z API (null = výchozí 100).
+    @State private var servicesGoal: Int?
     /// Počet položek po termínu instalace čekajících na dokončení. nil = nenačteno, 0 = žádné, >0 = zobrazit container.
     @State private var pendingCompletionCount: Int?
     /// Celkový počet služeb (order_items bez migrace). nil = nenačteno.
@@ -28,6 +30,10 @@ struct HomeView: View {
 
     private var effectiveCommissionGoal: Double {
         commissionGoal ?? 100_000
+    }
+
+    private var effectiveServicesGoal: Double {
+        Double(servicesGoal ?? 100)
     }
 
     var body: some View {
@@ -197,29 +203,48 @@ struct HomeView: View {
     // MARK: - Services count row
 
     private var servicesCountRow: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: "list.bullet.rectangle.fill")
-                .font(.title2)
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 28, alignment: .center)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Celkem služeb")
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(.primary)
-                Text("Položky objednávek (bez migrací)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        Button {
+            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        } label: {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center, spacing: 12) {
+                    Image(systemName: "list.bullet.rectangle.fill")
+                        .font(.title2)
+                        .foregroundStyle(Color.accentColor)
+                        .frame(width: 28, alignment: .center)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Celkem služeb")
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(.primary)
+                        Text("Položky objednávek (bez migrací)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    if let count = servicesCount {
+                        Text("\(count)")
+                            .font(.system(.largeTitle, design: .rounded).weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .contentTransition(.numericText())
+                    } else {
+                        ProgressView()
+                    }
+                }
+
+                if let count = servicesCount {
+                    CommissionProgressBarView(
+                        value: Double(count),
+                        goal: effectiveServicesGoal,
+                        barHeight: 36,
+                        scaleFontSize: 10
+                    )
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            if let count = servicesCount {
-                Text("\(count)")
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(.primary)
-            } else {
-                ProgressView()
-            }
+            .padding(.vertical, 4)
         }
-        .padding(.vertical, 4)
+        .buttonStyle(.plain)
         .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(servicesCount != nil ? "Celkem \(servicesCount!) služeb" : "Načítám počet služeb")
@@ -342,9 +367,10 @@ struct HomeView: View {
         let token = await MainActor.run { authState.authToken }
         guard let token, !token.isEmpty else { return }
         do {
-            let (commissionGoal, _) = try await userGoalsService.fetchGoals(token: token)
+            let (commissionGoal, servicesGoal) = try await userGoalsService.fetchGoals(token: token)
             await MainActor.run {
                 self.commissionGoal = commissionGoal
+                self.servicesGoal = servicesGoal
                 if let goal = commissionGoal {
                     WidgetDataStore.saveCommissionGoal(goal)
                 }
@@ -375,11 +401,12 @@ struct HomeView: View {
         do {
             let response = try await commissionService.fetchCommission(token: token)
             // Načteme cíle společně s provizí (stejný token) – zaručí správný cíl pro graf
-            let (goal, _) = (try? await userGoalsService.fetchGoals(token: token)) ?? (nil, nil)
+            let (goal, servicesGoal) = (try? await userGoalsService.fetchGoals(token: token)) ?? (nil, nil)
             await MainActor.run {
                 withAnimation(.easeInOut(duration: 0.3)) {
                     commission = response
                     if let goal { commissionGoal = goal }
+                    if let servicesGoal { self.servicesGoal = servicesGoal }
                 }
                 isLoadingCommission = false
                 WidgetDataStore.saveCommission(response.commission, currency: response.currency, monthLabel: response.month_label)
