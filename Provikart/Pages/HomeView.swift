@@ -39,6 +39,30 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             List {
+                // Nejvyšší priorita: položky po termínu instalace – vždy úplně nahoře, výrazný design
+                if (pendingCompletionCount ?? 0) > 0 {
+                    Section {
+                        NavigationLink {
+                            PendingCompletionListView()
+                                .environmentObject(authState)
+                        } label: {
+                            pendingCompletionRowContent
+                        }
+                        .listRowBackground(pendingCompletionBackground)
+                        .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16))
+                    } header: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.circle.fill")
+                                .foregroundStyle(.orange)
+                            Text("Priorita – po termínu instalace")
+                                .textCase(nil)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.primary)
+                        }
+                    }
+                    .listRowBackground(Color.clear)
+                }
+
                 Section {
                     commissionRow
                 } header: {
@@ -51,20 +75,6 @@ struct HomeView: View {
                 } header: {
                     Text("Služby")
                         .textCase(nil)
-                }
-
-                if (pendingCompletionCount ?? 0) > 0 {
-                    Section {
-                        NavigationLink {
-                            PendingCompletionListView()
-                                .environmentObject(authState)
-                        } label: {
-                            pendingCompletionRowContent
-                        }
-                    } header: {
-                        Text("Čekající na dokončení")
-                            .textCase(nil)
-                    }
                 }
             }
             .listStyle(.insetGrouped)
@@ -250,29 +260,53 @@ struct HomeView: View {
         .accessibilityLabel(servicesCount != nil ? "Celkem \(servicesCount!) služeb" : "Načítám počet služeb")
     }
 
-    // MARK: - Pending completion row (zobrazí se jen když count > 0)
+    // MARK: - Pending completion (priorita – po termínu instalace)
+
+    /// Výrazné pozadí sekce „po termínu“ – oranžový odstín, zaoblené rohy, rámeček po celém obvodu včetně rohů.
+    private var pendingCompletionBackground: some View {
+        let shape = RoundedRectangle(cornerRadius: 12)
+        return ZStack {
+            shape
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.orange.opacity(0.12),
+                            Color.orange.opacity(0.06)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            shape
+                .stroke(Color.orange.opacity(0.35), lineWidth: 1)
+        }
+    }
 
     private var pendingCompletionRowContent: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: "clock.badge.exclamationmark")
-                .font(.title2)
-                .foregroundStyle(Color.orange)
-                .frame(width: 28, alignment: .center)
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(alignment: .center, spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color.orange.opacity(0.2))
+                    .frame(width: 44, height: 44)
+                Image(systemName: "clock.badge.exclamationmark.fill")
+                    .font(.title2)
+                    .foregroundStyle(.orange)
+            }
+            VStack(alignment: .leading, spacing: 4) {
                 Text("Položky po termínu instalace")
-                    .font(.body.weight(.medium))
+                    .font(.body.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(2)
-                Text("\(pendingCompletionCount ?? 0) nedokončených")
+                Text("\(pendingCompletionCount ?? 0) čeká na dokončení")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Text("\(pendingCompletionCount ?? 0)")
-                .font(.title2.weight(.semibold))
-                .foregroundStyle(.primary)
+                .font(.title2.weight(.bold))
+                .foregroundStyle(.orange)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(pendingCompletionCount ?? 0) položek čeká na dokončení po termínu instalace")
     }
