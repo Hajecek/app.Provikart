@@ -31,6 +31,7 @@ enum WidgetDataStore {
         static let authToken = "widget_auth_token"
         static let installations = "widget_installations"
         static let commissionHidden = "widget_commission_hidden"
+        static let commissionGoal = "widget_commission_goal"
     }
 
     /// Položka pro widget instalací (minimální payload pro App Group).
@@ -75,12 +76,30 @@ enum WidgetDataStore {
         WidgetCenter.shared.reloadTimelines(ofKind: widgetKindCommission)
     }
 
+    /// Načte uložený cíl provize z App Group (např. z předchozího načtení nebo z webu).
+    static func loadCommissionGoal() -> Double? {
+        guard let raw = suite?.object(forKey: Keys.commissionGoal) else { return nil }
+        if let n = raw as? NSNumber { return n.doubleValue }
+        return nil
+    }
+
+    /// Uloží cíl provize pro widget (z API user_goals). Volá se z HomeView po načtení cílů.
+    static func saveCommissionGoal(_ goal: Double?) {
+        if let g = goal {
+            suite?.set(NSNumber(value: g), forKey: Keys.commissionGoal)
+        } else {
+            suite?.removeObject(forKey: Keys.commissionGoal)
+        }
+        WidgetCenter.shared.reloadTimelines(ofKind: widgetKindCommission)
+    }
+
     /// Smaže uloženou provizi (např. po odhlášení) a aktualizuje widget.
     static func clearCommission() {
         suite?.removeObject(forKey: Keys.commission)
         suite?.removeObject(forKey: Keys.currency)
         suite?.removeObject(forKey: Keys.monthLabel)
         suite?.removeObject(forKey: Keys.lastUpdated)
+        suite?.removeObject(forKey: Keys.commissionGoal)
         WidgetCenter.shared.reloadTimelines(ofKind: widgetKindCommission)
     }
 

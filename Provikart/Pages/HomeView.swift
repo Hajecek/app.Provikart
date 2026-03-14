@@ -14,14 +14,21 @@ struct HomeView: View {
     @State private var commissionError: String?
     @State private var isLoadingCommission = false
     @State private var isCommissionHidden = WidgetDataStore.isCommissionHidden
+    /// Cíl provize z API (null = použije se výchozí 100k).
+    @State private var commissionGoal: Double?
     /// Počet položek po termínu instalace čekajících na dokončení. nil = nenačteno, 0 = žádné, >0 = zobrazit container.
     @State private var pendingCompletionCount: Int?
     /// Celkový počet služeb (order_items bez migrace). nil = nenačteno.
     @State private var servicesCount: Int?
 
     private let commissionService = CommissionService()
+    private let userGoalsService = UserGoalsService()
     private let pendingCompletionService = OrderItemsPendingCompletionService()
     private let orderItemsCountService = OrderItemsCountService()
+
+    private var effectiveCommissionGoal: Double {
+        commissionGoal ?? 100_000
+    }
 
     var body: some View {
         NavigationStack {
@@ -92,6 +99,11 @@ struct HomeView: View {
             .toolbarBackground(.visible, for: .navigationBar)
         }
         .task {
+            // Obnov uložený cíl hned (z předchozího načtení), než stáhneme z API
+            if let saved = WidgetDataStore.loadCommissionGoal() {
+                commissionGoal = saved
+            }
+            await loadGoals()
             await loadCommission()
             await loadPendingCompletion()
             await loadServicesCount()
@@ -99,12 +111,14 @@ struct HomeView: View {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
                 if Task.isCancelled { break }
+                await loadGoals()
                 await loadCommission(silent: true)
                 await loadPendingCompletion()
                 await loadServicesCount()
             }
         }
         .refreshable {
+            await loadGoals()
             await loadCommission()
             await loadPendingCompletion()
             await loadServicesCount()
@@ -161,7 +175,7 @@ struct HomeView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 if let c = commission, !isCommissionHidden {
-                    CommissionProgressBarView(value: c.commission, goal: 100_000)
+                    CommissionProgressBarView(value: c.commission, goal: effectiveCommissionGoal)
                 }
 
                 HStack(spacing: 4) {
@@ -323,6 +337,23 @@ struct HomeView: View {
 
     // MARK: - Data Loading
 
+    /// Načte cíle uživatele (provize, služby) z API.
+    private func loadGoals() async {
+        let token = await MainActor.run { authState.authToken }
+        guard let token, !token.isEmpty else { return }
+        do {
+            let (commissionGoal, _) = try await userGoalsService.fetchGoals(token: token)
+            await MainActor.run {
+                self.commissionGoal = commissionGoal
+                if let goal = commissionGoal {
+                    WidgetDataStore.saveCommissionGoal(goal)
+                }
+            }
+        } catch {
+            // Cíle nejsou kritické – při chybě zůstane výchozí 100k
+        }
+    }
+
     /// Načte provizi z API. Při `silent: true` se nespouští loading stav – vhodné pro periodické obnovení na pozadí.
     private func loadCommission(silent: Bool = false) async {
         let token = await MainActor.run { authState.authToken }
@@ -343,13 +374,22 @@ struct HomeView: View {
 
         do {
             let response = try await commissionService.fetchCommission(token: token)
+            // Načteme cíle společně s provizí (stejný token) – zaručí správný cíl pro graf
+            let (goal, _) = (try? await userGoalsService.fetchGoals(token: token)) ?? (nil, nil)
             await MainActor.run {
                 withAnimation(.easeInOut(duration: 0.3)) {
                     commission = response
+                    if let goal { commissionGoal = goal }
                 }
                 isLoadingCommission = false
                 WidgetDataStore.saveCommission(response.commission, currency: response.currency, monthLabel: response.month_label)
-                PhoneSessionManager.shared.sendCommissionUpdate(commission: response.commission, currency: response.currency, monthLabel: response.month_label)
+                if let goal { WidgetDataStore.saveCommissionGoal(goal) }
+                PhoneSessionManager.shared.sendCommissionUpdate(
+                    commission: response.commission,
+                    currency: response.currency,
+                    monthLabel: response.month_label,
+                    commissionGoal: goal ?? commissionGoal
+                )
             }
         } catch {
             await MainActor.run {

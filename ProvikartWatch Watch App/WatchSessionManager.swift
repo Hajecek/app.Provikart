@@ -167,15 +167,20 @@ extension WatchSessionManager: WCSessionDelegate {
                 let commission = message["commission"] as? Double ?? 0
                 let currency = message["currency"] as? String ?? "Kč"
                 let monthLabel = message["monthLabel"] as? String
+                let commissionGoal = message["commissionGoal"] as? Double
+                var userInfo: [String: Any] = [
+                    "commission": commission,
+                    "currency": currency,
+                    "monthLabel": monthLabel ?? ""
+                ]
+                if let goal = commissionGoal {
+                    userInfo["commissionGoal"] = goal
+                }
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(
                         name: .watchCommissionDidUpdate,
                         object: nil,
-                        userInfo: [
-                            "commission": commission,
-                            "currency": currency,
-                            "monthLabel": monthLabel ?? ""
-                        ]
+                        userInfo: userInfo
                     )
                     print("[WC-Watch] Provize přijata z iPhonu: \(commission) \(currency)")
                 }

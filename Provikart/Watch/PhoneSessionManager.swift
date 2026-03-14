@@ -58,17 +58,20 @@ final class PhoneSessionManager: NSObject, ObservableObject {
     }
 
     /// Pošle aktuální provizi na hodinky (volá se z HomeView po načtení).
-    func sendCommissionUpdate(commission: Double, currency: String, monthLabel: String?) {
+    func sendCommissionUpdate(commission: Double, currency: String, monthLabel: String?, commissionGoal: Double? = nil) {
         guard WCSession.isSupported() else { return }
         let session = WCSession.default
         guard session.activationState == .activated, session.isReachable else { return }
 
-        let data: [String: Any] = [
+        var data: [String: Any] = [
             "type": "commissionUpdate",
             "commission": commission,
             "currency": currency,
             "monthLabel": monthLabel ?? ""
         ]
+        if let goal = commissionGoal {
+            data["commissionGoal"] = goal
+        }
         session.sendMessage(data, replyHandler: nil) { error in
             print("[WC-Phone] Chyba odesílání provize: \(error.localizedDescription)")
         }

@@ -41,9 +41,9 @@ struct CommissionProgressBarView: View {
                 HStack {
                     Text("0")
                     Spacer()
-                    Text("50k")
+                    Text(scaleLabel(goal / 2))
                     Spacer()
-                    Text("100k")
+                    Text(scaleLabel(goal))
                 }
                 .font(.system(size: scaleFontSize, weight: .medium, design: .rounded))
                 .foregroundStyle(.secondary)
@@ -60,6 +60,20 @@ struct CommissionProgressBarView: View {
                 animatedProgress = newTarget
             }
         }
+        .onChange(of: goal) { _, _ in
+            let newTarget = min(value / goal, 1.0)
+            withAnimation(.easeInOut(duration: 0.6)) {
+                animatedProgress = newTarget
+            }
+        }
+    }
+
+    private func scaleLabel(_ value: Double) -> String {
+        if value >= 1000 {
+            let k = value / 1000.0
+            return k == floor(k) ? "\(Int(k))k" : String(format: "%.1fk", k)
+        }
+        return String(format: "%.0f", value)
     }
 
     private func barHeightFor(index: Int) -> CGFloat {

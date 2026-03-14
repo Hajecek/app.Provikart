@@ -11,6 +11,7 @@ struct WatchContentView: View {
     @ObservedObject var sessionManager: WatchSessionManager
 
     @State private var commission: WatchCommissionResponse?
+    @State private var commissionGoal: Double?
     @State private var isLoading = false
     @State private var errorMessage: String?
 
@@ -19,7 +20,12 @@ struct WatchContentView: View {
     @State private var servicesError: String?
 
     private let service = WatchCommissionService()
+    private let goalsService = WatchUserGoalsService()
     private let orderItemsCountService = WatchOrderItemsCountService()
+
+    private var effectiveCommissionGoal: Double {
+        commissionGoal ?? 100_000
+    }
 
     var body: some View {
         if !sessionManager.isAuthenticated {
@@ -101,6 +107,7 @@ struct WatchContentView: View {
             let value = info["commission"] as? Double ?? 0
             let currency = info["currency"] as? String ?? "Kč"
             let label = info["monthLabel"] as? String
+            let goal = info["commissionGoal"] as? Double
             withAnimation(.easeInOut(duration: 0.3)) {
                 commission = WatchCommissionResponse(
                     success: true,
@@ -109,6 +116,7 @@ struct WatchContentView: View {
                     commission: value,
                     currency: currency
                 )
+                if let goal { commissionGoal = goal }
             }
         }
     }
@@ -206,8 +214,6 @@ struct WatchContentView: View {
 
     // MARK: - Commission Display
 
-    private let goal: Double = 100_000
-
     private func commissionDisplay(_ c: WatchCommissionResponse) -> some View {
         VStack(spacing: 10) {
             commissionBarGraph(value: c.commission)
@@ -239,7 +245,7 @@ struct WatchContentView: View {
     @State private var animatedProgress: Double = 0
 
     private func commissionBarGraph(value: Double) -> some View {
-        let targetProgress = min(value / goal, 1.0)
+        let targetProgress = min(value / effectiveCommissionGoal, 1.0)
 
         return VStack(spacing: 4) {
             HStack(alignment: .bottom, spacing: barSpacing) {
@@ -258,9 +264,9 @@ struct WatchContentView: View {
             HStack {
                 Text("0")
                 Spacer()
-                Text("50k")
+                Text(scaleLabel(effectiveCommissionGoal / 2))
                 Spacer()
-                Text("100k")
+                Text(scaleLabel(effectiveCommissionGoal))
             }
             .font(.system(size: 9, weight: .medium, design: .rounded))
             .foregroundStyle(.tertiary)
@@ -272,11 +278,19 @@ struct WatchContentView: View {
             }
         }
         .onChange(of: value) { _, newValue in
-            let newTarget = min(newValue / goal, 1.0)
+            let newTarget = min(newValue / effectiveCommissionGoal, 1.0)
             withAnimation(.easeInOut(duration: 0.6)) {
                 animatedProgress = newTarget
             }
         }
+    }
+
+    private func scaleLabel(_ value: Double) -> String {
+        if value >= 1000 {
+            let k = value / 1000.0
+            return k == floor(k) ? "\(Int(k))k" : String(format: "%.1fk", k)
+        }
+        return String(format: "%.0f", value)
     }
 
     private func barHeightFor(index: Int) -> CGFloat {
@@ -334,10 +348,12 @@ struct WatchContentView: View {
 
         do {
             let response = try await service.fetchCommission(token: token)
+            let (goal, _) = (try? await goalsService.fetchGoals(token: token)) ?? (nil, nil)
             withAnimation(.easeInOut(duration: 0.3)) {
                 commission = response
+                if let goal { commissionGoal = goal }
             }
-            saveCommissionToAppGroup(response)
+            saveCommissionToAppGroup(response, commissionGoal: goal)
         } catch {
             if commission == nil {
                 errorMessage = error.localizedDescription
@@ -356,12 +372,17 @@ struct WatchContentView: View {
         return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
     }
 
-    private func saveCommissionToAppGroup(_ c: WatchCommissionResponse) {
+    private func saveCommissionToAppGroup(_ c: WatchCommissionResponse, commissionGoal: Double? = nil) {
         guard let suite = UserDefaults(suiteName: "group.com.hajecek.provikartApp") else { return }
         suite.set(NSNumber(value: c.commission), forKey: "widget_commission")
         suite.set(c.currency, forKey: "widget_currency")
         suite.set(c.month_label, forKey: "widget_month_label")
         suite.set(Date(), forKey: "widget_last_updated")
+        if let goal = commissionGoal {
+            suite.set(NSNumber(value: goal), forKey: "widget_commission_goal")
+        } else {
+            suite.removeObject(forKey: "widget_commission_goal")
+        }
     }
 }
 
