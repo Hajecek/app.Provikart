@@ -159,23 +159,38 @@ extension WatchSessionManager: WCSessionDelegate {
         }
     }
 
-    /// Příjem push zprávy od iPhonu (provize, token, apod.)
+    /// Příjem push zprávy od iPhonu (provize, počet služeb, token, apod.)
     func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
-        if let type = message["type"] as? String, type == "commissionUpdate" {
-            let commission = message["commission"] as? Double ?? 0
-            let currency = message["currency"] as? String ?? "Kč"
-            let monthLabel = message["monthLabel"] as? String
-            DispatchQueue.main.async {
-                NotificationCenter.default.post(
-                    name: .watchCommissionDidUpdate,
-                    object: nil,
-                    userInfo: [
-                        "commission": commission,
-                        "currency": currency,
-                        "monthLabel": monthLabel ?? ""
-                    ]
-                )
-                print("[WC-Watch] Provize přijata z iPhonu: \(commission) \(currency)")
+        if let type = message["type"] as? String {
+            switch type {
+            case "commissionUpdate":
+                let commission = message["commission"] as? Double ?? 0
+                let currency = message["currency"] as? String ?? "Kč"
+                let monthLabel = message["monthLabel"] as? String
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(
+                        name: .watchCommissionDidUpdate,
+                        object: nil,
+                        userInfo: [
+                            "commission": commission,
+                            "currency": currency,
+                            "monthLabel": monthLabel ?? ""
+                        ]
+                    )
+                    print("[WC-Watch] Provize přijata z iPhonu: \(commission) \(currency)")
+                }
+            case "servicesCountUpdate":
+                let count = message["count"] as? Int ?? 0
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(
+                        name: .watchServicesCountDidUpdate,
+                        object: nil,
+                        userInfo: ["count": count]
+                    )
+                    print("[WC-Watch] Počet služeb přijat z iPhonu: \(count)")
+                }
+            default:
+                break
             }
         }
     }
@@ -190,4 +205,5 @@ extension WatchSessionManager: WCSessionDelegate {
 
 extension Notification.Name {
     static let watchCommissionDidUpdate = Notification.Name("watchCommissionDidUpdate")
+    static let watchServicesCountDidUpdate = Notification.Name("watchServicesCountDidUpdate")
 }

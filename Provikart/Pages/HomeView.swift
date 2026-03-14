@@ -394,7 +394,10 @@ struct HomeView: View {
         }
         do {
             let count = try await orderItemsCountService.fetchCount(token: token)
-            await MainActor.run { servicesCount = count }
+            await MainActor.run {
+                servicesCount = count
+                PhoneSessionManager.shared.sendServicesCountUpdate(count: count)
+            }
         } catch {
             await MainActor.run { servicesCount = nil }
         }

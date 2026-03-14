@@ -55,15 +55,17 @@ struct LoginView: View {
                             .padding(14)
                             .background(RoundedRectangle(cornerRadius: 12).fill(Color(.secondarySystemBackground)))
                     }
-                    .padding(.horizontal, 20)
+                    .frame(maxWidth: 320)
+                    .padding(.horizontal, 8)
                     .padding(.top, 8)
 
                     if let errorMessage {
                         Text(errorMessage)
                             .font(.footnote)
                             .foregroundStyle(.red)
-                            .padding(.horizontal, 20)
                             .multilineTextAlignment(.center)
+                            .frame(maxWidth: 320)
+                            .padding(.horizontal, 8)
                     }
 
                     Button {
@@ -82,7 +84,8 @@ struct LoginView: View {
                         .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         .foregroundStyle(.white)
                     }
-                    .padding(.horizontal, 20)
+                    .frame(maxWidth: 320)
+                    .padding(.horizontal, 8)
                     .disabled(isLoading || email.isEmpty || password.isEmpty)
                     .opacity(isLoading || email.isEmpty || password.isEmpty ? 0.7 : 1)
 
@@ -95,6 +98,8 @@ struct LoginView: View {
                     }
                     .padding(.bottom, 4)
                 }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 20)
 
                 Spacer(minLength: 20)
                     .frame(maxHeight: .infinity)

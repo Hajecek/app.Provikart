@@ -73,6 +73,21 @@ final class PhoneSessionManager: NSObject, ObservableObject {
             print("[WC-Phone] Chyba odesílání provize: \(error.localizedDescription)")
         }
     }
+
+    /// Pošle počet služeb na hodinky (volá se z HomeView po načtení).
+    func sendServicesCountUpdate(count: Int) {
+        guard WCSession.isSupported() else { return }
+        let session = WCSession.default
+        guard session.activationState == .activated, session.isReachable else { return }
+
+        let data: [String: Any] = [
+            "type": "servicesCountUpdate",
+            "count": count
+        ]
+        session.sendMessage(data, replyHandler: nil) { error in
+            print("[WC-Phone] Chyba odesílání počtu služeb: \(error.localizedDescription)")
+        }
+    }
 }
 
 extension PhoneSessionManager: WCSessionDelegate {

@@ -14,13 +14,24 @@ struct WatchContentView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
 
+    @State private var servicesCount: Int?
+    @State private var isLoadingServices = false
+    @State private var servicesError: String?
+
     private let service = WatchCommissionService()
+    private let orderItemsCountService = WatchOrderItemsCountService()
 
     var body: some View {
         if !sessionManager.isAuthenticated {
             notAuthenticatedView
         } else {
-            commissionView
+            TabView {
+                commissionView
+                    .tag(0)
+                servicesCountView
+                    .tag(1)
+            }
+            .tabViewStyle(.page)
         }
     }
 
@@ -100,6 +111,79 @@ struct WatchContentView: View {
                 )
             }
         }
+    }
+
+    // MARK: - Services Count View (druhá stránka – potáhni doleva)
+
+    private var servicesCountView: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                Spacer()
+
+                if isLoadingServices && servicesCount == nil {
+                    ProgressView()
+                        .scaleEffect(1.1)
+                } else if let count = servicesCount {
+                    Text("\(count)")
+                        .font(.system(size: 42, weight: .bold, design: .rounded))
+                        .contentTransition(.numericText())
+
+                    Text(count == 1 ? "služba" : count >= 2 && count <= 4 ? "služby" : "služeb")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
+                } else if let err = servicesError {
+                    Text(err)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+
+                    Button("Zkusit znovu") {
+                        Task { await loadServicesCount() }
+                    }
+                    .font(.caption2)
+                    .buttonStyle(.bordered)
+                } else {
+                    ProgressView()
+                        .scaleEffect(1.1)
+                }
+
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .navigationTitle("Služby")
+        }
+        .task {
+            await loadServicesCount()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .watchServicesCountDidUpdate)) { notification in
+            guard let info = notification.userInfo, let count = info["count"] as? Int else { return }
+            withAnimation(.easeInOut(duration: 0.3)) {
+                servicesCount = count
+            }
+        }
+    }
+
+    private func loadServicesCount() async {
+        guard let token = sessionManager.authToken, !token.isEmpty else {
+            servicesError = "Nejste přihlášeni"
+            return
+        }
+
+        if servicesCount == nil { isLoadingServices = true }
+        servicesError = nil
+
+        do {
+            let count = try await orderItemsCountService.fetchCount(token: token)
+            withAnimation(.easeInOut(duration: 0.3)) {
+                servicesCount = count
+            }
+        } catch {
+            if servicesCount == nil {
+                servicesError = error.localizedDescription
+            }
+        }
+
+        isLoadingServices = false
     }
 
     // MARK: - Profile Image (toolbar)
