@@ -269,8 +269,12 @@ struct iOS26StyleOnBoarding: View {
 
 // MARK: - OnboardingView (použití z ProvikartApp – stejný obsah jako původní ContentView ukázka)
 
+private let liveActivityEnabledKey = "settings.liveActivity.enabled"
+
 struct OnboardingView: View {
     var onFinish: () -> Void
+    @State private var showLiveActivityChoice = false
+    @State private var pendingLiveActivityAdvance: (() -> Void)?
 
     var body: some View {
         iOS26StyleOnBoarding(tint: .blue, hideBezels: false, items: [
@@ -319,17 +323,41 @@ struct OnboardingView: View {
                 title: "Moderní Widgety",
                 subtitle: "Aplikace obsahuje widgety, kvůli důležitosti zobrazení informací.",
                 screenshot: UIImage(named: "Screen5")
+            ),
+            .init(
+                id: 7,
+                title: "Provize na Lock Screenu",
+                subtitle: "Můžete zobrazovat aktuální provizi a postup k cíli přímo na Lock Screenu a v Dynamic Island.",
+                screenshot: UIImage(named: "Screen8")
             )
         ], stepAction: { index, advance in
             if index == 4 {
                 requestNotificationPermission(then: advance)
             } else if index == 5 {
                 requestBiometricPermission(then: advance)
+            } else if index == 7 {
+                pendingLiveActivityAdvance = advance
+                showLiveActivityChoice = true
             } else {
                 advance()
             }
         }) {
             onFinish()
+        }
+        .alert("Zobrazovat provizi na Lock Screenu?", isPresented: $showLiveActivityChoice) {
+            Button("Povolit") {
+                UserDefaults.standard.set(true, forKey: liveActivityEnabledKey)
+                pendingLiveActivityAdvance?()
+                pendingLiveActivityAdvance = nil
+            }
+            Button("Nyní ne", role: .cancel) {
+                UserDefaults.standard.set(false, forKey: liveActivityEnabledKey)
+                CommissionLiveActivityManager.endAll()
+                pendingLiveActivityAdvance?()
+                pendingLiveActivityAdvance = nil
+            }
+        } message: {
+            Text("Live Activity zobrazí provizi a postup k cíli na Lock Screenu a v Dynamic Island. Kdykoli to můžete změnit v Nastavení.")
         }
     }
 
