@@ -29,6 +29,7 @@ struct SettingsView: View {
     @AppStorage("settings.notifications.general") private var notificationsGeneral = true
     @AppStorage("settings.notifications.orders") private var notificationsOrders = true
     @AppStorage("settings.notifications.marketing") private var notificationsMarketing = false
+    @AppStorage("settings.liveActivity.enabled") private var liveActivityEnabled = true
     @State private var showClearCacheConfirm = false
     @State private var showOpenURLAlert = false
     @State private var pendingURL: URL?
@@ -84,6 +85,21 @@ struct SettingsView: View {
                 Text("Oznámení")
             } footer: {
                 Text("Oznámení můžete spravovat i v Nastavení systému.")
+            }
+
+            Section {
+                Toggle(isOn: $liveActivityEnabled) {
+                    Label("Provize na Lock Screenu a v Dynamic Island", systemImage: "livephoto")
+                }
+                .onChange(of: liveActivityEnabled) { _, enabled in
+                    if !enabled {
+                        CommissionLiveActivityManager.endAll()
+                    }
+                }
+            } header: {
+                Text("Live Activity")
+            } footer: {
+                Text("Když je zapnuto, aplikace zobrazí aktuální provizi a postup k cíli na Lock Screenu a v Dynamic Island.")
             }
 
             Section {
