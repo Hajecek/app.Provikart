@@ -11,7 +11,10 @@ struct ContentView: View {
     @EnvironmentObject private var authState: AuthState
     @EnvironmentObject private var appLoginApprovalState: AppLoginApprovalState
     @EnvironmentObject private var networkMonitor: NetworkMonitor
+    @Environment(\.scenePhase) private var scenePhase
     private let authService = AuthService()
+    private let commissionService = CommissionService()
+    private let userGoalsService = UserGoalsService()
 
     var body: some View {
         Group {
@@ -65,6 +68,37 @@ struct ContentView: View {
         }) { request in
             AppLoginApprovalSheetView(approvalState: appLoginApprovalState, request: request)
                 .environmentObject(authState)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active, authState.isLoggedIn, let token = authState.authToken, !token.isEmpty {
+                Task { await refreshCommissionAndLiveActivity(token: token) }
+            }
+        }
+    }
+
+    /// Při návratu aplikace do popředí načte aktuální provizi a aktualizuje widget + Live Activity
+    /// (např. po dokončení položky na hodinkách).
+    private func refreshCommissionAndLiveActivity(token: String) async {
+        do {
+            let response = try await commissionService.fetchCommission(token: token)
+            let (goal, _) = (try? await userGoalsService.fetchGoals(token: token)) ?? (nil, nil)
+            await MainActor.run {
+                WidgetDataStore.saveCommission(
+                    response.commission,
+                    currency: response.currency,
+                    monthLabel: response.month_label
+                )
+                if let goal { WidgetDataStore.saveCommissionGoal(goal) }
+                CommissionLiveActivityManager.update(
+                    commission: response.commission,
+                    currency: response.currency,
+                    monthLabel: response.month_label,
+                    goal: goal,
+                    isHidden: WidgetDataStore.isCommissionHidden
+                )
+            }
+        } catch {
+            // Tiché selhání – provize se obnoví při otevření Domů
         }
     }
 }

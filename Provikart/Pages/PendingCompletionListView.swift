@@ -20,6 +20,8 @@ struct PendingCompletionListView: View {
 
     private let pendingService = OrderItemsPendingCompletionService()
     private let completeService = OrderItemCompleteService()
+    private let commissionService = CommissionService()
+    private let userGoalsService = UserGoalsService()
 
     var body: some View {
         Group {
@@ -127,12 +129,39 @@ struct PendingCompletionListView: View {
                 items.removeAll { $0.id == item.id }
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             }
+            await refreshCommissionAndLiveActivity(token: token)
         } catch {
             await MainActor.run {
                 completingIds.remove(item.id)
                 completionError = error.localizedDescription
                 errorMessage = error.localizedDescription
             }
+        }
+    }
+
+    /// Po dokončení položky načte novou provizi a aktualizuje widget + Live Activity.
+    private func refreshCommissionAndLiveActivity(token: String) async {
+        do {
+            let response = try await commissionService.fetchCommission(token: token)
+            let (goal, _) = (try? await userGoalsService.fetchGoals(token: token)) ?? (nil, nil)
+            let effectiveGoal = goal ?? WidgetDataStore.loadCommissionGoal() ?? 100_000
+            await MainActor.run {
+                WidgetDataStore.saveCommission(
+                    response.commission,
+                    currency: response.currency,
+                    monthLabel: response.month_label
+                )
+                if let goal { WidgetDataStore.saveCommissionGoal(goal) }
+                CommissionLiveActivityManager.update(
+                    commission: response.commission,
+                    currency: response.currency,
+                    monthLabel: response.month_label,
+                    goal: goal,
+                    isHidden: WidgetDataStore.isCommissionHidden
+                )
+            }
+        } catch {
+            // Tiché selhání – provize se při příštím otevření Domů stejně obnoví
         }
     }
 }

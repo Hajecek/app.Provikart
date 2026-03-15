@@ -63,6 +63,13 @@ enum WidgetDataStore {
         }
     }
 
+    /// Načte token z App Group (pro background refresh a widget).
+    static func loadAuthToken() -> String? {
+        let token = suite?.string(forKey: Keys.authToken)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return (token?.isEmpty == false) ? token : nil
+    }
+
     static func clearAuthToken() {
         suite?.removeObject(forKey: Keys.authToken)
     }

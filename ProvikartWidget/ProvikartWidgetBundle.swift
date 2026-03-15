@@ -3,6 +3,7 @@
 //  ProvikartWidget
 //
 
+import ActivityKit
 import WidgetKit
 import SwiftUI
 
@@ -12,5 +13,6 @@ struct ProvikartWidgetBundle: WidgetBundle {
         ProvikartWidget()
         ProvikartReportsWidget()
         ProvikartInstallationsWidget()
+        CommissionLiveActivityWidget()
     }
 }

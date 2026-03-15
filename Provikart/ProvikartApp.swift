@@ -185,6 +185,7 @@ struct ProvikartApp: App {
 
     init() {
         PhoneSessionManager.shared.activate()
+        CommissionBackgroundRefresh.register()
     }
 
     var body: some Scene {
@@ -224,6 +225,7 @@ struct ProvikartApp: App {
                 appDelegate.updateUserInfo(userId: user.id ?? 0, role: user.role ?? "", authToken: authState.authToken)
               } else {
                 appDelegate.clearUserInfo()
+                CommissionLiveActivityManager.endAll()
                 WidgetDataStore.clearCommission()
                 WidgetDataStore.clearReports()
                 WidgetDataStore.clearInstallations()
@@ -247,9 +249,12 @@ struct ProvikartApp: App {
                     appLoginApprovalState.stopPolling()
                 case .active:
                     backgroundedAt = nil
-                    if authState.isLoggedIn, !showLaunchScreen, hasCompletedOnboarding,
-                       let username = authState.currentUser?.username {
-                        appLoginApprovalState.startPolling(username: username, token: authState.authToken, interval: 2)
+                    if authState.isLoggedIn {
+                        CommissionBackgroundRefresh.scheduleNext()
+                        if !showLaunchScreen, hasCompletedOnboarding,
+                           let username = authState.currentUser?.username {
+                            appLoginApprovalState.startPolling(username: username, token: authState.authToken, interval: 2)
+                        }
                     }
                 default:
                     break

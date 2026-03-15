@@ -159,10 +159,20 @@ struct HomeView: View {
                         .foregroundStyle(.primary)
                     Spacer(minLength: 0)
                     Button {
+                        let newHidden = !isCommissionHidden
                         withAnimation(.easeInOut(duration: 0.2)) {
-                            isCommissionHidden.toggle()
+                            isCommissionHidden = newHidden
                         }
-                        WidgetDataStore.setCommissionHidden(isCommissionHidden)
+                        WidgetDataStore.setCommissionHidden(newHidden)
+                        if let c = commission {
+                            CommissionLiveActivityManager.update(
+                                commission: c.commission,
+                                currency: c.currency,
+                                monthLabel: c.month_label,
+                                goal: commissionGoal,
+                                isHidden: newHidden
+                            )
+                        }
                     } label: {
                         Image(systemName: isCommissionHidden ? "eye.slash" : "eye")
                             .font(.body)
@@ -445,6 +455,13 @@ struct HomeView: View {
                 isLoadingCommission = false
                 WidgetDataStore.saveCommission(response.commission, currency: response.currency, monthLabel: response.month_label)
                 if let goal { WidgetDataStore.saveCommissionGoal(goal) }
+                CommissionLiveActivityManager.update(
+                    commission: response.commission,
+                    currency: response.currency,
+                    monthLabel: response.month_label,
+                    goal: goal ?? commissionGoal,
+                    isHidden: isCommissionHidden
+                )
                 PhoneSessionManager.shared.sendCommissionUpdate(
                     commission: response.commission,
                     currency: response.currency,
