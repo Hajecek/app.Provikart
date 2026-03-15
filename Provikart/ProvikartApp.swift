@@ -242,6 +242,9 @@ struct ProvikartApp: App {
                 case .background:
                     backgroundedAt = Date()
                     appLoginApprovalState.stopPolling()
+                    if authState.isLoggedIn {
+                        CommissionBackgroundRefresh.scheduleNext()
+                    }
                 case .inactive:
                     if let at = backgroundedAt, Date().timeIntervalSince(at) >= 5, authState.isLoggedIn {
                         showBiometricVerification = true

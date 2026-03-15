@@ -51,7 +51,7 @@ struct CommissionLiveActivityCompactView: View {
     }
 }
 
-// MARK: - Minimal (Dynamic Island – miniatura)
+// MARK: - Minimal (Dynamic Island – při dvou aktivitách; malá kruhová plocha)
 
 struct CommissionLiveActivityMinimalView: View {
     let context: ActivityViewContext<CommissionLiveActivityAttributes>
@@ -63,15 +63,16 @@ struct CommissionLiveActivityMinimalView: View {
     }
 
     var body: some View {
-        HStack(spacing: 6) {
+        ZStack {
             Image(systemName: "creditcard.fill")
-                .font(.system(size: 12))
+                .font(.system(size: 14))
                 .foregroundStyle(.orange)
             ProgressView(value: progress)
                 .tint(.orange)
-                .frame(width: 24)
+                .progressViewStyle(.circular)
+                .scaleEffect(0.7)
         }
-        .padding(8)
+        .frame(width: 28, height: 28)
     }
 }
 
@@ -279,11 +280,14 @@ struct CommissionLiveActivityWidget: Widget {
                 }
             } compactLeading: {
                 Image(systemName: "creditcard.fill")
+                    .font(.system(size: 14))
                     .foregroundStyle(.orange)
+                    .frame(width: 24, height: 24)
             } compactTrailing: {
                 let progress = context.state.goal > 0 ? min(context.state.commission / context.state.goal, 1.0) : 0.0
                 Text(context.state.isHidden ? "–" : "\(Int(progress * 100))%")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .frame(minWidth: 24, alignment: .trailing)
             } minimal: {
                 CommissionLiveActivityMinimalView(context: context, state: context.state)
             }

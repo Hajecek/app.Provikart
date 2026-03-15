@@ -3,7 +3,8 @@
 //  Provikart
 //
 //  Spouští, aktualizuje a ukončuje Live Activity „Provize – postup k cíli“.
-//  Používá ActivityKit dle dokumentace: Displaying live data with Live Activities.
+//  Používá ActivityKit: lokální update + push token pro aktualizace ze serveru (i v pozadí).
+//  Viz: https://developer.apple.com/documentation/activitykit/starting-and-updating-live-activities-with-activitykit-push-notifications
 //
 
 import ActivityKit
@@ -15,8 +16,8 @@ enum CommissionLiveActivityManager {
     private static let staleInterval: TimeInterval = 15 * 60 // 15 minut
 
     /// Spustí nebo aktualizuje Live Activity s aktuální provizí a cílem.
-    /// Volá se po načtení provize (např. z HomeView, ContentView, background refresh).
-    /// Aktualizace lze volat i z pozadí (Activity.update je povolen v pozadí).
+    /// Při prvním startu použije pushType: .token a token pošle na server – server pak může
+    /// při změně provize poslat APNs Live Activity update (aktualizace i v pozadí).
     static func update(
         commission: Double,
         currency: String = "Kč",
@@ -43,19 +44,31 @@ enum CommissionLiveActivityManager {
         } else {
             let attributes = CommissionLiveActivityAttributes()
             do {
-                _ = try Activity.request(
+                let activity = try Activity.request(
                     attributes: attributes,
                     content: content,
-                    pushType: nil
+                    pushType: .token
                 )
+                startObservingPushToken(activity)
             } catch {
                 print("[LiveActivity] Nepodařilo se spustit: \(error.localizedDescription)")
             }
         }
     }
 
+    /// Sleduje push token a posílá ho na server. Server ho použije k odeslání APNs update při změně provize.
+    private static func startObservingPushToken(_ activity: Activity<CommissionLiveActivityAttributes>) {
+        Task {
+            for await pushToken in activity.pushTokenUpdates {
+                let hex = pushToken.reduce("") { $0 + String(format: "%02x", $1) }
+                if let apiToken = WidgetDataStore.loadAuthToken() {
+                    await LiveActivityPushTokenService.sendPushToken(apiToken: apiToken, pushTokenHex: hex)
+                }
+            }
+        }
+    }
+
     /// Ukončí všechny běžící Live Activity provize (např. po odhlášení).
-    /// Dle dokumentace je vhodné předat finální ContentState – zde končíme bez zobrazení.
     static func endAll() {
         for activity in Activity<CommissionLiveActivityAttributes>.activities {
             Task { await activity.end(nil, dismissalPolicy: .immediate) }
