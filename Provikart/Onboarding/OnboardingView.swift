@@ -16,9 +16,13 @@ struct iOS26StyleOnBoarding: View {
     /// Volitelná akce před přechodem na další krok: (index kroku, pokračovat).
     var stepAction: ((Int, @escaping () -> Void) -> Void)? = nil
     var onComplete: () -> ()
-    /// View Properties
+    @Environment(\.colorScheme) private var colorScheme
     @State private var currentIndex: Int = 0
     @State private var screenshotSize: CGSize = .zero
+
+    private var textColor: Color { colorScheme == .dark ? .white : .black }
+    private var textColorSecondary: Color { colorScheme == .dark ? .white.opacity(0.9) : .black.opacity(0.85) }
+
     var body: some View {
         ZStack(alignment: .bottom) {
             ScreenshotView()
@@ -45,7 +49,6 @@ struct iOS26StyleOnBoarding: View {
 
             BackButton()
         }
-        .preferredColorScheme(.dark)
     }
 
     /// Screenshot View
@@ -65,8 +68,8 @@ struct iOS26StyleOnBoarding: View {
                         let item = items[index]
 
                         Group {
-                            if let screenshot = item.screenshot {
-                                Image(uiImage: screenshot)
+                            if let image = item.image(for: colorScheme) {
+                                Image(uiImage: image)
                                     .resizable()
                                     .aspectRatio(contentMode: .fit)
                                     .onGeometryChange(for: CGSize.self) {
@@ -136,13 +139,15 @@ struct iOS26StyleOnBoarding: View {
                                 .font(.title2)
                                 .fontWeight(.semibold)
                                 .lineLimit(1)
-                                .foregroundStyle(.white)
+                                .foregroundStyle(textColor)
+                                .shadow(color: .black.opacity(0.25), radius: 2, x: 0, y: 1)
 
                             Text(item.subtitle)
                                 .font(.callout)
                                 .lineLimit(2)
                                 .multilineTextAlignment(.center)
-                                .foregroundStyle(.white.opacity(0.8))
+                                .foregroundStyle(textColorSecondary)
+                                .shadow(color: .black.opacity(0.25), radius: 2, x: 0, y: 1)
                         }
                         .frame(width: size.width)
                         .compositingGroup()
@@ -171,8 +176,9 @@ struct iOS26StyleOnBoarding: View {
                 let isActive: Bool = currentIndex == index
 
                 Capsule()
-                    .fill(.white.opacity(isActive ? 1 : 0.4))
+                    .fill((colorScheme == .dark ? Color.white : Color.black).opacity(isActive ? 1 : 0.5))
                     .frame(width: isActive ? 25 : 6, height: 6)
+                    .shadow(color: .black.opacity(0.2), radius: 1, x: 0, y: 1)
             }
         }
         .padding(.bottom, 5)
@@ -217,6 +223,7 @@ struct iOS26StyleOnBoarding: View {
         } label: {
             Image(systemName: "chevron.left")
                 .font(.title3)
+                .foregroundStyle(colorScheme == .dark ? .white : .black)
                 .frame(width: 20, height: 30)
         }
         .buttonStyle(.glass)
@@ -243,7 +250,7 @@ struct iOS26StyleOnBoarding: View {
     }
 
     var deviceCornerRadius: CGFloat {
-        if let imageSize = items.first?.screenshot?.size {
+        if let imageSize = items.first?.image(for: colorScheme)?.size {
             let ratio = screenshotSize.height / imageSize.height
             let actualCornerRadius: CGFloat = 180
             return actualCornerRadius * ratio
@@ -256,9 +263,17 @@ struct iOS26StyleOnBoarding: View {
         var id: Int
         var title: String
         var subtitle: String
+        /// Screenshot pro dark mode (a fallback).
         var screenshot: UIImage?
+        /// Screenshot pro light mode; když je nil, použije se screenshot.
+        var screenshotLight: UIImage?
         var zoomScale: CGFloat = 1
         var zoomAnchor: UnitPoint = .center
+
+        /// Obrázek podle aktuálního vzhledu: dark → screenshot, light → screenshotLight ?? screenshot.
+        func image(for colorScheme: ColorScheme) -> UIImage? {
+            colorScheme == .dark ? screenshot : (screenshotLight ?? screenshot)
+        }
     }
 
     /// Customize it according to your needs!
@@ -282,19 +297,22 @@ struct OnboardingView: View {
                 id: 0,
                 title: "Vítejte v ProviKart",
                 subtitle: "Představujeme nový způsob hlídání provizí a objednávek pomocí AI",
-                screenshot: UIImage(named: "Screen1")
+                screenshot: UIImage(named: "Screen1"),
+                screenshotLight: UIImage(named: "Screen1Light")
             ),
             .init(
                 id: 1,
                 title: "Kalendář Instalací",
                 subtitle: "Přehledný kalendář, ve kterém vidíte přesně kdy se vám co spuští",
-                screenshot: UIImage(named: "Screen2")
+                screenshot: UIImage(named: "Screen2"),
+                screenshotLight: UIImage(named: "Screen2Light")
             ),
             .init(
                 id: 2,
                 title: "Nativní Aplikace",
                 subtitle: "Nejmodernější a nativní aplikace",
                 screenshot: UIImage(named: "Screen4"),
+                screenshotLight: UIImage(named: "Screen4Light"),
                 zoomScale: 1.5,
                 zoomAnchor: .init(x: 0.5, y: 1.1)
             ),
@@ -303,6 +321,7 @@ struct OnboardingView: View {
                 title: "AI Rozpoznání",
                 subtitle: "Díky AI automaticky aplikace rozpozná text objednávky a ušetří vám tak dost času.",
                 screenshot: UIImage(named: "Screen3"),
+                screenshotLight: UIImage(named: "Screen3Light"),
                 zoomScale: 1.3,
                 zoomAnchor: .init(x: 0.5, y: -0.3)
             ),
@@ -311,24 +330,28 @@ struct OnboardingView: View {
                 title: "Notifikace",
                 subtitle: "Povolte notifikace, abyste nepromeškali důležité připomínky k provizím a objednávkám.",
                 screenshot: UIImage(named: "Screen6"),
+                screenshotLight: UIImage(named: "Screen6Light")
             ),
             .init(
                 id: 5,
                 title: "Face ID / Touch ID",
                 subtitle: "Kvůli citlivosti dat vás budeme ověřovat. Potřebujeme svolení k použití FACE ID",
                 screenshot: UIImage(named: "Screen7"),
+                screenshotLight: UIImage(named: "Screen7Light")
             ),
             .init(
                 id: 6,
                 title: "Moderní Widgety",
                 subtitle: "Aplikace obsahuje widgety, kvůli důležitosti zobrazení informací.",
-                screenshot: UIImage(named: "Screen5")
+                screenshot: UIImage(named: "Screen5"),
+                screenshotLight: UIImage(named: "Screen5Light")
             ),
             .init(
                 id: 7,
                 title: "Provize na Lock Screenu",
                 subtitle: "Můžete zobrazovat aktuální provizi a postup k cíli přímo na Lock Screenu a v Dynamic Island.",
-                screenshot: UIImage(named: "Screen8")
+                screenshot: UIImage(named: "Screen8"),
+                screenshotLight: UIImage(named: "Screen8Light")
             )
         ], stepAction: { index, advance in
             if index == 4 {
