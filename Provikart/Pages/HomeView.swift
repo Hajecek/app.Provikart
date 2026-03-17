@@ -66,25 +66,19 @@ struct HomeView: View {
                     .listRowBackground(Color.clear)
                 }
 
+                // Provize
                 Section {
                     commissionRow
-                } header: {
-                    Text("Provize")
-                        .textCase(nil)
                 }
 
+                // Služby
                 Section {
                     servicesCountRow
-                } header: {
-                    Text("Služby")
-                        .textCase(nil)
                 }
 
+                // Karta vchodu
                 Section {
                     entryCardsRow
-                } header: {
-                    Text("Karta vchodu")
-                        .textCase(nil)
                 }
             }
             .listStyle(.insetGrouped)
@@ -167,7 +161,7 @@ struct HomeView: View {
                         .foregroundStyle(Color.accentColor)
                         .frame(width: 28, alignment: .center)
 
-                    Text("Aktuální měsíc")
+                    Text(monthTitle)
                         .font(.body.weight(.medium))
                         .foregroundStyle(.primary)
                     Spacer(minLength: 0)
@@ -217,13 +211,6 @@ struct HomeView: View {
                     CommissionProgressBarView(value: c.commission, goal: effectiveCommissionGoal)
                 }
 
-                HStack(spacing: 4) {
-                    Image(systemName: "calendar")
-                        .font(.caption2)
-                    Text(periodText)
-                        .font(.caption2)
-                }
-                .foregroundStyle(.secondary)
             }
             .padding(.vertical, 4)
         }
@@ -384,12 +371,23 @@ struct HomeView: View {
         .accessibilityLabel("\(pendingCompletionCount ?? 0) položek čeká na dokončení po termínu instalace")
     }
 
-    private var periodText: String {
-        if let c = commission, let label = c.month_label, !label.isEmpty {
-            return "Období: \(label)"
-        } else {
-            return "Období: aktuální měsíc"
+    private var monthTitle: String {
+        if let apiMonth = commission?.month {
+            let inputFormatter = DateFormatter()
+            inputFormatter.dateFormat = "yyyy-MM"
+            inputFormatter.locale = Locale(identifier: "cs_CZ")
+
+            let outputFormatter = DateFormatter()
+            outputFormatter.dateFormat = "LLLL yyyy"
+            outputFormatter.locale = Locale(identifier: "cs_CZ")
+
+            if let date = inputFormatter.date(from: apiMonth) {
+                let formatted = outputFormatter.string(from: date)
+                // První písmeno velké (březen -> Březen)
+                return formatted.prefix(1).uppercased() + formatted.dropFirst()
+            }
         }
+        return "Aktuální měsíc"
     }
 
     private var accessibilityBannerLabel: String {
