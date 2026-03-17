@@ -160,6 +160,11 @@ struct WatchContentView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle("Služby")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    profileImage
+                }
+            }
         }
         .task {
             await loadServicesCount()
@@ -206,6 +211,11 @@ struct WatchContentView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle("Karta vchodu")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    profileImage
+                }
+            }
         }
         .task {
             await loadEntryCardsCount()
