@@ -22,11 +22,14 @@ struct HomeView: View {
     @State private var pendingCompletionCount: Int?
     /// Celkový počet služeb (order_items bez migrace). nil = nenačteno.
     @State private var servicesCount: Int?
+    /// Počet záznamů z Karty vchodu za aktuální měsíc. nil = nenačteno.
+    @State private var entryCardsCount: Int?
 
     private let commissionService = CommissionService()
     private let userGoalsService = UserGoalsService()
     private let pendingCompletionService = OrderItemsPendingCompletionService()
     private let orderItemsCountService = OrderItemsCountService()
+    private let entryCardsCountService = EntryCardsCountService()
 
     private var effectiveCommissionGoal: Double {
         commissionGoal ?? 100_000
@@ -76,6 +79,13 @@ struct HomeView: View {
                     Text("Služby")
                         .textCase(nil)
                 }
+
+                Section {
+                    entryCardsRow
+                } header: {
+                    Text("Karta vchodu")
+                        .textCase(nil)
+                }
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.visible)
@@ -123,6 +133,7 @@ struct HomeView: View {
             await loadCommission()
             await loadPendingCompletion()
             await loadServicesCount()
+            await loadEntryCardsCount()
             // Periodické obnovení provize a nedokončených na pozadí (každých 5 s)
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
@@ -131,6 +142,7 @@ struct HomeView: View {
                 await loadCommission(silent: true)
                 await loadPendingCompletion()
                 await loadServicesCount()
+                await loadEntryCardsCount()
             }
         }
         .refreshable {
@@ -138,6 +150,7 @@ struct HomeView: View {
             await loadCommission()
             await loadPendingCompletion()
             await loadServicesCount()
+            await loadEntryCardsCount()
         }
     }
 
@@ -268,6 +281,56 @@ struct HomeView: View {
         .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(servicesCount != nil ? "Celkem \(servicesCount!) služeb" : "Načítám počet služeb")
+    }
+
+    // MARK: - Entry cards row
+
+    private var entryCardsRow: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        } label: {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center, spacing: 12) {
+                    Image(systemName: "door.left.hand.open")
+                        .font(.title2)
+                        .foregroundStyle(Color.accentColor)
+                        .frame(width: 28, alignment: .center)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Počet záznamů")
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(.primary)
+                        Text("Aktuální měsíc – cíl 200 záznamů")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    if let count = entryCardsCount {
+                        Text("\(count)")
+                            .font(.system(.largeTitle, design: .rounded).weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .contentTransition(.numericText())
+                    } else {
+                        ProgressView()
+                    }
+                }
+
+                if let count = entryCardsCount {
+                    CommissionProgressBarView(
+                        value: Double(count),
+                        goal: 200,
+                        barHeight: 36,
+                        scaleFontSize: 10
+                    )
+                }
+            }
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(entryCardsCount != nil ? "Celkem \(entryCardsCount!) záznamů na Kartě vchodu" : "Načítám záznamy z Karty vchodu")
     }
 
     // MARK: - Pending completion (priorita – po termínu instalace)
@@ -526,6 +589,23 @@ struct HomeView: View {
             }
         } catch {
             await MainActor.run { servicesCount = nil }
+        }
+    }
+
+    /// Načte statistiku Karty vchodu (součet `entries_count` za aktuální měsíc).
+    private func loadEntryCardsCount() async {
+        let token = await MainActor.run { authState.authToken }
+        guard let token, !token.isEmpty else {
+            await MainActor.run { entryCardsCount = nil }
+            return
+        }
+        do {
+            let response = try await entryCardsCountService.fetchCount(token: token)
+            await MainActor.run {
+                entryCardsCount = response.entries_count
+            }
+        } catch {
+            await MainActor.run { entryCardsCount = nil }
         }
     }
 }
