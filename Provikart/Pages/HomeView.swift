@@ -389,16 +389,24 @@ struct HomeView: View {
 
     @ViewBuilder
     private func valueRow(commission c: CommissionResponse) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(isCommissionHidden ? "– – – –" : formatCommission(c.commission))
-                .font(.system(.largeTitle, design: .rounded).weight(.semibold))
-                .minimumScaleFactor(0.7)
-                .lineLimit(1)
-                .contentTransition(.numericText())
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(isCommissionHidden ? "– – – –" : formatCommission(c.commission))
+                    .font(.system(.largeTitle, design: .rounded).weight(.semibold))
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
+                    .contentTransition(.numericText())
 
-            if !isCommissionHidden {
-                Text(c.currency)
-                    .font(.subheadline)
+                if !isCommissionHidden {
+                    Text(c.currency)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if !isCommissionHidden, let entryCards = c.commission_entry_cards, entryCards > 0 {
+                Text("z toho \(formatCommission(entryCards)) Kč za kartu vchodu")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }

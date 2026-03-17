@@ -13,6 +13,8 @@ struct CommissionResponse: Codable {
     let month: String
     let month_label: String?
     let commission: Double
+    /// Celková provize z karty vchodů za aktuální měsíc.
+    let commission_entry_cards: Double?
     let currency: String
 }
 
