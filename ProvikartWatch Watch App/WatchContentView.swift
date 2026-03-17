@@ -19,9 +19,14 @@ struct WatchContentView: View {
     @State private var isLoadingServices = false
     @State private var servicesError: String?
 
+    @State private var entryCardsCount: Int?
+    @State private var isLoadingEntryCards = false
+    @State private var entryCardsError: String?
+
     private let service = WatchCommissionService()
     private let goalsService = WatchUserGoalsService()
     private let orderItemsCountService = WatchOrderItemsCountService()
+    private let entryCardsService = WatchEntryCardsCountService()
 
     private var effectiveCommissionGoal: Double {
         commissionGoal ?? 100_000
@@ -36,6 +41,8 @@ struct WatchContentView: View {
                     .tag(0)
                 servicesCountView
                     .tag(1)
+                entryCardsView
+                    .tag(2)
             }
             .tabViewStyle(.page)
         }
@@ -132,13 +139,7 @@ struct WatchContentView: View {
                     ProgressView()
                         .scaleEffect(1.1)
                 } else if let count = servicesCount {
-                    Text("\(count)")
-                        .font(.system(size: 42, weight: .bold, design: .rounded))
-                        .contentTransition(.numericText())
-
-                    Text(count == 1 ? "služba" : count >= 2 && count <= 4 ? "služby" : "služeb")
-                        .font(.system(size: 14))
-                        .foregroundStyle(.secondary)
+                    servicesDisplay(count)
                 } else if let err = servicesError {
                     Text(err)
                         .font(.caption2)
@@ -171,6 +172,46 @@ struct WatchContentView: View {
         }
     }
 
+    // MARK: - Entry Cards View (třetí stránka – potáhni dál doleva)
+
+    private var entryCardsView: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                Spacer()
+
+                if isLoadingEntryCards && entryCardsCount == nil {
+                    ProgressView()
+                        .scaleEffect(1.1)
+                } else if let count = entryCardsCount {
+                    entryCardsDisplay(count)
+                } else if let err = entryCardsError {
+                    VStack(spacing: 8) {
+                        Text(err)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+
+                        Button("Zkusit znovu") {
+                            Task { await loadEntryCardsCount() }
+                        }
+                        .font(.caption2)
+                        .buttonStyle(.bordered)
+                    }
+                } else {
+                    ProgressView()
+                        .scaleEffect(1.1)
+                }
+
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .navigationTitle("Karta vchodu")
+        }
+        .task {
+            await loadEntryCardsCount()
+        }
+    }
+
     private func loadServicesCount() async {
         guard let token = sessionManager.authToken, !token.isEmpty else {
             servicesError = "Nejste přihlášeni"
@@ -192,6 +233,29 @@ struct WatchContentView: View {
         }
 
         isLoadingServices = false
+    }
+
+    private func loadEntryCardsCount() async {
+        guard let token = sessionManager.authToken, !token.isEmpty else {
+            entryCardsError = "Nejste přihlášeni"
+            return
+        }
+
+        if entryCardsCount == nil { isLoadingEntryCards = true }
+        entryCardsError = nil
+
+        do {
+            let count = try await entryCardsService.fetchEntriesCount(token: token)
+            withAnimation(.easeInOut(duration: 0.3)) {
+                entryCardsCount = count
+            }
+        } catch {
+            if entryCardsCount == nil {
+                entryCardsError = error.localizedDescription
+            }
+        }
+
+        isLoadingEntryCards = false
     }
 
     // MARK: - Profile Image (toolbar)
@@ -238,14 +302,67 @@ struct WatchContentView: View {
         }
     }
 
-    // MARK: - Bar Graph
+    // MARK: - Services & Entry Cards Display
+
+    private func servicesDisplay(_ count: Int) -> some View {
+        VStack(spacing: 10) {
+            // Cíl vezmeme stejný jako na iOS (výchozí 100, tady natvrdo).
+            let goal: Double = 100
+            servicesBarGraph(value: Double(count), goal: goal)
+
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                Text("\(count)")
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .minimumScaleFactor(0.5)
+                    .lineLimit(1)
+                    .contentTransition(.numericText())
+
+                Text(count == 1 ? "služba" : count >= 2 && count <= 4 ? "služby" : "služeb")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func entryCardsDisplay(_ count: Int) -> some View {
+        VStack(spacing: 10) {
+            // Cíl pro Kartu vchodu – 200 záznamů.
+            let goal: Double = 200
+            servicesBarGraph(value: Double(count), goal: goal)
+
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                Text("\(count)")
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .minimumScaleFactor(0.5)
+                    .lineLimit(1)
+                    .contentTransition(.numericText())
+
+                Text(count == 1 ? "záznam" : count >= 2 && count <= 4 ? "záznamy" : "záznamů")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    // MARK: - Bar Graphs
 
     private let barCount = 25
     private let barSpacing: CGFloat = 2
     @State private var animatedProgress: Double = 0
 
+    /// Graf pro provizi – měřítko podle `effectiveCommissionGoal`.
     private func commissionBarGraph(value: Double) -> some View {
-        let targetProgress = min(value / effectiveCommissionGoal, 1.0)
+        barGraph(value: value, goal: effectiveCommissionGoal, showScale: true)
+    }
+
+    /// Graf pro služby / Kartu vchodu – měřítko podle předaného cíle.
+    private func servicesBarGraph(value: Double, goal: Double) -> some View {
+        barGraph(value: value, goal: goal, showScale: true)
+    }
+
+    private func barGraph(value: Double, goal: Double, showScale: Bool) -> some View {
+        let clampedGoal = max(goal, 1)
+        let targetProgress = min(value / clampedGoal, 1.0)
 
         return VStack(spacing: 4) {
             HStack(alignment: .bottom, spacing: barSpacing) {
@@ -261,15 +378,17 @@ struct WatchContentView: View {
             }
             .frame(height: 32)
 
-            HStack {
-                Text("0")
-                Spacer()
-                Text(scaleLabel(effectiveCommissionGoal / 2))
-                Spacer()
-                Text(scaleLabel(effectiveCommissionGoal))
+            if showScale {
+                HStack {
+                    Text("0")
+                    Spacer()
+                    Text(scaleLabel(clampedGoal / 2))
+                    Spacer()
+                    Text(scaleLabel(clampedGoal))
+                }
+                .font(.system(size: 9, weight: .medium, design: .rounded))
+                .foregroundStyle(.tertiary)
             }
-            .font(.system(size: 9, weight: .medium, design: .rounded))
-            .foregroundStyle(.tertiary)
         }
         .padding(.horizontal, 4)
         .onAppear {
@@ -278,7 +397,7 @@ struct WatchContentView: View {
             }
         }
         .onChange(of: value) { _, newValue in
-            let newTarget = min(newValue / effectiveCommissionGoal, 1.0)
+            let newTarget = min(newValue / clampedGoal, 1.0)
             withAnimation(.easeInOut(duration: 0.6)) {
                 animatedProgress = newTarget
             }
