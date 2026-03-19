@@ -27,6 +27,19 @@ extension EnvironmentValues {
 
 struct TabMenuView: View {
     @EnvironmentObject private var authState: AuthState
+    @ViewBuilder
+    var body: some View {
+        switch authState.currentRole {
+        case .manager:
+            ManagerTabMenuView()
+        case .user, .unknown:
+            EmployeeTabMenuView()
+        }
+    }
+}
+
+struct EmployeeTabMenuView: View {
+    @EnvironmentObject private var authState: AuthState
     @EnvironmentObject private var appLoginApprovalState: AppLoginApprovalState
     @State var selectedTab: Tabs = .home
     @State private var showAddSheet = false

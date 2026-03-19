@@ -232,12 +232,14 @@ struct ProblemsView: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    NavigationLink {
-                        StatisticsView()
-                            .environmentObject(authState)
-                            .environment(\.openAddSheet, openAddSheet)
-                    } label: {
-                        Image(systemName: "chart.bar")
+                    if authState.currentRole != .manager {
+                        NavigationLink {
+                            StatisticsView()
+                                .environmentObject(authState)
+                                .environment(\.openAddSheet, openAddSheet)
+                        } label: {
+                            Image(systemName: "chart.bar")
+                        }
                     }
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {

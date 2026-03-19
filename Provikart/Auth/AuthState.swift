@@ -32,6 +32,11 @@ final class AuthState: ObservableObject {
         }
     }
 
+    /// Aktuální role uživatele mapovaná ze serverového stringu.
+    var currentRole: UserRole {
+        UserRole(apiValue: currentUser?.role)
+    }
+
     /// Token pro autentizované požadavky (např. načtení profilového obrázku).
     @Published private(set) var authToken: String? {
         didSet {
