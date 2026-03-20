@@ -22,11 +22,15 @@ struct WatchContentView: View {
     @State private var entryCardsCount: Int?
     @State private var isLoadingEntryCards = false
     @State private var entryCardsError: String?
+    @State private var managerReportsCount: Int?
+    @State private var managerReportsError: String?
+    @State private var isLoadingManagerReports = false
 
     private let service = WatchCommissionService()
     private let goalsService = WatchUserGoalsService()
     private let orderItemsCountService = WatchOrderItemsCountService()
     private let entryCardsService = WatchEntryCardsCountService()
+    private let managerReportsService = WatchManagerReportsService()
 
     private var effectiveCommissionGoal: Double {
         commissionGoal ?? 100_000
@@ -35,6 +39,8 @@ struct WatchContentView: View {
     var body: some View {
         if !sessionManager.isAuthenticated {
             notAuthenticatedView
+        } else if sessionManager.isManager {
+            managerDashboardView
         } else {
             TabView {
                 commissionView
@@ -45,6 +51,63 @@ struct WatchContentView: View {
                     .tag(2)
             }
             .tabViewStyle(.page)
+        }
+    }
+    
+    private var managerDashboardView: some View {
+        NavigationStack {
+            VStack(spacing: 8) {
+                Spacer()
+                
+                Image(systemName: "person.2.badge.gearshape.fill")
+                    .font(.system(size: 22))
+                    .foregroundColor(.accentColor)
+                
+                Text("Manažer")
+                    .font(.headline)
+                
+                Text("Aktivní reporty")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                
+                if isLoadingManagerReports && managerReportsCount == nil {
+                    ProgressView()
+                } else if let count = managerReportsCount {
+                    Text("\(count)")
+                        .font(.system(size: 36, weight: .bold, design: .rounded))
+                        .contentTransition(.numericText())
+                } else if let err = managerReportsError {
+                    Text(err)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                } else {
+                    ProgressView()
+                }
+                
+                Text("Detail spravíte v iPhonu")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 2)
+                
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .navigationTitle("Provikart")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    profileImage
+                }
+            }
+        }
+        .task {
+            await loadManagerReportsCount()
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                if Task.isCancelled { break }
+                await loadManagerReportsCount()
+            }
         }
     }
 
@@ -512,6 +575,29 @@ struct WatchContentView: View {
         } else {
             suite.removeObject(forKey: "widget_commission_goal")
         }
+    }
+    
+    private func loadManagerReportsCount() async {
+        guard let token = sessionManager.authToken, !token.isEmpty else {
+            managerReportsError = "Nejste přihlášeni"
+            return
+        }
+
+        if managerReportsCount == nil { isLoadingManagerReports = true }
+        managerReportsError = nil
+
+        do {
+            let count = try await managerReportsService.fetchActiveReportsCount(token: token)
+            withAnimation(.easeInOut(duration: 0.3)) {
+                managerReportsCount = count
+            }
+        } catch {
+            if managerReportsCount == nil {
+                managerReportsError = error.localizedDescription
+            }
+        }
+
+        isLoadingManagerReports = false
     }
 }
 

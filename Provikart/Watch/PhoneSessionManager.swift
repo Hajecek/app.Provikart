@@ -41,6 +41,7 @@ final class PhoneSessionManager: NSObject, ObservableObject {
            let user = try? JSONDecoder().decode(WatchUserPayload.self, from: data) {
             context["userName"] = user.displayName
             context["profileImageURL"] = user.profileImageURLString
+            context["userRole"] = user.role ?? ""
         }
 
         do {
@@ -124,6 +125,7 @@ extension PhoneSessionManager: WCSessionDelegate {
                let user = try? JSONDecoder().decode(WatchUserPayload.self, from: data) {
                 reply["userName"] = user.displayName
                 reply["profileImageURL"] = user.profileImageURLString
+                reply["userRole"] = user.role ?? ""
             }
 
             print("[WC-Phone] Hodinky žádají token → \(token.isEmpty ? "prázdný" : "odesílám")")
@@ -138,6 +140,7 @@ private struct WatchUserPayload: Codable {
     let lastname: String?
     let name: String?
     let profile_image: String?
+    let role: String?
 
     var displayName: String {
         if let f = firstname, !f.isEmpty, let l = lastname, !l.isEmpty {

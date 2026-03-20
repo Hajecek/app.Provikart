@@ -26,6 +26,10 @@ final class WatchSessionManager: NSObject, ObservableObject {
     @Published private(set) var profileImageURL: URL? {
         didSet { UserDefaults.standard.set(profileImageURL?.absoluteString, forKey: "Provikart.watchProfileImageURL") }
     }
+    
+    @Published private(set) var userRole: String? {
+        didSet { UserDefaults.standard.set(userRole, forKey: "Provikart.watchUserRole") }
+    }
 
     private let appGroupIdentifier = "group.com.hajecek.provikartApp"
 
@@ -36,6 +40,7 @@ final class WatchSessionManager: NSObject, ObservableObject {
             self.authToken = shared
         }
         self.userName = UserDefaults.standard.string(forKey: "Provikart.watchUserName")
+        self.userRole = UserDefaults.standard.string(forKey: "Provikart.watchUserRole")
         if let urlStr = UserDefaults.standard.string(forKey: "Provikart.watchProfileImageURL"), !urlStr.isEmpty {
             self.profileImageURL = URL(string: urlStr)
         }
@@ -46,6 +51,10 @@ final class WatchSessionManager: NSObject, ObservableObject {
     var isAuthenticated: Bool {
         guard let token = authToken else { return false }
         return !token.isEmpty
+    }
+    
+    var isManager: Bool {
+        (userRole ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "manager"
     }
 
     func activate() {
@@ -105,6 +114,10 @@ final class WatchSessionManager: NSObject, ObservableObject {
         }
         if let urlStr = dict["profileImageURL"] as? String, !urlStr.isEmpty {
             self.profileImageURL = URL(string: urlStr)
+        }
+        if let role = dict["userRole"] as? String {
+            let trimmed = role.trimmingCharacters(in: .whitespacesAndNewlines)
+            self.userRole = trimmed.isEmpty ? nil : trimmed
         }
     }
 
