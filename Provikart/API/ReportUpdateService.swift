@@ -65,10 +65,19 @@ final class ReportUpdateService {
 
     /// Upraví report na serveru. PATCH report_update.php, Authorization: Bearer token.
     func updateReport(payload: ReportUpdatePayload, token: String?) async throws {
+        try await sendUpdateReport(payload: payload, token: token, endpoint: "report_update.php")
+    }
+
+    /// Přidá manažerský vývoj k reportu. PATCH manager_report_update.php.
+    func updateManagerReport(payload: ReportUpdatePayload, token: String?) async throws {
+        try await sendUpdateReport(payload: payload, token: token, endpoint: "manager_report_update.php")
+    }
+
+    private func sendUpdateReport(payload: ReportUpdatePayload, token: String?, endpoint: String) async throws {
         guard let token = token, !token.isEmpty else {
             throw ReportUpdateError.notAuthenticated
         }
-        guard let url = URL(string: "\(baseURL)/report_update.php") else {
+        guard let url = URL(string: "\(baseURL)/\(endpoint)") else {
             throw ReportUpdateError.invalidURL
         }
 

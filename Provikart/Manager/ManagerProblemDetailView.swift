@@ -218,7 +218,7 @@ private struct ManagerReplyToReportView: View {
                     id: report.id,
                     statement: trimmed
                 )
-                try await updateService.updateReport(payload: payload, token: authState.authToken)
+                try await updateService.updateManagerReport(payload: payload, token: authState.authToken)
                 showSuccess = true
             } catch {
                 errorMessage = error.localizedDescription
