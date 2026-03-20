@@ -17,11 +17,12 @@ struct ManagerTabMenuView: View {
     @EnvironmentObject private var authState: AuthState
     @EnvironmentObject private var appLoginApprovalState: AppLoginApprovalState
     @State private var selectedTab: ManagerTabs = .problems
+    @State private var problemsRefreshToken = UUID()
 
     var body: some View {
         TabView(selection: $selectedTab) {
             Tab("Problémy", systemImage: "exclamationmark.bubble", value: .problems) {
-                ManagerProblemsView()
+                ManagerProblemsView(refreshToken: problemsRefreshToken)
                     .environmentObject(authState)
             }
 
@@ -30,7 +31,10 @@ struct ManagerTabMenuView: View {
                     isPresented: .constant(true),
                     authState: authState,
                     isModalPresentation: false,
-                    onClose: { selectedTab = .problems }
+                    onClose: {
+                        selectedTab = .problems
+                        problemsRefreshToken = UUID()
+                    }
                 )
             }
 

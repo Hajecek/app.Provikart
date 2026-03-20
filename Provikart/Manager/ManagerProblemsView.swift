@@ -72,6 +72,7 @@ struct ManagerProblemsView: View {
     @EnvironmentObject private var authState: AuthState
     @StateObject private var viewModel = ManagerProblemsViewModel()
     @State private var selectedFilter: TopFilter = .allActive
+    let refreshToken: UUID
 
     private var reports: [UserReport] {
         viewModel.reports
@@ -83,6 +84,10 @@ struct ManagerProblemsView: View {
         case open = "Otevřené"
 
         var id: String { rawValue }
+    }
+
+    init(refreshToken: UUID = UUID()) {
+        self.refreshToken = refreshToken
     }
 
     private enum ManagerReportStatus: String {
@@ -219,6 +224,9 @@ struct ManagerProblemsView: View {
                     viewModel.stopPolling()
                     viewModel.reports = []
                 }
+            }
+            .onChange(of: refreshToken) { _, _ in
+                Task { await viewModel.loadReports() }
             }
             .onDisappear {
                 viewModel.stopPolling()

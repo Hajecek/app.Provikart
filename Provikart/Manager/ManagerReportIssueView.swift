@@ -88,7 +88,7 @@ struct ManagerReportIssueView: View {
                     if isModalPresentation {
                         isPresented = false
                     } else {
-                        resetForm()
+                        onClose?()
                     }
                 }
             } message: {
