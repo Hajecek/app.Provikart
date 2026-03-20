@@ -236,7 +236,7 @@ struct ManagerProblemsView: View {
                 )
                 .environmentObject(authState)
             }
-            .navigationTitle("Problémy")
+            .navigationTitle("Provikart")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
