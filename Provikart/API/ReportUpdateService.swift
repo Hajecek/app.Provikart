@@ -34,9 +34,30 @@ struct ReportUpdatePayload {
     var order_number: String?
     var note: String?
     var user_note: String?
+    var statement: String?
     var is_term_selection_issue: Bool?
     var deleted_images: [String]?
     var images: [String]?  // data:image/jpeg;base64,… max 5 celkem, každý max 5 MB
+
+    init(
+        id: Int,
+        order_number: String? = nil,
+        note: String? = nil,
+        user_note: String? = nil,
+        statement: String? = nil,
+        is_term_selection_issue: Bool? = nil,
+        deleted_images: [String]? = nil,
+        images: [String]? = nil
+    ) {
+        self.id = id
+        self.order_number = order_number
+        self.note = note
+        self.user_note = user_note
+        self.statement = statement
+        self.is_term_selection_issue = is_term_selection_issue
+        self.deleted_images = deleted_images
+        self.images = images
+    }
 }
 
 final class ReportUpdateService {
@@ -55,6 +76,7 @@ final class ReportUpdateService {
         if let v = payload.order_number { body["order_number"] = v }
         if let v = payload.note { body["note"] = v }
         if let v = payload.user_note { body["user_note"] = v }
+        if let v = payload.statement { body["statement"] = v }
         if let v = payload.is_term_selection_issue { body["is_term_selection_issue"] = v }
         if let v = payload.deleted_images, !v.isEmpty { body["deleted_images"] = v }
         if let v = payload.images, !v.isEmpty { body["images"] = v }

@@ -168,9 +168,8 @@ struct ManagerProblemsView: View {
                             VStack(spacing: 12) {
                                 ForEach(visibleReports) { report in
                                     NavigationLink {
-                                        ReportDetailView(
+                                        ManagerProblemDetailView(
                                             report: report,
-                                            openEditOnAppear: false,
                                             selectedReport: .constant(nil)
                                         )
                                         .environmentObject(authState)

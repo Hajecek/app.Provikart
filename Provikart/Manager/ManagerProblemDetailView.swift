@@ -10,6 +10,8 @@ import SwiftUI
 struct ManagerProblemDetailView: View {
     let report: UserReport
     @Binding var selectedReport: UserReport?
+    @EnvironmentObject private var authState: AuthState
+    @State private var showReplySheet = false
 
     var body: some View {
         List {
@@ -39,17 +41,7 @@ struct ManagerProblemDetailView: View {
 
             if let statements = report.statements, !statements.isEmpty {
                 Section("Historie výroků") {
-                    ForEach(Array(statements.enumerated()), id: \.offset) { _, item in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(item.text)
-                            if let createdAt = item.created_at, !createdAt.isEmpty {
-                                Text(formatDate(createdAt))
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .padding(.vertical, 2)
-                    }
+                    ManagerStatementsTimelineView(statements: statements, formatDate: formatDate)
                 }
             }
 
@@ -62,6 +54,34 @@ struct ManagerProblemDetailView: View {
         .listStyle(.insetGrouped)
         .navigationTitle(report.order_number.map { "Obj. \($0)" } ?? "Report #\(report.id)")
         .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .bottom) {
+            HStack {
+                Spacer(minLength: 0)
+                Button {
+                    showReplySheet = true
+                } label: {
+                    Image(systemName: "bubble.left.and.bubble.right.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 56, height: 56)
+                        .background(
+                            Circle()
+                                .fill(Color(uiColor: .secondarySystemBackground))
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 4)
+            .padding(.bottom, 4)
+            .background(.clear)
+        }
+        .sheet(isPresented: $showReplySheet) {
+            ManagerReplyToReportView(report: report) {
+                showReplySheet = false
+            }
+            .environmentObject(authState)
+        }
         .onDisappear {
             selectedReport = nil
         }
@@ -93,5 +113,130 @@ struct ManagerProblemDetailView: View {
             }
         }
         return dateString
+    }
+}
+
+private let managerTimelineTrackWidth: CGFloat = 10
+private let managerTimelineLineWidth: CGFloat = 2
+private let managerTimelineDotSize: CGFloat = 8
+
+private struct ManagerStatementsTimelineView: View {
+    let statements: [ReportStatement]
+    let formatDate: (String) -> String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(statements.enumerated()), id: \.offset) { index, item in
+                HStack(alignment: .top, spacing: 12) {
+                    Circle()
+                        .fill(item.is_result == true ? Color(uiColor: .systemGreen) : Color.accentColor)
+                        .frame(width: managerTimelineDotSize, height: managerTimelineDotSize)
+                        .frame(width: managerTimelineTrackWidth, height: managerTimelineTrackWidth, alignment: .center)
+                        .padding(.top, 6)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(item.text)
+                            .font(.subheadline)
+                        if let createdAt = item.created_at, !createdAt.isEmpty {
+                            Text(formatDate(createdAt))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.bottom, index < statements.count - 1 ? 16 : 0)
+                }
+            }
+        }
+        .padding(.vertical, 8)
+        .background(alignment: .leading) {
+            GeometryReader { geo in
+                let lineHeight = max(0, geo.size.height - 12)
+                Rectangle()
+                    .fill(Color(uiColor: .tertiaryLabel).opacity(0.4))
+                    .frame(width: managerTimelineLineWidth, height: lineHeight)
+                    .offset(x: (managerTimelineTrackWidth - managerTimelineLineWidth) / 2, y: 6)
+            }
+            .frame(width: managerTimelineTrackWidth, alignment: .leading)
+        }
+    }
+}
+
+private struct ManagerReplyToReportView: View {
+    let report: UserReport
+    var onSaved: () -> Void
+    @EnvironmentObject private var authState: AuthState
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var statement: String = ""
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+    @State private var showSuccess = false
+
+    private let updateService = ReportUpdateService()
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Napište odpověď…", text: $statement, axis: .vertical)
+                        .lineLimit(4...12)
+                } header: {
+                    Text("Odpověď")
+                }
+
+                if let errorMessage {
+                    Section {
+                        Text(errorMessage)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle("Odpověď")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Zrušit") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Odeslat") {
+                        submitReply()
+                    }
+                    .disabled(statement.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
+                    .fontWeight(.semibold)
+                }
+            }
+            .alert("Odesláno", isPresented: $showSuccess) {
+                Button("OK") {
+                    onSaved()
+                    dismiss()
+                }
+            } message: {
+                Text("Odpověď byla uložena.")
+            }
+        }
+    }
+
+    private func submitReply() {
+        let trimmed = statement.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        errorMessage = nil
+        isSaving = true
+
+        Task { @MainActor in
+            do {
+                let payload = ReportUpdatePayload(
+                    id: report.id,
+                    statement: trimmed
+                )
+                try await updateService.updateReport(payload: payload, token: authState.authToken)
+                showSuccess = true
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            isSaving = false
+        }
     }
 }

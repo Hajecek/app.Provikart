@@ -632,6 +632,7 @@ struct ReportDetailView: View {
     @Binding var selectedReport: UserReport?
     @EnvironmentObject private var authState: AuthState
     @State private var showEditSheet = false
+    @State private var showReplySheet = false
 
     var body: some View {
         List {
@@ -705,10 +706,27 @@ struct ReportDetailView: View {
                     showEditSheet = true
                 }
             }
+            if authState.currentRole == .manager {
+                ToolbarItemGroup(placement: .bottomBar) {
+                    Spacer()
+                    Button {
+                        showReplySheet = true
+                    } label: {
+                        Label("Odpovědět", systemImage: "bubble.left.and.bubble.right")
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
         }
         .sheet(isPresented: $showEditSheet) {
             EditReportView(report: report) {
                 showEditSheet = false
+            }
+            .environmentObject(authState)
+        }
+        .sheet(isPresented: $showReplySheet) {
+            ReplyToReportView(report: report) {
+                showReplySheet = false
             }
             .environmentObject(authState)
         }
@@ -741,6 +759,87 @@ struct ReportDetailView: View {
 }
 
 // MARK: - Úprava reportu (formulář + volání PATCH report_update.php)
+
+private struct ReplyToReportView: View {
+    let report: UserReport
+    var onSaved: () -> Void
+    @EnvironmentObject private var authState: AuthState
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var statement: String = ""
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+    @State private var showSuccess = false
+
+    private let updateService = ReportUpdateService()
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Napište odpověď…", text: $statement, axis: .vertical)
+                        .lineLimit(4...12)
+                } header: {
+                    Text("Odpověď")
+                } footer: {
+                    Text("Odpověď se uloží jako výrok k tomuto reportu.")
+                }
+
+                if let errorMessage {
+                    Section {
+                        Text(errorMessage)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle("Odpověď")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Zrušit") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Odeslat") {
+                        submitReply()
+                    }
+                    .disabled(statement.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
+                    .fontWeight(.semibold)
+                }
+            }
+            .alert("Odesláno", isPresented: $showSuccess) {
+                Button("OK") {
+                    onSaved()
+                    dismiss()
+                }
+            } message: {
+                Text("Odpověď byla uložena.")
+            }
+        }
+    }
+
+    private func submitReply() {
+        let trimmed = statement.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        errorMessage = nil
+        isSaving = true
+
+        Task { @MainActor in
+            do {
+                let payload = ReportUpdatePayload(
+                    id: report.id,
+                    statement: trimmed
+                )
+                try await updateService.updateReport(payload: payload, token: authState.authToken)
+                showSuccess = true
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            isSaving = false
+        }
+    }
+}
 
 private struct EditReportView: View {
     let report: UserReport
