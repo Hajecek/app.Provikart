@@ -15,6 +15,7 @@ final class ManagerProblemsViewModel: ObservableObject {
 
     var getToken: (() -> String?)?
     private let service = ManagerReportsService()
+    private let updateService = ReportUpdateService()
     private var pollingTask: Task<Void, Never>?
 
     func startPolling() {
@@ -32,6 +33,23 @@ final class ManagerProblemsViewModel: ObservableObject {
     func stopPolling() {
         pollingTask?.cancel()
         pollingTask = nil
+    }
+
+    /// Smaže report na serveru a při úspěchu ho odebere ze seznamu.
+    func deleteReport(id: Int) async {
+        guard let token = getToken?(), !token.isEmpty else {
+            errorMessage = "Nejste přihlášeni."
+            return
+        }
+        do {
+            try await updateService.deleteReport(id: id, token: token)
+            errorMessage = nil
+            reports.removeAll { $0.id == id }
+            let incomplete = reports.filter { !$0.isCompleted }.count
+            WidgetDataStore.saveReports(incompleteCount: incomplete)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     func loadReports(silent: Bool = false) async {
@@ -72,6 +90,7 @@ struct ManagerProblemsView: View {
     @EnvironmentObject private var authState: AuthState
     @StateObject private var viewModel = ManagerProblemsViewModel()
     @State private var selectedFilter: TopFilter = .allActive
+    @State private var selectedReport: UserReport?
     let refreshToken: UUID
 
     private var reports: [UserReport] {
@@ -162,43 +181,60 @@ struct ManagerProblemsView: View {
                         description: Text("Všechny reporty jsou momentálně dokončené.")
                     )
                 } else {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 18) {
+                    List {
+                        Section {
                             topFilterRow
+                                .padding(.vertical, 4)
+                        }
+                        .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
 
-                            Text("Aktivní reporty")
-                                .font(.headline)
-                                .padding(.horizontal, 16)
-
-                            VStack(spacing: 12) {
-                                ForEach(visibleReports) { report in
-                                    NavigationLink {
-                                        ManagerProblemDetailView(
-                                            report: report,
-                                            selectedReport: .constant(nil)
-                                        )
-                                        .environmentObject(authState)
-                                    } label: {
-                                        managerReportRow(report)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-
-                            if visibleReports.isEmpty {
+                        if visibleReports.isEmpty {
+                            Section {
                                 ContentUnavailableView(
                                     "Žádné položky ve filtru",
                                     systemImage: "line.3.horizontal.decrease.circle",
                                     description: Text("Zkuste přepnout filtr na jiný stav.")
                                 )
-                                .padding(.horizontal, 16)
+                                .frame(maxWidth: .infinity)
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                            }
+                        } else {
+                            Section("Aktivní reporty") {
+                                ForEach(visibleReports) { report in
+                                    Button {
+                                        selectedReport = report
+                                    } label: {
+                                        managerReportRow(report)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                        Button(role: .destructive) {
+                                            Task { await viewModel.deleteReport(id: report.id) }
+                                        } label: {
+                                            Label("Smazat", systemImage: "trash")
+                                        }
+                                    }
+                                    .listRowInsets(EdgeInsets(top: 2, leading: 0, bottom: 2, trailing: 0))
+                                    .listRowBackground(Color.clear)
+                                    .listRowSeparator(.hidden)
+                                }
                             }
                         }
-                        .padding(.top, 8)
-                        .padding(.bottom, 20)
                     }
+                    .listStyle(.insetGrouped)
+                    .scrollContentBackground(.hidden)
                     .background(Color(uiColor: .systemGroupedBackground))
                 }
+            }
+            .navigationDestination(item: $selectedReport) { report in
+                ManagerProblemDetailView(
+                    report: report,
+                    selectedReport: $selectedReport
+                )
+                .environmentObject(authState)
             }
             .navigationTitle("Problémy")
             .navigationBarTitleDisplayMode(.large)
@@ -305,7 +341,8 @@ struct ManagerProblemsView: View {
                 .fill(leadingBorderColor(for: report))
                 .frame(width: 5)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 1)
     }
 
     private func reportDirectionLabel(for report: UserReport) -> String? {
