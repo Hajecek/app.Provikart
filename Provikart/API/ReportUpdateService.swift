@@ -166,6 +166,50 @@ final class ReportUpdateService {
         }
     }
 
+    /// Smaže report na serveru z manažerského endpointu.
+    /// DELETE manager_report_update.php?id=…&token=…
+    func deleteManagerReport(id: Int, token: String?) async throws {
+        guard let token = token, !token.isEmpty else {
+            throw ReportUpdateError.notAuthenticated
+        }
+        var comp = URLComponents(string: "\(baseURL)/manager_report_update.php")
+        comp?.queryItems = [
+            URLQueryItem(name: "id", value: "\(id)"),
+            URLQueryItem(name: "token", value: token)
+        ]
+        guard let url = comp?.url else {
+            throw ReportUpdateError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw ReportUpdateError.serverError(-1, "Neplatná odpověď")
+        }
+
+        let jsonData = sanitizeJsonResponse(data)
+        let decoded = try? JSONDecoder().decode(ReportUpdateResponse.self, from: jsonData)
+        let serverMessage = decoded?.error ?? decoded?.message
+
+        switch http.statusCode {
+        case 200:
+            if decoded?.success == true {
+                return
+            }
+            throw ReportUpdateError.serverError(200, serverMessage ?? "Neplatná odpověď serveru.")
+        case 401:
+            throw ReportUpdateError.serverError(401, serverMessage ?? "Neplatný nebo vypršený token.")
+        case 400, 404, 405, 500:
+            throw ReportUpdateError.serverError(http.statusCode, serverMessage)
+        default:
+            throw ReportUpdateError.serverError(http.statusCode, serverMessage)
+        }
+    }
+
     private func sanitizeJsonResponse(_ data: Data) -> Data {
         guard let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
               !text.isEmpty else { return data }

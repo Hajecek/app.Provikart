@@ -42,7 +42,7 @@ final class ManagerProblemsViewModel: ObservableObject {
             return
         }
         do {
-            try await updateService.deleteReport(id: id, token: token)
+            try await updateService.deleteManagerReport(id: id, token: token)
             errorMessage = nil
             reports.removeAll { $0.id == id }
             let incomplete = reports.filter { !$0.isCompleted }.count
