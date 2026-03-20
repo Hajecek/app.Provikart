@@ -17,33 +17,30 @@ struct ManagerTabMenuView: View {
     @EnvironmentObject private var authState: AuthState
     @EnvironmentObject private var appLoginApprovalState: AppLoginApprovalState
     @State private var selectedTab: ManagerTabs = .problems
-    @State private var showReportIssue = false
 
     var body: some View {
         TabView(selection: $selectedTab) {
             Tab("Problémy", systemImage: "exclamationmark.bubble", value: .problems) {
                 ManagerProblemsView()
+                    .environmentObject(authState)
             }
 
-            Tab("Přidat", systemImage: "plus", value: .add, role: .search) {
-                Color.clear
+            Tab("Přidat", systemImage: "plus", value: .add) {
+                ManagerReportIssueView(
+                    isPresented: .constant(true),
+                    authState: authState,
+                    isModalPresentation: false,
+                    onClose: { selectedTab = .problems }
+                )
             }
 
             Tab("Nastavení", systemImage: "gearshape", value: .settings) {
                 NavigationStack {
                     SettingsView()
+                        .environmentObject(authState)
                 }
             }
 
-        }
-        .onChange(of: selectedTab) { oldValue, newValue in
-            if newValue == .add {
-                showReportIssue = true
-                selectedTab = oldValue
-            }
-        }
-        .fullScreenCover(isPresented: $showReportIssue) {
-            ManagerReportIssueView(isPresented: $showReportIssue, authState: authState)
         }
         .modifier(LoginApprovalBottomAccessoryModifier(approvalState: appLoginApprovalState))
     }

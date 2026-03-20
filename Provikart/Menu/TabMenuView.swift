@@ -27,13 +27,18 @@ extension EnvironmentValues {
 
 struct TabMenuView: View {
     @EnvironmentObject private var authState: AuthState
+    @EnvironmentObject private var appLoginApprovalState: AppLoginApprovalState
     @ViewBuilder
     var body: some View {
         switch authState.currentRole {
         case .manager:
             ManagerTabMenuView()
+                .environmentObject(authState)
+                .environmentObject(appLoginApprovalState)
         case .user, .unknown:
             EmployeeTabMenuView()
+                .environmentObject(authState)
+                .environmentObject(appLoginApprovalState)
         }
     }
 }

@@ -13,7 +13,8 @@ import UniformTypeIdentifiers
 struct ManagerReportIssueView: View {
     @Binding var isPresented: Bool
     @ObservedObject var authState: AuthState
-    @Environment(\.dismiss) private var dismiss
+    let isModalPresentation: Bool
+    var onClose: (() -> Void)? = nil
 
     @State private var orderNumber = ""
     @State private var description = ""
@@ -129,47 +130,50 @@ struct ManagerReportIssueView: View {
             .toolbar {
                 ToolbarItemGroup(placement: .topBarLeading) {
                     Button {
-                        isPresented = false
-                        dismiss()
+                        if isModalPresentation {
+                            isPresented = false
+                        } else {
+                            onClose?()
+                        }
                     } label: {
-                        Image(systemName: "house")
+                        Image(systemName: isModalPresentation ? "xmark" : "house")
                     }
-                    .accessibilityLabel("Zpět na Domů")
+                    .accessibilityLabel(isModalPresentation ? "Zavřít" : "Zpět na Domů")
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     ProfileBarButton()
                         .environmentObject(authState)
                 }
                 ToolbarItemGroup(placement: .bottomBar) {
-                    Button("Zrušit") {
-                        isPresented = false
-                        dismiss()
+                    if isModalPresentation {
+                        Button("Zrušit") {
+                            isPresented = false
+                        }
+                    } else {
+                        Button {
+                            onClose?()
+                        } label: {
+                            Image(systemName: "house")
+                        }
+                        .accessibilityLabel("Zpět na Domů")
+
+                        Button("Vyčistit") {
+                            resetForm()
+                        }
                     }
                     Spacer()
-                    Button {
-                        submitReport()
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "paperplane.fill")
-                                .font(.subheadline.weight(.semibold))
-                            Text("Poslat")
-                        }
-                        .frame(minWidth: 72)
-                    }
-                    .fontWeight(.semibold)
-                    .disabled(
-                        orderNumber.trimmingCharacters(in: .whitespaces).isEmpty ||
-                        description.trimmingCharacters(in: .whitespaces).isEmpty ||
-                        isSubmitting
-                    )
+                    submitButton
                 }
             }
-            .toolbar(.hidden, for: .tabBar)
+            .toolbar(!isModalPresentation ? .hidden : .visible, for: .tabBar)
             .alert("Problém nahlášen", isPresented: $showSuccess) {
                 Button("OK") {
                     showSuccess = false
-                    isPresented = false
-                    dismiss()
+                    if isModalPresentation {
+                        isPresented = false
+                    } else {
+                        resetForm()
+                    }
                 }
             } message: {
                 Text("Nahlášení manažera bylo odesláno.")
@@ -217,6 +221,35 @@ struct ManagerReportIssueView: View {
         }
         return result
     }
+
+    private var submitButton: some View {
+        Button {
+            submitReport()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "paperplane.fill")
+                    .font(.subheadline.weight(.semibold))
+                Text("Poslat")
+            }
+            .frame(minWidth: 72)
+        }
+        .fontWeight(.semibold)
+        .disabled(
+            orderNumber.trimmingCharacters(in: .whitespaces).isEmpty ||
+            description.trimmingCharacters(in: .whitespaces).isEmpty ||
+            isSubmitting
+        )
+    }
+
+    private func resetForm() {
+        orderNumber = ""
+        description = ""
+        remark = ""
+        isTermSelectionIssue = false
+        selectedPhotoItems = []
+        errorMessage = nil
+        isSubmitting = false
+    }
 }
 
 private struct ManagerImageDataTransfer: Transferable {
@@ -257,5 +290,5 @@ private extension UIImage {
 }
 
 #Preview {
-    ManagerReportIssueView(isPresented: .constant(true), authState: AuthState())
+    ManagerReportIssueView(isPresented: .constant(true), authState: AuthState(), isModalPresentation: true)
 }

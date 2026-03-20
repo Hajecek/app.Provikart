@@ -173,6 +173,7 @@ struct ManagerProblemsView: View {
                                             openEditOnAppear: false,
                                             selectedReport: .constant(nil)
                                         )
+                                        .environmentObject(authState)
                                     } label: {
                                         managerReportRow(report)
                                     }
