@@ -16,6 +16,7 @@ struct WatchContentView: View {
     @State private var errorMessage: String?
 
     @State private var servicesCount: Int?
+    @State private var servicesGoal: Int?
     @State private var isLoadingServices = false
     @State private var servicesError: String?
 
@@ -296,8 +297,10 @@ struct WatchContentView: View {
 
         do {
             let count = try await orderItemsCountService.fetchCount(token: token)
+            let (_, goal) = (try? await goalsService.fetchGoals(token: token)) ?? (nil, nil)
             withAnimation(.easeInOut(duration: 0.3)) {
                 servicesCount = count
+                if let goal { servicesGoal = goal }
             }
         } catch {
             if servicesCount == nil {
@@ -379,8 +382,8 @@ struct WatchContentView: View {
 
     private func servicesDisplay(_ count: Int) -> some View {
         VStack(spacing: 10) {
-            // Cíl vezmeme stejný jako na iOS (výchozí 100, tady natvrdo).
-            let goal: Double = 100
+            // Cíl počtu služeb bereme z API; 100 je pouze fallback.
+            let goal: Double = Double(servicesGoal ?? 100)
             servicesBarGraph(value: Double(count), goal: goal)
 
             HStack(alignment: .firstTextBaseline, spacing: 3) {
