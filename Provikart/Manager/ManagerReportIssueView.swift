@@ -10,6 +10,29 @@ import PhotosUI
 import UIKit
 import UniformTypeIdentifiers
 
+private struct TeamMember: Identifiable, Hashable {
+    let userId: Int?
+    let username: String?
+    let fullName: String?
+
+    var id: String {
+        if let userId { return "id-\(userId)" }
+        if let username, !username.isEmpty { return "u-\(username.lowercased())" }
+        if let fullName, !fullName.isEmpty { return "n-\(fullName.lowercased())" }
+        return "unknown"
+    }
+
+    var displayLabel: String {
+        if let fullName, !fullName.isEmpty, let username, !username.isEmpty {
+            return "\(fullName) (@\(username))"
+        }
+        if let fullName, !fullName.isEmpty { return fullName }
+        if let username, !username.isEmpty { return "@\(username)" }
+        if let userId { return "Uživatel #\(userId)" }
+        return "Neznámý uživatel"
+    }
+}
+
 struct ManagerReportIssueView: View {
     @Binding var isPresented: Bool
     @ObservedObject var authState: AuthState
@@ -20,18 +43,59 @@ struct ManagerReportIssueView: View {
     @State private var description = ""
     @State private var remark = ""
     @State private var isTermSelectionIssue = false
+    @State private var teamMembers: [TeamMember] = []
+    @State private var selectedMemberId: TeamMember.ID?
+    @State private var isLoadingTeamMembers = false
     @State private var selectedPhotoItems: [PhotosPickerItem] = []
     @State private var isSubmitting = false
     @State private var errorMessage: String?
     @State private var showSuccess = false
 
     private let service = ReportIssueService()
+    private let managerTeamMembersService = ManagerTeamMembersService()
+    private let managerReportsService = ManagerReportsService()
+    private var selectedMember: TeamMember? {
+        guard let selectedMemberId else { return nil }
+        return teamMembers.first(where: { $0.id == selectedMemberId })
+    }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
                 Form {
+                    Section {
+                        if isLoadingTeamMembers {
+                            HStack(spacing: 10) {
+                                ProgressView()
+                                Text("Načítám členy týmu…")
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else if teamMembers.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Členové týmu nebyli načteni.")
+                                    .foregroundStyle(.secondary)
+                                Button("Načíst znovu") {
+                                    Task { await loadTeamMembers(forceReload: true) }
+                                }
+                            }
+                        } else {
+                            Picker("Komu report patří", selection: Binding(
+                                get: { selectedMemberId },
+                                set: { selectedMemberId = $0 }
+                            )) {
+                                Text("Vyberte člena týmu").tag(Optional<TeamMember.ID>.none)
+                                ForEach(teamMembers) { member in
+                                    Text(member.displayLabel).tag(Optional(member.id))
+                                }
+                            }
+                        }
+                    } header: {
+                        Text("Člen týmu")
+                    } footer: {
+                        Text("Vyberte, pro kterého člena týmu report vytváříte.")
+                    }
+
                     Section {
                         HStack(spacing: 12) {
                             Image(systemName: "number.circle.fill")
@@ -166,6 +230,9 @@ struct ManagerReportIssueView: View {
                 }
             }
             .toolbar(!isModalPresentation ? .hidden : .visible, for: .tabBar)
+            .task {
+                await loadTeamMembers(forceReload: false)
+            }
             .alert("Problém nahlášen", isPresented: $showSuccess) {
                 Button("OK") {
                     showSuccess = false
@@ -182,6 +249,10 @@ struct ManagerReportIssueView: View {
     }
 
     private func submitReport() {
+        guard let selectedMember else {
+            errorMessage = "Vyberte člena týmu."
+            return
+        }
         let order = orderNumber.trimmingCharacters(in: .whitespaces)
         let issueText = description.trimmingCharacters(in: .whitespaces)
         guard !order.isEmpty else { return }
@@ -198,6 +269,8 @@ struct ManagerReportIssueView: View {
                     note: issueText.isEmpty ? nil : issueText,
                     user_note: remarkTrimmed.isEmpty ? nil : remarkTrimmed,
                     is_term_selection_issue: isTermSelectionIssue,
+                    user_id: selectedMember.userId,
+                    username: selectedMember.username,
                     images: imageDataUris.isEmpty ? nil : imageDataUris
                 )
                 try await service.submitReport(payload: payload, token: authState.authToken)
@@ -208,6 +281,81 @@ struct ManagerReportIssueView: View {
                 errorMessage = error.localizedDescription
             }
             isSubmitting = false
+        }
+    }
+
+    private func loadTeamMembers(forceReload: Bool) async {
+        if !forceReload && !teamMembers.isEmpty { return }
+        await MainActor.run {
+            isLoadingTeamMembers = true
+        }
+        do {
+            let apiMembers = try await managerTeamMembersService.fetchMembers(token: authState.authToken)
+            var mappedMembers = buildTeamMembers(from: apiMembers)
+            // Fallback: když endpoint vrátí prázdno, zkusíme aspoň známé členy z manager reportů.
+            if mappedMembers.isEmpty {
+                let reports = try? await managerReportsService.fetchManagerReports(token: authState.authToken)
+                if let reports {
+                    mappedMembers = buildTeamMembersFromReports(reports)
+                }
+            }
+            await MainActor.run {
+                teamMembers = mappedMembers
+                if selectedMemberId == nil {
+                    selectedMemberId = mappedMembers.first?.id
+                }
+                isLoadingTeamMembers = false
+            }
+        } catch {
+            let reports = try? await managerReportsService.fetchManagerReports(token: authState.authToken)
+            let fallbackMembers = reports.map(buildTeamMembersFromReports) ?? []
+            await MainActor.run {
+                if !fallbackMembers.isEmpty {
+                    teamMembers = fallbackMembers
+                    if selectedMemberId == nil {
+                        selectedMemberId = fallbackMembers.first?.id
+                    }
+                }
+                if errorMessage == nil {
+                    errorMessage = "Nepodařilo se načíst členy týmu z API."
+                }
+                isLoadingTeamMembers = false
+            }
+        }
+    }
+
+    private func buildTeamMembers(from members: [ManagerTeamMember]) -> [TeamMember] {
+        members.map {
+            TeamMember(
+                userId: $0.id,
+                username: $0.username?.trimmingCharacters(in: .whitespacesAndNewlines),
+                fullName: $0.name?.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+        }.sorted {
+            $0.displayLabel.localizedCaseInsensitiveCompare($1.displayLabel) == .orderedAscending
+        }
+    }
+
+    private func buildTeamMembersFromReports(_ reports: [UserReport]) -> [TeamMember] {
+        var byKey: [String: TeamMember] = [:]
+        for report in reports where report.created_by_manager != true {
+            let username = report.username?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let fullName = report.user_name?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let userId = report.user_id
+            let key: String
+            if let userId {
+                key = "id-\(userId)"
+            } else if let username, !username.isEmpty {
+                key = "u-\(username.lowercased())"
+            } else {
+                continue
+            }
+            if byKey[key] == nil {
+                byKey[key] = TeamMember(userId: userId, username: username, fullName: fullName)
+            }
+        }
+        return byKey.values.sorted {
+            $0.displayLabel.localizedCaseInsensitiveCompare($1.displayLabel) == .orderedAscending
         }
     }
 
@@ -235,6 +383,7 @@ struct ManagerReportIssueView: View {
         }
         .fontWeight(.semibold)
         .disabled(
+            selectedMemberId == nil ||
             orderNumber.trimmingCharacters(in: .whitespaces).isEmpty ||
             description.trimmingCharacters(in: .whitespaces).isEmpty ||
             isSubmitting
@@ -242,6 +391,11 @@ struct ManagerReportIssueView: View {
     }
 
     private func resetForm() {
+        if let first = teamMembers.first {
+            selectedMemberId = first.id
+        } else {
+            selectedMemberId = nil
+        }
         orderNumber = ""
         description = ""
         remark = ""

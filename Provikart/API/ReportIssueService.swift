@@ -55,13 +55,25 @@ struct ReportIssuePayload {
     var note: String?
     var user_note: String?
     var is_term_selection_issue: Bool
+    var user_id: Int?
+    var username: String?
     var images: [String]?
 
-    init(order_number: String, note: String? = nil, user_note: String? = nil, is_term_selection_issue: Bool = false, images: [String]? = nil) {
+    init(
+        order_number: String,
+        note: String? = nil,
+        user_note: String? = nil,
+        is_term_selection_issue: Bool = false,
+        user_id: Int? = nil,
+        username: String? = nil,
+        images: [String]? = nil
+    ) {
         self.order_number = order_number
         self.note = note
         self.user_note = user_note
         self.is_term_selection_issue = is_term_selection_issue
+        self.user_id = user_id
+        self.username = username
         self.images = images
     }
 }
@@ -90,6 +102,8 @@ final class ReportIssueService {
                 note: payload.note,
                 userNote: payload.user_note,
                 isTermSelectionIssue: payload.is_term_selection_issue,
+                userId: payload.user_id,
+                username: payload.username,
                 token: token,
                 imageDataUris: images
             )
@@ -102,6 +116,8 @@ final class ReportIssueService {
                 let note: String?
                 let user_note: String?
                 let is_term_selection_issue: Bool
+                let user_id: Int?
+                let username: String?
                 let images: [String]?
                 let token: String
             }
@@ -110,6 +126,8 @@ final class ReportIssueService {
                 note: payload.note,
                 user_note: payload.user_note,
                 is_term_selection_issue: payload.is_term_selection_issue,
+                user_id: payload.user_id,
+                username: payload.username,
                 images: nil,
                 token: token
             )
@@ -158,6 +176,8 @@ final class ReportIssueService {
         note: String?,
         userNote: String?,
         isTermSelectionIssue: Bool,
+        userId: Int?,
+        username: String?,
         token: String,
         imageDataUris: [String]
     ) -> (Data, String) {
@@ -177,6 +197,12 @@ final class ReportIssueService {
         appendField(name: "note", value: note ?? "")
         appendField(name: "user_note", value: userNote ?? "")
         appendField(name: "is_term_selection_issue", value: isTermSelectionIssue ? "1" : "0")
+        if let userId {
+            appendField(name: "user_id", value: String(userId))
+        }
+        if let username, !username.isEmpty {
+            appendField(name: "username", value: username)
+        }
         appendField(name: "token", value: token)
 
         for (index, dataUri) in imageDataUris.prefix(5).enumerated() {
