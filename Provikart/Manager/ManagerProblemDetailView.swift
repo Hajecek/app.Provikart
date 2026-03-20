@@ -12,47 +12,47 @@ struct ManagerProblemDetailView: View {
     @Binding var selectedReport: UserReport?
     @EnvironmentObject private var authState: AuthState
     @State private var showReplySheet = false
+    @State private var refreshedReport: UserReport?
+    private let managerReportsService = ManagerReportsService()
+
+    private var currentReport: UserReport {
+        refreshedReport ?? report
+    }
 
     var body: some View {
         List {
             Section("Základní údaje") {
-                detailRow("Obj. číslo", report.order_number ?? "—")
-                detailRow("Status", report.status ?? "—")
-                detailRow("Dokončeno", report.isCompleted ? "Ano" : "Ne")
-                if let created = report.created_at, !created.isEmpty {
+                detailRow("Obj. číslo", currentReport.order_number ?? "—")
+                detailRow("Status", currentReport.status ?? "—")
+                detailRow("Dokončeno", currentReport.isCompleted ? "Ano" : "Ne")
+                if let created = currentReport.created_at, !created.isEmpty {
                     detailRow("Vytvořeno", formatDate(created))
                 }
-                if let updated = report.updated_at, !updated.isEmpty {
+                if let updated = currentReport.updated_at, !updated.isEmpty {
                     detailRow("Upraveno", formatDate(updated))
                 }
             }
 
-            if let note = report.note, !note.isEmpty {
+            if let note = currentReport.note, !note.isEmpty {
                 Section("Popis problému") {
                     Text(note)
                 }
             }
 
-            if let statement = report.statement, !statement.isEmpty {
-                Section("Výrok") {
-                    Text(statement)
-                }
-            }
-
-            if let statements = report.statements, !statements.isEmpty {
+            if let statements = currentReport.statements, !statements.isEmpty {
                 Section("Historie výroků") {
                     ManagerStatementsTimelineView(statements: statements, formatDate: formatDate)
                 }
             }
 
-            if let result = report.result, !result.isEmpty {
+            if let result = currentReport.result, !result.isEmpty {
                 Section("Výsledek") {
                     Text(result)
                 }
             }
         }
         .listStyle(.insetGrouped)
-        .navigationTitle(report.order_number.map { "Obj. \($0)" } ?? "Report #\(report.id)")
+        .navigationTitle(currentReport.order_number.map { "Obj. \($0)" } ?? "Report #\(currentReport.id)")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -64,8 +64,9 @@ struct ManagerProblemDetailView: View {
             }
         }
         .sheet(isPresented: $showReplySheet) {
-            ManagerReplyToReportView(report: report) {
+            ManagerReplyToReportView(report: currentReport) {
                 showReplySheet = false
+                Task { await refreshReport() }
             }
             .environmentObject(authState)
         }
@@ -100,6 +101,18 @@ struct ManagerProblemDetailView: View {
             }
         }
         return dateString
+    }
+
+    private func refreshReport() async {
+        guard let token = authState.authToken, !token.isEmpty else { return }
+        do {
+            let reports = try await managerReportsService.fetchManagerReports(token: token)
+            guard let updated = reports.first(where: { $0.id == report.id }) else { return }
+            refreshedReport = updated
+            selectedReport = updated
+        } catch {
+            // Tiché selhání - detail zůstane na posledních dostupných datech.
+        }
     }
 }
 
