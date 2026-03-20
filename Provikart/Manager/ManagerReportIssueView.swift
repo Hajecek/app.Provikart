@@ -45,7 +45,10 @@ struct ManagerReportIssueView: View {
     @State private var isTermSelectionIssue = false
     @State private var teamMembers: [TeamMember] = []
     @State private var selectedMemberId: TeamMember.ID?
+    @State private var showMemberPicker = false
     @State private var isLoadingTeamMembers = false
+    @State private var didInitialTeamLoad = false
+    @State private var hasStableTeamMembers = false
     @State private var selectedPhotoItems: [PhotosPickerItem] = []
     @State private var isSubmitting = false
     @State private var errorMessage: String?
@@ -60,178 +63,28 @@ struct ManagerReportIssueView: View {
     }
 
     var body: some View {
+        navigationRoot
+    }
+
+    private var navigationRoot: some View {
         NavigationStack {
-            ZStack {
-                Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
-                Form {
-                    Section {
-                        if isLoadingTeamMembers {
-                            HStack(spacing: 10) {
-                                ProgressView()
-                                Text("Načítám členy týmu…")
-                                    .foregroundStyle(.secondary)
-                            }
-                        } else if teamMembers.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Členové týmu nebyli načteni.")
-                                    .foregroundStyle(.secondary)
-                                Button("Načíst znovu") {
-                                    Task { await loadTeamMembers(forceReload: true) }
-                                }
-                            }
-                        } else {
-                            Picker("Komu report patří", selection: Binding(
-                                get: { selectedMemberId },
-                                set: { selectedMemberId = $0 }
-                            )) {
-                                Text("Vyberte člena týmu").tag(Optional<TeamMember.ID>.none)
-                                ForEach(teamMembers) { member in
-                                    Text(member.displayLabel).tag(Optional(member.id))
-                                }
-                            }
-                        }
-                    } header: {
-                        Text("Člen týmu")
-                    } footer: {
-                        Text("Vyberte, pro kterého člena týmu report vytváříte.")
-                    }
+            decoratedContent
+        }
+    }
 
-                    Section {
-                        HStack(spacing: 12) {
-                            Image(systemName: "number.circle.fill")
-                                .font(.title2)
-                                .foregroundStyle(.tint)
-                            TextField("Např. O7MQ8Z82", text: $orderNumber)
-                                .textContentType(.none)
-                                .keyboardType(.asciiCapable)
-                                .autocorrectionDisabled()
-                        }
-                    } header: {
-                        Text("Číslo objednávky")
-                    } footer: {
-                        Text("Zadejte číslo objednávky člena týmu.")
-                    }
-
-                    Section {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Label("Co je problém?", systemImage: "text.alignleft")
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(.secondary)
-                            TextField("Popište problém k objednávce…", text: $description, axis: .vertical)
-                                .lineLimit(4...10)
-                                .textFieldStyle(.plain)
-                        }
-                        .padding(.vertical, 4)
-                    } header: {
-                        Text("Popis problému")
-                    } footer: {
-                        Text("Hlavní popis bude uložen k reportu.")
-                    }
-
-                    Section {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Label("Poznámka pro tým", systemImage: "note.text")
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(.secondary)
-                            TextField("Volitelná interní poznámka…", text: $remark, axis: .vertical)
-                                .lineLimit(2...6)
-                                .textFieldStyle(.plain)
-                        }
-                        .padding(.vertical, 4)
-                    } header: {
-                        Text("Poznámka")
-                    }
-
-                    Section {
-                        Toggle(isOn: $isTermSelectionIssue) {
-                            Label("Jen problém s výběrem termínu", systemImage: "calendar.badge.clock")
-                        }
-                        .tint(.accentColor)
-                    } header: {
-                        Text("Typ problému")
-                    } footer: {
-                        Text("Zaškrtněte, pokud jde pouze o nemožnost nebo potíže s výběrem termínu instalace.")
-                    }
-
-                    Section {
-                        PhotosPicker(
-                            selection: $selectedPhotoItems,
-                            maxSelectionCount: 2,
-                            matching: .images
-                        ) {
-                            Label("Přidat fotky", systemImage: "photo.on.rectangle.angled")
-                        }
-                        if !selectedPhotoItems.isEmpty {
-                            HStack {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(.green)
-                                Text("Vybráno \(selectedPhotoItems.count) \(selectedPhotoItems.count == 1 ? "fotka" : "fotek")")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    } header: {
-                        Text("Přílohy")
-                    } footer: {
-                        Text("Max. 2 fotky (kvůli spolehlivému odeslání přes mobilní síť).")
-                    }
-
-                    if let errorMessage {
-                        Section {
-                            HStack(spacing: 8) {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundStyle(.red)
-                                Text(errorMessage)
-                                    .foregroundStyle(.red)
-                            }
-                        }
-                    }
-                }
-                .scrollContentBackground(.hidden)
-            }
+    private var decoratedContent: some View {
+        reportContent
             .navigationTitle("Poslat report")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItemGroup(placement: .topBarLeading) {
-                    Button {
-                        if isModalPresentation {
-                            isPresented = false
-                        } else {
-                            onClose?()
-                        }
-                    } label: {
-                        Image(systemName: isModalPresentation ? "xmark" : "house")
-                    }
-                    .accessibilityLabel(isModalPresentation ? "Zavřít" : "Zpět na Domů")
-                }
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    ProfileBarButton()
-                        .environmentObject(authState)
-                }
-                ToolbarItemGroup(placement: .bottomBar) {
-                    if isModalPresentation {
-                        Button("Zrušit") {
-                            isPresented = false
-                        }
-                    } else {
-                        Button {
-                            onClose?()
-                        } label: {
-                            Image(systemName: "house")
-                        }
-                        .accessibilityLabel("Zpět na Domů")
-
-                        Button("Vyčistit") {
-                            resetForm()
-                        }
-                    }
-                    Spacer()
-                    submitButton
-                }
-            }
+            .toolbar { mainToolbar }
             .toolbar(!isModalPresentation ? .hidden : .visible, for: .tabBar)
-            .task {
-                await loadTeamMembers(forceReload: false)
+            .sheet(isPresented: $showMemberPicker) { memberPickerSheet }
+            .onAppear {
+                guard !didInitialTeamLoad else { return }
+                didInitialTeamLoad = true
+                Task {
+                    await loadTeamMembers(forceReload: false)
+                }
             }
             .alert("Problém nahlášen", isPresented: $showSuccess) {
                 Button("OK") {
@@ -245,7 +98,240 @@ struct ManagerReportIssueView: View {
             } message: {
                 Text("Nahlášení manažera bylo odesláno.")
             }
+    }
+
+    @ToolbarContentBuilder
+    private var mainToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .topBarLeading) {
+            Button {
+                if isModalPresentation {
+                    isPresented = false
+                } else {
+                    onClose?()
+                }
+            } label: {
+                Image(systemName: isModalPresentation ? "xmark" : "house")
+            }
+            .accessibilityLabel(isModalPresentation ? "Zavřít" : "Zpět na Domů")
         }
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            ProfileBarButton()
+                .environmentObject(authState)
+        }
+        ToolbarItemGroup(placement: .bottomBar) {
+            bottomBarLeading
+            Spacer()
+            submitButton
+        }
+    }
+
+    private var memberPickerSheet: some View {
+        TeamMemberPickerSheetView(
+            members: teamMembers,
+            selectedMemberId: selectedMemberId,
+            onSelect: { memberId in
+                selectedMemberId = memberId
+                showMemberPicker = false
+            },
+            onClose: {
+                showMemberPicker = false
+            }
+        )
+    }
+
+    private var bottomBarLeading: some View {
+        Group {
+            if isModalPresentation {
+                Button("Zrušit") {
+                    isPresented = false
+                }
+            } else {
+                Button {
+                    onClose?()
+                } label: {
+                    Image(systemName: "house")
+                }
+                .accessibilityLabel("Zpět na Domů")
+
+                Button("Vyčistit") {
+                    resetForm()
+                }
+            }
+        }
+    }
+
+    private var reportContent: some View {
+        ZStack {
+            Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
+            reportForm
+        }
+    }
+
+    private var reportForm: some View {
+        Form {
+            teamMemberSection
+            orderNumberSection
+            problemDescriptionSection
+            noteSection
+            issueTypeSection
+            attachmentsSection
+            errorSection
+        }
+        .scrollContentBackground(.hidden)
+    }
+
+    private var orderNumberSection: some View {
+        Section {
+            HStack(spacing: 12) {
+                Image(systemName: "number.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(.tint)
+                TextField("Např. O7MQ8Z82", text: $orderNumber)
+                    .textContentType(.none)
+                    .keyboardType(.asciiCapable)
+                    .autocorrectionDisabled()
+            }
+        } header: {
+            Text("Číslo objednávky")
+        } footer: {
+            Text("Zadejte číslo objednávky člena týmu.")
+        }
+    }
+
+    private var problemDescriptionSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 6) {
+                Label("Co je problém?", systemImage: "text.alignleft")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+                TextField("Popište problém k objednávce…", text: $description, axis: .vertical)
+                    .lineLimit(4...10)
+                    .textFieldStyle(.plain)
+            }
+            .padding(.vertical, 4)
+        } header: {
+            Text("Popis problému")
+        } footer: {
+            Text("Hlavní popis bude uložen k reportu.")
+        }
+    }
+
+    private var noteSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 6) {
+                Label("Poznámka pro tým", systemImage: "note.text")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+                TextField("Volitelná interní poznámka…", text: $remark, axis: .vertical)
+                    .lineLimit(2...6)
+                    .textFieldStyle(.plain)
+            }
+            .padding(.vertical, 4)
+        } header: {
+            Text("Poznámka")
+        }
+    }
+
+    private var issueTypeSection: some View {
+        Section {
+            Toggle(isOn: $isTermSelectionIssue) {
+                Label("Jen problém s výběrem termínu", systemImage: "calendar.badge.clock")
+            }
+            .tint(.accentColor)
+        } header: {
+            Text("Typ problému")
+        } footer: {
+            Text("Zaškrtněte, pokud jde pouze o nemožnost nebo potíže s výběrem termínu instalace.")
+        }
+    }
+
+    private var attachmentsSection: some View {
+        Section {
+            PhotosPicker(
+                selection: $selectedPhotoItems,
+                maxSelectionCount: 2,
+                matching: .images
+            ) {
+                Label("Přidat fotky", systemImage: "photo.on.rectangle.angled")
+            }
+            if !selectedPhotoItems.isEmpty {
+                HStack {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Text("Vybráno \(selectedPhotoItems.count) \(selectedPhotoItems.count == 1 ? "fotka" : "fotek")")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } header: {
+            Text("Přílohy")
+        } footer: {
+            Text("Max. 2 fotky (kvůli spolehlivému odeslání přes mobilní síť).")
+        }
+    }
+
+    @ViewBuilder
+    private var errorSection: some View {
+        if let errorMessage {
+            Section {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.red)
+                    Text(errorMessage)
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+    }
+
+    private var teamMemberSection: some View {
+        Section {
+            teamMemberSectionContent
+        } header: {
+            Text("Člen týmu")
+        } footer: {
+            Text("Vyberte, pro kterého člena týmu report vytváříte.")
+        }
+    }
+
+    @ViewBuilder
+    private var teamMemberSectionContent: some View {
+        if isLoadingTeamMembers {
+            HStack(spacing: 10) {
+                ProgressView()
+                Text("Načítám členy týmu…")
+                    .foregroundStyle(.secondary)
+            }
+        } else if teamMembers.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Členové týmu nebyli načteni.")
+                    .foregroundStyle(.secondary)
+                Button("Načíst znovu") {
+                    Task { await loadTeamMembers(forceReload: true) }
+                }
+            }
+        } else {
+            Button {
+                showMemberPicker = true
+            } label: {
+                HStack {
+                    Text("Komu report patří")
+                    Spacer()
+                    Text(selectedMemberLabel) // String, ne Binding<String>
+                        .foregroundStyle(selectedMemberTextColor)
+                        .lineLimit(1)
+                }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var selectedMemberLabel: String {
+        selectedMember?.displayLabel ?? "Vyberte člena týmu"
+    }
+
+    private var selectedMemberTextColor: Color {
+        selectedMember == nil ? .secondary : .primary
     }
 
     private func submitReport() {
@@ -285,6 +371,7 @@ struct ManagerReportIssueView: View {
     }
 
     private func loadTeamMembers(forceReload: Bool) async {
+        if !forceReload && hasStableTeamMembers { return }
         if !forceReload && !teamMembers.isEmpty { return }
         await MainActor.run {
             isLoadingTeamMembers = true
@@ -300,9 +387,16 @@ struct ManagerReportIssueView: View {
                 }
             }
             await MainActor.run {
-                teamMembers = mappedMembers
+                let currentIds = teamMembers.map(\.id)
+                let newIds = mappedMembers.map(\.id)
+                if currentIds != newIds {
+                    teamMembers = mappedMembers
+                }
                 if selectedMemberId == nil {
                     selectedMemberId = mappedMembers.first?.id
+                }
+                if !mappedMembers.isEmpty {
+                    hasStableTeamMembers = true
                 }
                 isLoadingTeamMembers = false
             }
@@ -311,10 +405,15 @@ struct ManagerReportIssueView: View {
             let fallbackMembers = reports.map(buildTeamMembersFromReports) ?? []
             await MainActor.run {
                 if !fallbackMembers.isEmpty {
-                    teamMembers = fallbackMembers
+                    let currentIds = teamMembers.map(\.id)
+                    let newIds = fallbackMembers.map(\.id)
+                    if currentIds != newIds {
+                        teamMembers = fallbackMembers
+                    }
                     if selectedMemberId == nil {
                         selectedMemberId = fallbackMembers.first?.id
                     }
+                    hasStableTeamMembers = true
                 }
                 if errorMessage == nil {
                     errorMessage = "Nepodařilo se načíst členy týmu z API."
@@ -403,6 +502,58 @@ struct ManagerReportIssueView: View {
         selectedPhotoItems = []
         errorMessage = nil
         isSubmitting = false
+    }
+}
+
+private struct TeamMemberPickerSheetView: View {
+    let members: [TeamMember]
+    let selectedMemberId: TeamMember.ID?
+    let onSelect: (TeamMember.ID) -> Void
+    let onClose: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(members, id: \.id) { member in
+                    TeamMemberRowView(
+                        title: member.displayLabel,
+                        isSelected: selectedMemberId == member.id,
+                        onTap: { onSelect(member.id) }
+                    )
+                }
+            }
+            .listStyle(.plain)
+            .navigationTitle("Vyberte člena")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Zavřít") {
+                        onClose()
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct TeamMemberRowView: View {
+    let title: String
+    let isSelected: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack {
+                Text(title)
+                Spacer()
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(Color.accentColor)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
