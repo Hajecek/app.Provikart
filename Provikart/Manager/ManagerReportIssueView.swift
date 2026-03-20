@@ -75,6 +75,9 @@ struct ManagerReportIssueView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { mainToolbar }
             .toolbar(!isModalPresentation ? .hidden : .visible, for: .tabBar)
+            .onDisappear {
+                resetForm()
+            }
             .onAppear {
                 guard !didInitialTeamLoad else { return }
                 didInitialTeamLoad = true
@@ -85,11 +88,7 @@ struct ManagerReportIssueView: View {
             .alert("Problém nahlášen", isPresented: $showSuccess) {
                 Button("OK") {
                     showSuccess = false
-                    if isModalPresentation {
-                        isPresented = false
-                    } else {
-                        onClose?()
-                    }
+                    closeView()
                 }
             } message: {
                 Text("Nahlášení manažera bylo odesláno.")
@@ -100,11 +99,7 @@ struct ManagerReportIssueView: View {
     private var mainToolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .topBarLeading) {
             Button {
-                if isModalPresentation {
-                    isPresented = false
-                } else {
-                    onClose?()
-                }
+                closeView()
             } label: {
                 Image(systemName: isModalPresentation ? "xmark" : "house")
             }
@@ -125,11 +120,11 @@ struct ManagerReportIssueView: View {
         Group {
             if isModalPresentation {
                 Button("Zrušit") {
-                    isPresented = false
+                    closeView()
                 }
             } else {
                 Button {
-                    onClose?()
+                    closeView()
                 } label: {
                     Image(systemName: "house")
                 }
@@ -441,6 +436,15 @@ struct ManagerReportIssueView: View {
         selectedPhotoItems = []
         errorMessage = nil
         isSubmitting = false
+    }
+
+    private func closeView() {
+        resetForm()
+        if isModalPresentation {
+            isPresented = false
+        } else {
+            onClose?()
+        }
     }
 }
 
