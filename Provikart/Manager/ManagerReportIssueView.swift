@@ -41,11 +41,8 @@ struct ManagerReportIssueView: View {
 
     @State private var orderNumber = ""
     @State private var description = ""
-    @State private var remark = ""
-    @State private var isTermSelectionIssue = false
     @State private var teamMembers: [TeamMember] = []
     @State private var selectedMemberId: TeamMember.ID?
-    @State private var showMemberPicker = false
     @State private var isLoadingTeamMembers = false
     @State private var didInitialTeamLoad = false
     @State private var hasStableTeamMembers = false
@@ -78,7 +75,6 @@ struct ManagerReportIssueView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { mainToolbar }
             .toolbar(!isModalPresentation ? .hidden : .visible, for: .tabBar)
-            .sheet(isPresented: $showMemberPicker) { memberPickerSheet }
             .onAppear {
                 guard !didInitialTeamLoad else { return }
                 didInitialTeamLoad = true
@@ -125,20 +121,6 @@ struct ManagerReportIssueView: View {
         }
     }
 
-    private var memberPickerSheet: some View {
-        TeamMemberPickerSheetView(
-            members: teamMembers,
-            selectedMemberId: selectedMemberId,
-            onSelect: { memberId in
-                selectedMemberId = memberId
-                showMemberPicker = false
-            },
-            onClose: {
-                showMemberPicker = false
-            }
-        )
-    }
-
     private var bottomBarLeading: some View {
         Group {
             if isModalPresentation {
@@ -172,8 +154,6 @@ struct ManagerReportIssueView: View {
             teamMemberSection
             orderNumberSection
             problemDescriptionSection
-            noteSection
-            issueTypeSection
             attachmentsSection
             errorSection
         }
@@ -216,49 +196,20 @@ struct ManagerReportIssueView: View {
         }
     }
 
-    private var noteSection: some View {
-        Section {
-            VStack(alignment: .leading, spacing: 6) {
-                Label("Poznámka pro tým", systemImage: "note.text")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.secondary)
-                TextField("Volitelná interní poznámka…", text: $remark, axis: .vertical)
-                    .lineLimit(2...6)
-                    .textFieldStyle(.plain)
-            }
-            .padding(.vertical, 4)
-        } header: {
-            Text("Poznámka")
-        }
-    }
-
-    private var issueTypeSection: some View {
-        Section {
-            Toggle(isOn: $isTermSelectionIssue) {
-                Label("Jen problém s výběrem termínu", systemImage: "calendar.badge.clock")
-            }
-            .tint(.accentColor)
-        } header: {
-            Text("Typ problému")
-        } footer: {
-            Text("Zaškrtněte, pokud jde pouze o nemožnost nebo potíže s výběrem termínu instalace.")
-        }
-    }
-
     private var attachmentsSection: some View {
         Section {
             PhotosPicker(
                 selection: $selectedPhotoItems,
-                maxSelectionCount: 2,
+                maxSelectionCount: 1,
                 matching: .images
             ) {
-                Label("Přidat fotky", systemImage: "photo.on.rectangle.angled")
+                Label("Přidat fotku", systemImage: "photo.on.rectangle.angled")
             }
             if !selectedPhotoItems.isEmpty {
                 HStack {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
-                    Text("Vybráno \(selectedPhotoItems.count) \(selectedPhotoItems.count == 1 ? "fotka" : "fotek")")
+                    Text("Vybrána 1 fotka")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -266,7 +217,7 @@ struct ManagerReportIssueView: View {
         } header: {
             Text("Přílohy")
         } footer: {
-            Text("Max. 2 fotky (kvůli spolehlivému odeslání přes mobilní síť).")
+            Text("Max. 1 fotka (kvůli spolehlivému odeslání přes mobilní síť).")
         }
     }
 
@@ -311,27 +262,18 @@ struct ManagerReportIssueView: View {
                 }
             }
         } else {
-            Button {
-                showMemberPicker = true
-            } label: {
-                HStack {
-                    Text("Komu report patří")
-                    Spacer()
-                    Text(selectedMemberLabel) // String, ne Binding<String>
-                        .foregroundStyle(selectedMemberTextColor)
-                        .lineLimit(1)
+            Picker("Komu report patří", selection: $selectedMemberId) {
+                Text("Vyberte člena týmu")
+                    .foregroundStyle(.secondary)
+                    .tag(Optional<TeamMember.ID>.none)
+
+                ForEach(teamMembers) { member in
+                    Text(member.displayLabel)
+                        .tag(Optional(member.id))
                 }
             }
-            .buttonStyle(.plain)
+            .pickerStyle(.navigationLink)
         }
-    }
-
-    private var selectedMemberLabel: String {
-        selectedMember?.displayLabel ?? "Vyberte člena týmu"
-    }
-
-    private var selectedMemberTextColor: Color {
-        selectedMember == nil ? .secondary : .primary
     }
 
     private func submitReport() {
@@ -345,7 +287,6 @@ struct ManagerReportIssueView: View {
 
         errorMessage = nil
         isSubmitting = true
-        let remarkTrimmed = remark.trimmingCharacters(in: .whitespaces)
 
         Task { @MainActor in
             do {
@@ -353,8 +294,8 @@ struct ManagerReportIssueView: View {
                 let payload = ReportIssuePayload(
                     order_number: order,
                     note: issueText.isEmpty ? nil : issueText,
-                    user_note: remarkTrimmed.isEmpty ? nil : remarkTrimmed,
-                    is_term_selection_issue: isTermSelectionIssue,
+                    user_note: nil,
+                    is_term_selection_issue: false,
                     user_id: selectedMember.userId,
                     username: selectedMember.username,
                     images: imageDataUris.isEmpty ? nil : imageDataUris
@@ -461,7 +402,7 @@ struct ManagerReportIssueView: View {
     private func loadSelectedImagesAsBase64() async -> [String] {
         let maxSizePerImage = 200 * 1024
         var result: [String] = []
-        for item in selectedPhotoItems.prefix(2) {
+        for item in selectedPhotoItems.prefix(1) {
             guard let loaded = try? await item.loadTransferable(type: ManagerImageDataTransfer.self),
                   let data = loaded.jpegData(maxBytes: maxSizePerImage) else { continue }
             result.append("data:image/jpeg;base64,\(data.base64EncodedString())")
@@ -497,63 +438,9 @@ struct ManagerReportIssueView: View {
         }
         orderNumber = ""
         description = ""
-        remark = ""
-        isTermSelectionIssue = false
         selectedPhotoItems = []
         errorMessage = nil
         isSubmitting = false
-    }
-}
-
-private struct TeamMemberPickerSheetView: View {
-    let members: [TeamMember]
-    let selectedMemberId: TeamMember.ID?
-    let onSelect: (TeamMember.ID) -> Void
-    let onClose: () -> Void
-
-    var body: some View {
-        NavigationStack {
-            List {
-                ForEach(members, id: \.id) { member in
-                    TeamMemberRowView(
-                        title: member.displayLabel,
-                        isSelected: selectedMemberId == member.id,
-                        onTap: { onSelect(member.id) }
-                    )
-                }
-            }
-            .listStyle(.plain)
-            .navigationTitle("Vyberte člena")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Zavřít") {
-                        onClose()
-                    }
-                }
-            }
-        }
-    }
-}
-
-private struct TeamMemberRowView: View {
-    let title: String
-    let isSelected: Bool
-    let onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            HStack {
-                Text(title)
-                Spacer()
-                if isSelected {
-                    Image(systemName: "checkmark")
-                        .foregroundStyle(Color.accentColor)
-                }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 }
 
