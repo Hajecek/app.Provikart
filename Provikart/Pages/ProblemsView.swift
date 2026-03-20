@@ -220,11 +220,18 @@ struct ProblemsView: View {
             .listStyle(.insetGrouped)
             .listSectionSpacing(.compact)
             .navigationDestination(item: $selectedReport) { report in
-                ReportDetailView(
-                    report: report,
-                    openEditOnAppear: openEditOnAppear,
-                    selectedReport: $selectedReport
-                )
+                if authState.currentRole == .manager {
+                    ManagerProblemDetailView(
+                        report: report,
+                        selectedReport: $selectedReport
+                    )
+                } else {
+                    ReportDetailView(
+                        report: report,
+                        openEditOnAppear: openEditOnAppear,
+                        selectedReport: $selectedReport
+                    )
+                }
             }
             .scrollContentBackground(.visible)
             .background(Color(uiColor: .systemGroupedBackground))
