@@ -59,7 +59,7 @@ struct ManagerProblemDetailView: View {
                 Button {
                     showReplySheet = true
                 } label: {
-                    Image(systemName: "bubble.left.and.bubble.right.fill")
+                    Image(systemName: "arrowshape.turn.up.left.fill")
                 }
             }
         }
