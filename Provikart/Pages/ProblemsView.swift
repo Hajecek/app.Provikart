@@ -649,7 +649,7 @@ struct ReportDetailView: View {
                     Text(note)
                 }
             }
-            if let userNote = report.user_note, !userNote.isEmpty {
+            if authState.currentRole != .manager, let userNote = report.user_note, !userNote.isEmpty {
                 Section("Vaše poznámka") {
                     Text(userNote)
                 }

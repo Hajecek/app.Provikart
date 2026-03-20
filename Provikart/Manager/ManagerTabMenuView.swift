@@ -43,8 +43,7 @@ struct ManagerTabMenuView: View {
             }
         }
         .fullScreenCover(isPresented: $showReportIssue) {
-            ReportIssueView(isPresented: $showReportIssue)
-                .environmentObject(authState)
+            ManagerReportIssueView(isPresented: $showReportIssue, authState: authState)
         }
         .modifier(LoginApprovalBottomAccessoryModifier(approvalState: appLoginApprovalState))
     }

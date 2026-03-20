@@ -34,11 +34,19 @@ struct UserReport: Codable, Identifiable, Hashable {
     let images: [String]?
     let is_term_selection_issue: Bool
     let created_by_manager: Bool?
+    /// Manager endpoint: jméno člena týmu, který report vytvořil.
+    let user_name: String?
+    /// Manager endpoint: username autora reportu.
+    let username: String?
+    /// Manager endpoint: název souboru profilové fotky uživatele.
+    let profile_image: String?
+    /// Manager endpoint: volitelná přímá URL profilové fotky.
+    let profile_image_url: String?
 
     enum CodingKeys: String, CodingKey {
         case id, user_id, order_number, note, user_note, statement, statements
         case status, created_at, updated_at, statement_updated_at, result, images
-        case is_term_selection_issue, created_by_manager
+        case is_term_selection_issue, created_by_manager, user_name, username, profile_image, profile_image_url
     }
 
     init(from decoder: Decoder) throws {
@@ -58,6 +66,22 @@ struct UserReport: Codable, Identifiable, Hashable {
         images = (try? c.decode([String].self, forKey: .images)) ?? nil
         is_term_selection_issue = (try? c.decode(Bool.self, forKey: .is_term_selection_issue)) ?? false
         created_by_manager = try c.decodeIfPresent(Bool.self, forKey: .created_by_manager)
+        user_name = try c.decodeIfPresent(String.self, forKey: .user_name)
+        username = try c.decodeIfPresent(String.self, forKey: .username)
+        profile_image = try c.decodeIfPresent(String.self, forKey: .profile_image)
+        profile_image_url = try c.decodeIfPresent(String.self, forKey: .profile_image_url)
+    }
+
+    /// URL profilové fotky autora reportu (pokud je k dispozici).
+    var reportProfileImageURL: URL? {
+        if let raw = profile_image_url?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !raw.isEmpty,
+           let direct = URL(string: raw) {
+            return direct
+        }
+        guard let name = profile_image?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { return nil }
+        let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name
+        return URL(string: "https://provikart.cz/auth/serve_image?file=\(encoded)")
     }
 
     /// order_number může přijít jako String nebo jako číslo – vždy vrátíme řetězec.
