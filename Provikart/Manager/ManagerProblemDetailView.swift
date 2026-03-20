@@ -54,27 +54,14 @@ struct ManagerProblemDetailView: View {
         .listStyle(.insetGrouped)
         .navigationTitle(report.order_number.map { "Obj. \($0)" } ?? "Report #\(report.id)")
         .navigationBarTitleDisplayMode(.inline)
-        .safeAreaInset(edge: .bottom) {
-            HStack {
-                Spacer(minLength: 0)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showReplySheet = true
                 } label: {
                     Image(systemName: "bubble.left.and.bubble.right.fill")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .frame(width: 56, height: 56)
-                        .background(
-                            Circle()
-                                .fill(Color(uiColor: .secondarySystemBackground))
-                        )
                 }
-                .buttonStyle(.plain)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 4)
-            .padding(.bottom, 4)
-            .background(.clear)
         }
         .sheet(isPresented: $showReplySheet) {
             ManagerReplyToReportView(report: report) {
