@@ -9,7 +9,7 @@ import PhotosUI
 enum ReportFilter: String, CaseIterable {
     case all = "Vše"
     case incomplete = "Nedokončené"
-    case completed = "Dokončené"
+    case completed = "Dokončeno"
 }
 
 // MARK: - ViewModel: vlastní pollovací Task, nezávislý na životnosti view – změny v DB se vždy projeví v UI
@@ -335,7 +335,7 @@ private struct ReportRow: View {
                             .font(.subheadline.weight(.semibold))
                     }
                     if let status = report.status, !status.isEmpty {
-                        Text(status)
+                        Text(report.statusDisplayCzech)
                             .font(.caption)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
@@ -653,7 +653,7 @@ struct ReportDetailView: View {
                     LabeledRow("Obj. číslo", order)
                 }
                 if let status = report.status, !status.isEmpty {
-                    LabeledRow("Status", status)
+                    LabeledRow("Stav", report.statusDisplayCzech)
                 }
                 LabeledRow("Dokončeno", report.isCompleted ? "Ano" : "Ne")
                 if let created = report.created_at, !created.isEmpty {

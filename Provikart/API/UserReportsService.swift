@@ -95,6 +95,18 @@ struct UserReport: Codable, Identifiable, Hashable {
     var isCompleted: Bool {
         (status ?? "").lowercased() == "completed"
     }
+
+    /// České zobrazení stavu z API (`created` / `open` / `completed`).
+    var statusDisplayCzech: String {
+        let t = (status ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.isEmpty { return "—" }
+        switch t.lowercased() {
+        case "created": return "Vytvořeno"
+        case "open": return "Otevřeno"
+        case "completed": return "Dokončeno"
+        default: return t
+        }
+    }
 }
 
 /// Odpověď API user_reports.php

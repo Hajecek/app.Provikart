@@ -23,7 +23,7 @@ struct ManagerProblemDetailView: View {
         List {
             Section("Základní údaje") {
                 detailRow("Obj. číslo", currentReport.order_number ?? "—")
-                detailRow("Status", currentReport.status ?? "—")
+                detailRow("Stav", currentReport.statusDisplayCzech)
                 detailRow("Dokončeno", currentReport.isCompleted ? "Ano" : "Ne")
                 if let created = currentReport.created_at, !created.isEmpty {
                     detailRow("Vytvořeno", formatDate(created))

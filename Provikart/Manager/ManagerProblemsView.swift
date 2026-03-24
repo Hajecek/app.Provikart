@@ -107,8 +107,8 @@ struct ManagerProblemsView: View {
 
     private enum TopFilter: String, CaseIterable, Identifiable {
         case allActive = "Vše aktivní"
-        case created = "Vytvořené"
-        case open = "Otevřené"
+        case created = "Vytvořeno"
+        case open = "Otevřeno"
 
         var id: String { rawValue }
     }
