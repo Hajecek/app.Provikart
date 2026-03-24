@@ -109,6 +109,37 @@ struct UserReport: Codable, Identifiable, Hashable {
     }
 }
 
+/// Zobrazení data/času reportů v UI (např. detail): `24.3.2026 v 14:30`.
+enum ReportDatePresentation {
+    static func formatDetail(_ dateString: String) -> String {
+        let trimmed = dateString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return dateString }
+
+        let input = DateFormatter()
+        input.locale = Locale(identifier: "en_US_POSIX")
+        input.timeZone = TimeZone(identifier: "Europe/Prague") ?? .current
+
+        let patterns: [(format: String, hasTime: Bool)] = [
+            ("yyyy-MM-dd HH:mm:ss", true),
+            ("yyyy-MM-dd'T'HH:mm:ss.SSSZ", true),
+            ("yyyy-MM-dd'T'HH:mm:ssZ", true),
+            ("yyyy-MM-dd", false),
+        ]
+
+        for (fmt, hasTime) in patterns {
+            input.dateFormat = fmt
+            if let date = input.date(from: trimmed) {
+                let out = DateFormatter()
+                out.locale = Locale(identifier: "cs_CZ")
+                out.timeZone = TimeZone(identifier: "Europe/Prague") ?? .current
+                out.dateFormat = hasTime ? "d.M.yyyy 'v' H:mm" : "d.M.yyyy"
+                return out.string(from: date)
+            }
+        }
+        return dateString
+    }
+}
+
 /// Odpověď API user_reports.php
 struct UserReportsResponse: Codable {
     let success: Bool

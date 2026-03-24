@@ -368,21 +368,7 @@ private struct ReportRow: View {
     }
 
     private func formatDate(_ dateString: String) -> String {
-        // MySQL DATETIME např. "2025-02-27 14:30:00", nebo ISO8601
-        let inFormatter = DateFormatter()
-        inFormatter.locale = Locale(identifier: "en_US_POSIX")
-        inFormatter.timeZone = TimeZone(identifier: "Europe/Prague")
-        for format in ["yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd'T'HH:mm:ss.SSSZ", "yyyy-MM-dd'T'HH:mm:ssZ"] {
-            inFormatter.dateFormat = format
-            if let date = inFormatter.date(from: dateString) {
-                let out = DateFormatter()
-                out.dateStyle = .short
-                out.timeStyle = .short
-                out.locale = Locale.current
-                return out.string(from: date)
-            }
-        }
-        return dateString
+        ReportDatePresentation.formatDetail(dateString)
     }
 }
 
@@ -753,20 +739,7 @@ struct ReportDetailView: View {
     }
 
     private func formatDate(_ dateString: String) -> String {
-        let inFormatter = DateFormatter()
-        inFormatter.locale = Locale(identifier: "en_US_POSIX")
-        inFormatter.timeZone = TimeZone(identifier: "Europe/Prague")
-        for format in ["yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd'T'HH:mm:ss.SSSZ", "yyyy-MM-dd'T'HH:mm:ssZ"] {
-            inFormatter.dateFormat = format
-            if let date = inFormatter.date(from: dateString) {
-                let out = DateFormatter()
-                out.dateStyle = .medium
-                out.timeStyle = .short
-                out.locale = Locale.current
-                return out.string(from: date)
-            }
-        }
-        return dateString
+        ReportDatePresentation.formatDetail(dateString)
     }
 }
 

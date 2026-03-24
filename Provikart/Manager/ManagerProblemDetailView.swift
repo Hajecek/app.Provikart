@@ -86,21 +86,7 @@ struct ManagerProblemDetailView: View {
     }
 
     private func formatDate(_ dateString: String) -> String {
-        let input = DateFormatter()
-        input.locale = Locale(identifier: "en_US_POSIX")
-        input.timeZone = TimeZone(identifier: "Europe/Prague")
-
-        for format in ["yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd'T'HH:mm:ss.SSSZ", "yyyy-MM-dd'T'HH:mm:ssZ"] {
-            input.dateFormat = format
-            if let date = input.date(from: dateString) {
-                let output = DateFormatter()
-                output.locale = Locale(identifier: "cs_CZ")
-                output.dateStyle = .medium
-                output.timeStyle = .short
-                return output.string(from: date)
-            }
-        }
-        return dateString
+        ReportDatePresentation.formatDetail(dateString)
     }
 
     private func refreshReport() async {
