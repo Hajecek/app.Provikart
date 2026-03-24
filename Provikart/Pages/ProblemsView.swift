@@ -44,6 +44,13 @@ final class ProblemsViewModel: ObservableObject {
         pollingTask = nil
     }
 
+    /// Zrušení tasku / URLSession při odchodu z obrazovky — není chyba pro uživatele.
+    private func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        if let url = error as? URLError, url.code == .cancelled { return true }
+        return false
+    }
+
     /// Smaže report na serveru a při úspěchu ho odebere ze seznamu. Při chybě nastaví errorMessage.
     func deleteReport(id: Int) async {
         guard let token = getToken?(), !token.isEmpty else {
@@ -57,6 +64,7 @@ final class ProblemsViewModel: ObservableObject {
             let incomplete = reports.filter { !$0.isCompleted }.count
             WidgetDataStore.saveReports(incompleteCount: incomplete)
         } catch {
+            guard !isCancellation(error) else { return }
             errorMessage = error.localizedDescription
         }
     }
@@ -89,6 +97,10 @@ final class ProblemsViewModel: ObservableObject {
             let incomplete = fetched.filter { !$0.isCompleted }.count
             WidgetDataStore.saveReports(incompleteCount: incomplete)
         } catch {
+            if isCancellation(error) {
+                isLoading = false
+                return
+            }
             print("[Problems] ❌ \(timeStr) – chyba: \(error.localizedDescription)")
             if !silent {
                 errorMessage = error.localizedDescription

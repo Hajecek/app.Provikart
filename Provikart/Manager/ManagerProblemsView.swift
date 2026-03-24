@@ -35,6 +35,12 @@ final class ManagerProblemsViewModel: ObservableObject {
         pollingTask = nil
     }
 
+    private func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        if let url = error as? URLError, url.code == .cancelled { return true }
+        return false
+    }
+
     /// Smaže report na serveru a při úspěchu ho odebere ze seznamu.
     func deleteReport(id: Int) async {
         guard let token = getToken?(), !token.isEmpty else {
@@ -48,6 +54,7 @@ final class ManagerProblemsViewModel: ObservableObject {
             let incomplete = reports.filter { !$0.isCompleted }.count
             WidgetDataStore.saveReports(incompleteCount: incomplete)
         } catch {
+            guard !isCancellation(error) else { return }
             errorMessage = error.localizedDescription
         }
     }
@@ -72,12 +79,13 @@ final class ManagerProblemsViewModel: ObservableObject {
             }
             let incomplete = fetched.filter { !$0.isCompleted }.count
             WidgetDataStore.saveReports(incompleteCount: incomplete)
-        } catch is CancellationError {
-            // Zrušený request (např. při refreshi / změně view) není skutečná chyba pro uživatele.
-            if !silent {
-                isLoading = false
-            }
         } catch {
+            if isCancellation(error) {
+                if !silent {
+                    isLoading = false
+                }
+                return
+            }
             if !silent {
                 errorMessage = error.localizedDescription
                 isLoading = false

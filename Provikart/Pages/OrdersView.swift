@@ -130,21 +130,12 @@ struct OrdersView: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    HStack(spacing: 16) {
-                        NavigationLink {
-                            StatisticsView()
-                                .environmentObject(authState)
-                                .environment(\.openAddSheet, openAddSheet)
-                        } label: {
-                            Image(systemName: "chart.bar")
-                        }
-                        NavigationLink {
-                            ProblemsView()
-                                .environmentObject(authState)
-                                .environment(\.openAddSheet, openAddSheet)
-                        } label: {
-                            Image(systemName: "exclamationmark.triangle")
-                        }
+                    NavigationLink {
+                        StatisticsView()
+                            .environmentObject(authState)
+                            .environment(\.openAddSheet, openAddSheet)
+                    } label: {
+                        Image(systemName: "chart.bar")
                     }
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
