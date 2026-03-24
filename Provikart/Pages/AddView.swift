@@ -529,6 +529,21 @@ private struct AIOrderFlowView: View {
 
     /// Zobrazí srozumitelnou zprávu při chybách OpenAI a při free plánu.
     private func friendlyAIErrorMessage(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Backend občas vrací surový JSON (např. {"order_number":null,...}),
+        // ten uživateli nezobrazujeme a mapujeme na srozumitelnou chybu.
+        if let data = trimmed.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if let backendError = json["error"] as? String, !backendError.isEmpty {
+                return friendlyAIErrorMessage(backendError)
+            }
+            if json.keys.contains("order_number") || json.keys.contains("items") {
+                return "Nepodařilo se rozpoznat číslo objednávky ani položky. Zkontrolujte text objednávky a zkuste to znovu."
+            }
+            return "Nepodařilo se zpracovat odpověď AI. Zkuste to prosím znovu."
+        }
+
         if raw.contains("OpenAI") && raw.contains("401") {
             return "Na serveru je neplatný nebo chybějící OpenAI API klíč. Správce musí v konfiguraci (app_config.php nebo env) nastavit platný OPENAI_API_KEY."
         }
@@ -538,7 +553,10 @@ private struct AIOrderFlowView: View {
         if raw.contains("403") || raw.lowercased().contains("free") || raw.contains("placený plán") || raw.contains("placeného plánu") {
             return "Máte free plán. Pro použití této funkce je potřeba mít placený plán."
         }
-        return raw
+        if trimmed.hasPrefix("{") || trimmed.hasPrefix("[") {
+            return "Nepodařilo se zpracovat odpověď AI. Zkuste to prosím znovu."
+        }
+        return trimmed
     }
 
     private func itemTypeLabel(_ type: String) -> String {
