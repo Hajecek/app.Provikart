@@ -21,6 +21,15 @@ struct ManagerProblemDetailView: View {
 
     var body: some View {
         List {
+            if let note = currentReport.note, !note.isEmpty {
+                Section {
+                    ReportProblemDetailCard(text: note)
+                }
+                .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 20, trailing: 16))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
+
             Section("Základní údaje") {
                 detailRow("Obj. číslo", currentReport.order_number ?? "—")
                 detailRow("Stav", currentReport.statusDisplayCzech)
@@ -30,12 +39,6 @@ struct ManagerProblemDetailView: View {
                 }
                 if let updated = currentReport.updated_at, !updated.isEmpty {
                     detailRow("Upraveno", formatDate(updated))
-                }
-            }
-
-            if let note = currentReport.note, !note.isEmpty {
-                Section("Popis problému") {
-                    Text(note)
                 }
             }
 

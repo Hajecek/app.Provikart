@@ -634,6 +634,15 @@ struct ReportDetailView: View {
 
     var body: some View {
         List {
+            if let note = report.note, !note.isEmpty {
+                Section {
+                    ReportProblemDetailCard(text: note)
+                }
+                .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 20, trailing: 16))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
+
             Section("Základní údaje") {
                 if let order = report.order_number, !order.isEmpty {
                     LabeledRow("Obj. číslo", order)
@@ -647,12 +656,6 @@ struct ReportDetailView: View {
                 }
                 if let updated = report.updated_at, !updated.isEmpty {
                     LabeledRow("Upraveno", formatDate(updated))
-                }
-            }
-
-            if let note = report.note, !note.isEmpty {
-                Section("Poznámka") {
-                    Text(note)
                 }
             }
             if authState.currentRole != .manager, let userNote = report.user_note, !userNote.isEmpty {
