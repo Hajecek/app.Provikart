@@ -175,24 +175,26 @@ struct ProfileView: View {
 
     // MARK: - Helpers
 
+    private let toolbarLeadingAvatarSize: CGFloat = 30
+
     private var avatarInToolbar: some View {
         Group {
             if let url = authState.currentUser?.profileImageURL {
                 AuthenticatedProfileImageView(
                     url: url,
-                    token: authState.authToken
+                    token: authState.authToken,
+                    size: toolbarLeadingAvatarSize
                 )
-                .frame(width: 28, height: 28)
-                .clipShape(Circle())
-                .contentShape(Circle())
             } else {
                 Image(systemName: "person.circle.fill")
                     .resizable()
                     .scaledToFit()
                     .foregroundStyle(.secondary)
-                    .frame(width: 28, height: 28)
+                    .frame(width: toolbarLeadingAvatarSize, height: toolbarLeadingAvatarSize)
             }
         }
+        .frame(width: 44, height: 44, alignment: .center)
+        .contentShape(Circle())
         .accessibilityHidden(true)
     }
 
@@ -201,11 +203,9 @@ struct ProfileView: View {
             if let url = authState.currentUser?.profileImageURL {
                 AuthenticatedProfileImageView(
                     url: url,
-                    token: authState.authToken
+                    token: authState.authToken,
+                    size: 44
                 )
-                .frame(width: 44, height: 44)
-                .clipShape(Circle())
-                .contentShape(Circle())
             } else {
                 Image(systemName: "person.crop.circle.fill")
                     .resizable()

@@ -10,7 +10,8 @@ struct AuthenticatedProfileImageView: View {
     let url: URL
     var fallbackURL: URL? = nil
     var token: String?
-    let size: CGFloat = 44
+    /// Jedna velikost pro layout i výřez — vyhni se `.frame` zvenku (jinak se špatně ořezává).
+    var size: CGFloat = 44
 
     @State private var image: UIImage?
     @State private var loadFailed = false
@@ -25,30 +26,31 @@ struct AuthenticatedProfileImageView: View {
                         .resizable()
                         .scaledToFill()
                         .frame(width: size, height: size)
-                        .mask(Circle())
+                        .clipped()
                 }
                 .frame(width: size, height: size)
-                .compositingGroup()
                 .clipShape(Circle())
             } else if loadFailed {
                 ZStack {
                     Circle()
                         .fill(Color(uiColor: .systemBackground))
                     Image(systemName: "person.circle.fill")
-                        .font(.title2)
+                        .font(.system(size: size * 0.72))
                 }
-                .frame(width: size, height: size)
+                .frame(width: size, height: size, alignment: .center)
+                .clipShape(Circle())
             } else {
                 ZStack {
                     Circle()
                         .fill(Color(uiColor: .tertiarySystemFill))
                     ProgressView()
+                        .scaleEffect(min(1, size / 28))
                 }
-                .frame(width: size, height: size)
+                .frame(width: size, height: size, alignment: .center)
+                .clipShape(Circle())
             }
         }
-        .frame(width: size, height: size)
-        .clipShape(Circle())
+        .frame(width: size, height: size, alignment: .center)
         .contentShape(Circle())
         .task(id: url) {
             await loadImage()
@@ -96,7 +98,8 @@ struct AuthenticatedProfileImageView: View {
 struct ProfileBarButton: View {
     @EnvironmentObject private var authState: AuthState
 
-    private let toolbarAvatarSize: CGFloat = 28
+    /// Systémový toolbar má výšku ~44 pt; avatar vycentrovaný uvnitř.
+    private let toolbarAvatarSize: CGFloat = 30
 
     var body: some View {
         NavigationLink {
@@ -107,21 +110,20 @@ struct ProfileBarButton: View {
                 if let url = authState.currentUser?.profileImageURL {
                     AuthenticatedProfileImageView(
                         url: url,
-                        token: authState.authToken
+                        token: authState.authToken,
+                        size: toolbarAvatarSize
                     )
-                    .frame(width: toolbarAvatarSize, height: toolbarAvatarSize)
-                    .clipShape(Circle())
-                    .contentShape(Circle())
                 } else {
                     Image(systemName: "person.circle.fill")
                         .resizable()
                         .scaledToFit()
                         .foregroundStyle(.secondary)
                         .frame(width: toolbarAvatarSize, height: toolbarAvatarSize)
-                        .clipShape(Circle())
                         .contentShape(Circle())
                 }
             }
+            .frame(width: 44, height: 44, alignment: .center)
+            .contentShape(Circle())
             .accessibilityHidden(true)
         }
         .buttonStyle(.plain)
@@ -156,9 +158,9 @@ struct PageHeaderBar: View {
         if let url = authState.currentUser?.profileImageURL {
             AuthenticatedProfileImageView(
                 url: url,
-                token: authState.authToken
+                token: authState.authToken,
+                size: 44
             )
-            .frame(width: 44, height: 44)
         } else {
             Image(systemName: "person.circle.fill")
                 .font(.title2)
