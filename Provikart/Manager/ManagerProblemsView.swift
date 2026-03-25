@@ -247,7 +247,7 @@ struct ManagerProblemsView: View {
             .navigationTitle("Provikart")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
                     ProfileBarButton()
                 }
             }
