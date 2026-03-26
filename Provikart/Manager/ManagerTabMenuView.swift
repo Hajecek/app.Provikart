@@ -9,6 +9,7 @@ import SwiftUI
 
 enum ManagerTabs: Hashable {
     case problems
+    case attendance
     case add
     case settings
 }
@@ -23,6 +24,11 @@ struct ManagerTabMenuView: View {
         TabView(selection: $selectedTab) {
             Tab("Problémy", systemImage: "exclamationmark.bubble", value: .problems) {
                 ManagerProblemsView(refreshToken: problemsRefreshToken)
+                    .environmentObject(authState)
+            }
+
+            Tab("Docházka", systemImage: "calendar.badge.clock", value: .attendance) {
+                ManagerAttendanceView()
                     .environmentObject(authState)
             }
 
