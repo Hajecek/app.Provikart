@@ -44,6 +44,7 @@ struct CalendarView: View {
     @State private var errorMessage: String?
     @State private var selectedDate: Date?
     @State private var selectedItem: OrderItemByInstallationDate?
+    @State private var showAttendance = false
     private let service = OrderItemsByInstallationDateService()
     private let calendar = Calendar.current
 
@@ -110,13 +111,19 @@ struct CalendarView: View {
             .navigationTitle(Self.monthTitleFormatter.string(from: selectedDate ?? Date()).capitalized)
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItemGroup(placement: .topBarLeading) {
                     if !items.isEmpty {
                         Button("Dnes") {
                             let today = calendar.startOfDay(for: Date())
                             withAnimation(.easeInOut(duration: 0.22)) { selectedDate = today }
                         }
                     }
+                    Button {
+                        showAttendance = true
+                    } label: {
+                        Image(systemName: "calendar.badge.clock")
+                    }
+                    .accessibilityLabel("Otevřít docházku")
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     if let openAddSheet {
@@ -130,6 +137,10 @@ struct CalendarView: View {
                 }
             }
             .toolbarBackground(.visible, for: .navigationBar)
+        }
+        .sheet(isPresented: $showAttendance) {
+            UserAttendanceView()
+                .environmentObject(authState)
         }
         .sheet(item: $selectedItem) { item in
             InstallationDetailSheet(item: item, selectedItem: $selectedItem)

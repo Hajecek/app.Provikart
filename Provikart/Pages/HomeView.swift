@@ -87,13 +87,19 @@ struct HomeView: View {
             .navigationTitle("Domů")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItemGroup(placement: .topBarLeading) {
                     NavigationLink {
                         StatisticsView()
                             .environmentObject(authState)
                             .environment(\.openAddSheet, openAddSheet)
                     } label: {
                         Image(systemName: "chart.bar")
+                    }
+                    NavigationLink {
+                        UserAttendanceView()
+                            .environmentObject(authState)
+                    } label: {
+                        Image(systemName: "calendar.badge.clock")
                     }
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
