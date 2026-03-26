@@ -122,6 +122,7 @@ struct ManagerAttendanceView: View {
     @EnvironmentObject private var authState: AuthState
     @StateObject private var viewModel = ManagerAttendanceViewModel()
     @State private var selectedCell: AttendanceCellSelection?
+    @State private var searchText = ""
 
     var body: some View {
         NavigationStack {
@@ -145,10 +146,9 @@ struct ManagerAttendanceView: View {
                     List {
                         Section {
                             monthSwitchRow
-                            legendRow
                         }
 
-                        ForEach(viewModel.users) { user in
+                        ForEach(filteredUsers) { user in
                             Section {
                                 userHeaderRow(user)
                                 userDaysRow(user)
@@ -164,7 +164,7 @@ struct ManagerAttendanceView: View {
                 }
             }
             .background(Color(uiColor: .systemGroupedBackground))
-            .navigationTitle("Docházka")
+            .navigationTitle(viewModel.monthTitle)
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
@@ -182,6 +182,7 @@ struct ManagerAttendanceView: View {
                     await viewModel.loadAttendance(token: authState.authToken)
                 }
             }
+            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Hledat člena týmu")
             .confirmationDialog(
                 "Změnit docházku",
                 isPresented: Binding(
@@ -238,6 +239,7 @@ struct ManagerAttendanceView: View {
                     .foregroundStyle(Color.accentColor)
                     .frame(width: 44, height: 44)
             }
+            .buttonStyle(.plain)
             Spacer()
             Text(viewModel.monthTitle)
                 .font(.headline.weight(.semibold))
@@ -250,32 +252,11 @@ struct ManagerAttendanceView: View {
                     .foregroundStyle(Color.accentColor)
                     .frame(width: 44, height: 44)
             }
+            .buttonStyle(.plain)
         }
         .padding(.vertical, 4)
     }
 
-    private var legendRow: some View {
-        HStack(spacing: 8) {
-            legendItem(symbol: "P", title: "Práce", color: .green)
-            legendItem(symbol: "V", title: "Volno", color: .blue)
-            legendItem(symbol: "N", title: "Nemoc", color: .red)
-        }
-        .font(.caption)
-        .foregroundStyle(.secondary)
-    }
-
-    private func legendItem(symbol: String, title: String, color: Color) -> some View {
-        Label {
-            Text(title)
-        } icon: {
-            Text(symbol)
-                .font(.caption2.bold())
-                .foregroundStyle(color)
-                .frame(width: 18, height: 18)
-                .background(color.opacity(0.16))
-                .clipShape(Circle())
-        }
-    }
 
     private func userHeaderRow(_ user: ManagerAttendanceUser) -> some View {
         HStack(spacing: 12) {
@@ -395,6 +376,43 @@ struct ManagerAttendanceView: View {
             }
         }
     }
+
+    private var filteredUsers: [ManagerAttendanceUser] {
+        let query = normalizedSearchText(searchText)
+        return viewModel.users.filter { user in
+            guard !query.isEmpty else { return true }
+            let haystack = searchableText(for: user)
+            return query.allSatisfy { haystack.contains($0) }
+        }
+    }
+
+    private func searchableText(for user: ManagerAttendanceUser) -> String {
+        let fullName = "\(user.firstname ?? "") \(user.lastname ?? "")"
+        let pieces = [
+            displayName(for: user),
+            fullName,
+            user.firstname ?? "",
+            user.lastname ?? "",
+            user.username ?? ""
+        ]
+        return normalizedSearchString(pieces.joined(separator: " "))
+    }
+
+    private func normalizedSearchText(_ text: String) -> [String] {
+        normalizedSearchString(text)
+            .split(separator: " ")
+            .map(String.init)
+            .filter { !$0.isEmpty }
+    }
+
+    private func normalizedSearchString(_ text: String) -> String {
+        text
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "cs_CZ"))
+            .replacingOccurrences(of: "[^a-z0-9]+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+    }
+
 
     private func statusColor(_ status: String) -> Color {
         switch status {
