@@ -45,6 +45,14 @@ struct ManagerAttendanceEntry: Decodable {
             isDefault = false
         }
     }
+
+    init(status: String, note: String?, updatedAt: String?, updatedBy: Int?, isDefault: Bool) {
+        self.status = status
+        self.note = note
+        self.updatedAt = updatedAt
+        self.updatedBy = updatedBy
+        self.isDefault = isDefault
+    }
 }
 
 struct ManagerAttendanceUser: Decodable, Identifiable {
@@ -84,6 +92,24 @@ struct ManagerAttendanceUser: Decodable, Identifiable {
         username = try? c.decodeIfPresent(String.self, forKey: .username)
         profileImage = try? c.decodeIfPresent(String.self, forKey: .profileImage)
         attendance = (try? c.decode([String: ManagerAttendanceEntry].self, forKey: .attendance)) ?? [:]
+    }
+
+    init(
+        userId: Int,
+        name: String,
+        firstname: String?,
+        lastname: String?,
+        username: String?,
+        profileImage: String?,
+        attendance: [String: ManagerAttendanceEntry]
+    ) {
+        self.userId = userId
+        self.name = name
+        self.firstname = firstname
+        self.lastname = lastname
+        self.username = username
+        self.profileImage = profileImage
+        self.attendance = attendance
     }
 }
 
@@ -150,6 +176,12 @@ enum ManagerAttendanceError: LocalizedError {
     }
 }
 
+private struct ManagerAttendanceUpdateResponse: Decodable {
+    let success: Bool?
+    let message: String?
+    let error: String?
+}
+
 final class ManagerAttendanceService {
     private let baseURL = "https://provikart.cz/api"
 
@@ -194,6 +226,56 @@ final class ManagerAttendanceService {
                 days: decoded.days,
                 users: decoded.users
             )
+        case 401:
+            throw ManagerAttendanceError.notAuthenticated
+        case 403:
+            throw ManagerAttendanceError.forbidden(message)
+        default:
+            throw ManagerAttendanceError.serverError(http.statusCode, message)
+        }
+    }
+
+    /// Uloží změnu docházky manažerem.
+    /// PATCH /api/manager_attendance_update.php
+    func updateAttendance(token: String?, userId: Int, day: String, status: String, note: String? = nil) async throws {
+        guard let token, !token.isEmpty else {
+            throw ManagerAttendanceError.notAuthenticated
+        }
+        guard let url = URL(string: "\(baseURL)/manager_attendance_update.php") else {
+            throw ManagerAttendanceError.invalidURL
+        }
+
+        var body: [String: Any] = [
+            "token": token,
+            "user_id": userId,
+            "work_date": day,
+            "status": status
+        ]
+        if let note, !note.isEmpty {
+            body["note"] = note
+        }
+
+        let bodyData = try JSONSerialization.data(withJSONObject: body)
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = bodyData
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw ManagerAttendanceError.serverError(-1, "Neplatná odpověď")
+        }
+
+        let decoded = try? JSONDecoder().decode(ManagerAttendanceUpdateResponse.self, from: data)
+        let message = decoded?.error ?? decoded?.message ?? String(data: data, encoding: .utf8)
+
+        switch http.statusCode {
+        case 200:
+            if decoded?.success == true {
+                return
+            }
+            throw ManagerAttendanceError.serverError(200, message)
         case 401:
             throw ManagerAttendanceError.notAuthenticated
         case 403:

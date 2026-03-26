@@ -14,6 +14,7 @@ final class ManagerAttendanceViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var selectedMonthDate: Date = Date()
+    @Published var savingKey: String?
 
     private let service = ManagerAttendanceService()
 
@@ -46,6 +47,56 @@ final class ManagerAttendanceViewModel: ObservableObject {
         selectedMonthDate = updated
     }
 
+    func updateAttendance(token: String?, userId: Int, day: String, status: String) async {
+        guard let token, !token.isEmpty else {
+            errorMessage = "Nejste přihlášeni."
+            return
+        }
+
+        guard let userIndex = users.firstIndex(where: { $0.userId == userId }) else { return }
+        let key = "\(userId)_\(day)"
+        savingKey = key
+        let previousEntry = users[userIndex].attendance[day]
+
+        var updatedAttendance = users[userIndex].attendance
+        updatedAttendance[day] = ManagerAttendanceEntry(
+            status: status,
+            note: previousEntry?.note,
+            updatedAt: previousEntry?.updatedAt,
+            updatedBy: previousEntry?.updatedBy,
+            isDefault: false
+        )
+        users[userIndex] = ManagerAttendanceUser(
+            userId: users[userIndex].userId,
+            name: users[userIndex].name,
+            firstname: users[userIndex].firstname,
+            lastname: users[userIndex].lastname,
+            username: users[userIndex].username,
+            profileImage: users[userIndex].profileImage,
+            attendance: updatedAttendance
+        )
+
+        do {
+            try await service.updateAttendance(token: token, userId: userId, day: day, status: status)
+            savingKey = nil
+        } catch {
+            if let rollback = previousEntry {
+                updatedAttendance[day] = rollback
+            }
+            users[userIndex] = ManagerAttendanceUser(
+                userId: users[userIndex].userId,
+                name: users[userIndex].name,
+                firstname: users[userIndex].firstname,
+                lastname: users[userIndex].lastname,
+                username: users[userIndex].username,
+                profileImage: users[userIndex].profileImage,
+                attendance: updatedAttendance
+            )
+            savingKey = nil
+            errorMessage = error.localizedDescription
+        }
+    }
+
     var monthTitle: String {
         Self.monthTitleFormatter.string(from: selectedMonthDate).capitalized
     }
@@ -70,6 +121,7 @@ final class ManagerAttendanceViewModel: ObservableObject {
 struct ManagerAttendanceView: View {
     @EnvironmentObject private var authState: AuthState
     @StateObject private var viewModel = ManagerAttendanceViewModel()
+    @State private var selectedCell: AttendanceCellSelection?
 
     var body: some View {
         NavigationStack {
@@ -93,26 +145,25 @@ struct ManagerAttendanceView: View {
                     List {
                         Section {
                             monthSwitchRow
-                                .padding(.vertical, 4)
+                            legendRow
                         }
-                        .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
 
                         ForEach(viewModel.users) { user in
                             Section {
-                                attendanceCard(for: user)
+                                userHeaderRow(user)
+                                userDaysRow(user)
+                            } header: {
+                                Text(displayName(for: user))
+                            } footer: {
+                                userFooter(user)
                             }
-                            .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
                         }
                     }
                     .listStyle(.insetGrouped)
                     .scrollContentBackground(.hidden)
-                    .background(Color(uiColor: .systemGroupedBackground))
                 }
             }
+            .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle("Docházka")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
@@ -131,7 +182,49 @@ struct ManagerAttendanceView: View {
                     await viewModel.loadAttendance(token: authState.authToken)
                 }
             }
-            .background(Color(uiColor: .systemGroupedBackground))
+            .confirmationDialog(
+                "Změnit docházku",
+                isPresented: Binding(
+                    get: { selectedCell != nil },
+                    set: { if !$0 { selectedCell = nil } }
+                ),
+                titleVisibility: .visible,
+                presenting: selectedCell
+            ) { selection in
+                Button("Práce (P)") {
+                    Task {
+                        await viewModel.updateAttendance(
+                            token: authState.authToken,
+                            userId: selection.user.userId,
+                            day: selection.day,
+                            status: "P"
+                        )
+                    }
+                }
+                Button("Volno (V)") {
+                    Task {
+                        await viewModel.updateAttendance(
+                            token: authState.authToken,
+                            userId: selection.user.userId,
+                            day: selection.day,
+                            status: "V"
+                        )
+                    }
+                }
+                Button("Nemoc (N)") {
+                    Task {
+                        await viewModel.updateAttendance(
+                            token: authState.authToken,
+                            userId: selection.user.userId,
+                            day: selection.day,
+                            status: "N"
+                        )
+                    }
+                }
+                Button("Zrušit", role: .cancel) {}
+            } message: { selection in
+                Text("\(displayName(for: selection.user)) - \(dialogDate(selection.day))")
+            }
         }
     }
 
@@ -158,58 +251,122 @@ struct ManagerAttendanceView: View {
                     .frame(width: 44, height: 44)
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.vertical, 4)
     }
 
-    private func attendanceCard(for user: ManagerAttendanceUser) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(displayName(for: user))
-                    .font(.headline)
-                Spacer()
-                Text(summaryText(for: user))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-            }
+    private var legendRow: some View {
+        HStack(spacing: 8) {
+            legendItem(symbol: "P", title: "Práce", color: .green)
+            legendItem(symbol: "V", title: "Volno", color: .blue)
+            legendItem(symbol: "N", title: "Nemoc", color: .red)
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(viewModel.days, id: \.self) { day in
-                        let status = normalizedStatus(user.attendance[day]?.status ?? "?")
-                        let note = user.attendance[day]?.note
-                        VStack(spacing: 4) {
-                            Text(shortDayLabel(day))
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                            Text(status)
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(statusTextColor(status))
-                                .frame(width: 28, height: 28)
-                                .background(statusBackground(status))
-                                .clipShape(Circle())
-                            if let note, !note.isEmpty {
-                                Image(systemName: "text.bubble")
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                            } else {
-                                Color.clear
-                                    .frame(width: 10, height: 10)
+    private func legendItem(symbol: String, title: String, color: Color) -> some View {
+        Label {
+            Text(title)
+        } icon: {
+            Text(symbol)
+                .font(.caption2.bold())
+                .foregroundStyle(color)
+                .frame(width: 18, height: 18)
+                .background(color.opacity(0.16))
+                .clipShape(Circle())
+        }
+    }
+
+    private func userHeaderRow(_ user: ManagerAttendanceUser) -> some View {
+        HStack(spacing: 12) {
+            Circle()
+                .fill(Color(uiColor: .tertiarySystemFill))
+                .frame(width: 30, height: 30)
+                .overlay(
+                    Text(initials(for: user))
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                )
+            Text("Docházka za měsíc")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Spacer()
+            statusBadge("P", count: statusCount("P", user: user))
+            statusBadge("V", count: statusCount("V", user: user))
+            statusBadge("N", count: statusCount("N", user: user))
+        }
+    }
+
+    private func userDaysRow(_ user: ManagerAttendanceUser) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(viewModel.days, id: \.self) { day in
+                    let entry = user.attendance[day]
+                    let status = normalizedStatus(entry?.status ?? "?")
+                    let key = "\(user.userId)_\(day)"
+                    VStack(spacing: 4) {
+                        Text(dayNumber(day))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Button {
+                            selectedCell = AttendanceCellSelection(user: user, day: day, currentStatus: status)
+                        } label: {
+                            ZStack {
+                                Text(status)
+                                    .font(.caption.bold())
+                                    .foregroundStyle(statusColor(status))
+                                    .frame(width: 28, height: 28)
+                                    .background(statusColor(status).opacity(0.16))
+                                    .clipShape(Circle())
+                                if viewModel.savingKey == key {
+                                    ProgressView()
+                                        .scaleEffect(0.6)
+                                }
                             }
                         }
+                        .buttonStyle(.plain)
+                        if !(entry?.note?.isEmpty ?? true) {
+                            Image(systemName: "text.bubble")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        } else {
+                            Color.clear.frame(width: 10, height: 10)
+                        }
                     }
+                    .frame(width: 34)
                 }
-                .padding(.vertical, 4)
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
+    private func statusBadge(_ status: String, count: Int) -> some View {
+        let color = statusColor(status)
+        return HStack(spacing: 4) {
+            Text(status)
+                .font(.caption2.bold())
+            Text("\(count)")
+                .font(.caption.bold())
+        }
+        .foregroundStyle(color)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(color.opacity(0.15))
+        .clipShape(Capsule())
+    }
+
+    private func userFooter(_ user: ManagerAttendanceUser) -> some View {
+        let withNote = viewModel.days.filter { day in
+            !(user.attendance[day]?.note?.isEmpty ?? true)
+        }.count
+        return HStack(spacing: 8) {
+            Text("Pracovní dny: \(statusCount("P", user: user))")
+            if withNote > 0 {
+                Text("Poznámky: \(withNote)")
             }
         }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(uiColor: .secondarySystemBackground))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color(uiColor: .separator).opacity(0.2), lineWidth: 1)
-        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
 
     private func displayName(for user: ManagerAttendanceUser) -> String {
@@ -222,16 +379,6 @@ struct ManagerAttendanceView: View {
         return "Uživatel #\(user.userId)"
     }
 
-    private func summaryText(for user: ManagerAttendanceUser) -> String {
-        let presentCount = viewModel.days.reduce(into: 0) { partial, day in
-            let status = normalizedStatus(user.attendance[day]?.status ?? "")
-            if status == "P" {
-                partial += 1
-            }
-        }
-        return "Přítomen \(presentCount)/\(viewModel.days.count)"
-    }
-
     private func normalizedStatus(_ raw: String) -> String {
         let status = raw.uppercased()
         if status == "D" {
@@ -240,39 +387,47 @@ struct ManagerAttendanceView: View {
         return status
     }
 
-    private func shortDayLabel(_ day: String) -> String {
+    private func statusCount(_ status: String, user: ManagerAttendanceUser) -> Int {
+        viewModel.days.reduce(into: 0) { partial, day in
+            let value = normalizedStatus(user.attendance[day]?.status ?? "")
+            if value == status {
+                partial += 1
+            }
+        }
+    }
+
+    private func statusColor(_ status: String) -> Color {
+        switch status {
+        case "P": return .green
+        case "V": return .blue
+        case "N": return .red
+        default: return .secondary
+        }
+    }
+
+    private func initials(for user: ManagerAttendanceUser) -> String {
+        let first = (user.firstname ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let last = (user.lastname ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if let f = first.first, let l = last.first {
+            return "\(String(f).uppercased())\(String(l).uppercased())"
+        }
+        if let f = first.first {
+            return String(f).uppercased()
+        }
+        if let u = user.username?.first {
+            return String(u).uppercased()
+        }
+        return "?"
+    }
+
+    private func dayNumber(_ day: String) -> String {
         guard let date = Self.dayFormatter.date(from: day) else { return day }
-        return Self.dayShortFormatter.string(from: date)
+        return Self.dayNumberFormatter.string(from: date)
     }
 
-    private func statusBackground(_ status: String) -> Color {
-        switch status.uppercased() {
-        case "P":
-            return Color.green.opacity(0.2)
-        case "V":
-            return Color.blue.opacity(0.2)
-        case "N":
-            return Color.red.opacity(0.2)
-        case "O":
-            return Color.orange.opacity(0.2)
-        default:
-            return Color.blue.opacity(0.2)
-        }
-    }
-
-    private func statusTextColor(_ status: String) -> Color {
-        switch status.uppercased() {
-        case "P":
-            return .green
-        case "V":
-            return .blue
-        case "N":
-            return .red
-        case "O":
-            return .orange
-        default:
-            return .blue
-        }
+    private func dialogDate(_ day: String) -> String {
+        guard let date = Self.dayFormatter.date(from: day) else { return day }
+        return Self.dayDialogFormatter.string(from: date)
     }
 
     private static let dayFormatter: DateFormatter = {
@@ -283,13 +438,28 @@ struct ManagerAttendanceView: View {
         return f
     }()
 
-    private static let dayShortFormatter: DateFormatter = {
+    private static let dayNumberFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "cs_CZ")
         f.timeZone = .current
-        f.dateFormat = "d.M."
+        f.dateFormat = "d"
         return f
     }()
+
+    private static let dayDialogFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "cs_CZ")
+        f.timeZone = .current
+        f.dateFormat = "dd.MM.yyyy"
+        return f
+    }()
+}
+
+private struct AttendanceCellSelection: Identifiable {
+    let user: ManagerAttendanceUser
+    let day: String
+    let currentStatus: String
+    var id: String { "\(user.userId)-\(day)" }
 }
 
 #Preview {
