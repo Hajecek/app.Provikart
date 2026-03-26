@@ -250,7 +250,7 @@ struct ProblemsView: View {
             .navigationTitle("Problémy")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItemGroup(placement: .topBarLeading) {
                     if authState.currentRole != .manager {
                         NavigationLink {
                             StatisticsView()
@@ -258,6 +258,12 @@ struct ProblemsView: View {
                                 .environment(\.openAddSheet, openAddSheet)
                         } label: {
                             Image(systemName: "chart.bar")
+                        }
+                        NavigationLink {
+                            UserAttendanceView()
+                                .environmentObject(authState)
+                        } label: {
+                            Image(systemName: "person.badge.clock")
                         }
                     }
                 }

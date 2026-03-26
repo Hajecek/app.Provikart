@@ -141,7 +141,7 @@ struct OrdersView: View {
                         UserAttendanceView()
                             .environmentObject(authState)
                     } label: {
-                        Image(systemName: "checklist")
+                        Image(systemName: "person.badge.clock")
                     }
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {

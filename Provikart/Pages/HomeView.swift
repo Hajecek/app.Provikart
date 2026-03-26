@@ -99,7 +99,7 @@ struct HomeView: View {
                         UserAttendanceView()
                             .environmentObject(authState)
                     } label: {
-                        Image(systemName: "calendar.badge.clock")
+                        Image(systemName: "person.badge.clock")
                     }
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {

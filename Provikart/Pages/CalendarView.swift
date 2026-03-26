@@ -121,7 +121,7 @@ struct CalendarView: View {
                     Button {
                         showAttendance = true
                     } label: {
-                        Image(systemName: "calendar.badge.clock")
+                        Image(systemName: "person.badge.clock")
                     }
                     .accessibilityLabel("Otevřít docházku")
                 }

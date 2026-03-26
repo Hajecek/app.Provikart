@@ -27,7 +27,7 @@ struct ManagerTabMenuView: View {
                     .environmentObject(authState)
             }
 
-            Tab("Docházka", systemImage: "calendar.badge.clock", value: .attendance) {
+            Tab("Docházka", systemImage: "person.badge.clock", value: .attendance) {
                 ManagerAttendanceView()
                     .environmentObject(authState)
             }
