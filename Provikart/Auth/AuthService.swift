@@ -20,6 +20,8 @@ struct RegisterRequest: Codable {
     let email: String
     let password: String
     let personal_number: String?
+    let team_id: Int?
+    let profile_image_base64: String?
 }
 
 struct RegistrationTeamOption: Identifiable, Equatable {
