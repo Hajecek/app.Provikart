@@ -457,9 +457,10 @@
 				};
 			};
 			buildConfigurationList = 07EB0A262E16A17200204AFA /* Build configuration list for PBXProject "Provikart" */;
-			developmentRegion = en;
+			developmentRegion = cs;
 			hasScannedForEncodings = 0;
 			knownRegions = (
+				cs,
 				en,
 				Base,
 			);
