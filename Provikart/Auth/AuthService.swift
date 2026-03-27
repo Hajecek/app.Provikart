@@ -13,6 +13,20 @@ struct LoginResponse: Codable {
     let user: UserInfo?
 }
 
+struct RegisterRequest: Codable {
+    let firstname: String
+    let lastname: String
+    let username: String
+    let email: String
+    let password: String
+    let personal_number: String?
+}
+
+struct RegistrationTeamOption: Identifiable, Equatable {
+    let id: Int
+    let name: String
+}
+
 struct UserInfo: Codable {
     let id: Int?
     let email: String?
@@ -66,6 +80,11 @@ struct UserInfo: Codable {
         print("  role: \(role ?? "—")")
         print("  plan: \(plan ?? "—")")
     }
+}
+
+private struct APIErrorResponse: Decodable {
+    let error: String?
+    let message: String?
 }
 
 enum AuthError: LocalizedError {
@@ -134,6 +153,100 @@ final class AuthService {
             }
             throw AuthError.serverError(userMessage)
         }
+    }
+
+    func register(payload: RegisterRequest) async throws -> LoginResponse {
+        guard let url = URL(string: "\(baseURL)/auth/register") else {
+            throw AuthError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = try JSONEncoder().encode(payload)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.serverError("Neplatná odpověď serveru")
+        }
+
+        switch httpResponse.statusCode {
+        case 200...299:
+            do {
+                return try JSONDecoder().decode(LoginResponse.self, from: data)
+            } catch {
+                throw AuthError.decodingError
+            }
+        default:
+            let rawBody = String(data: data, encoding: .utf8) ?? ""
+            if let apiError = try? JSONDecoder().decode(APIErrorResponse.self, from: data) {
+                if let message = apiError.error, !message.isEmpty {
+                    throw AuthError.serverError(message)
+                }
+                if let message = apiError.message, !message.isEmpty {
+                    throw AuthError.serverError(message)
+                }
+            }
+            if rawBody.lowercased().contains("<!doctype") || rawBody.lowercased().contains("<html") {
+                throw AuthError.serverError("Chyba serveru (\(httpResponse.statusCode)). Zkuste to později nebo kontaktujte podporu.")
+            }
+            throw AuthError.serverError("Chyba serveru (\(httpResponse.statusCode)). Zkuste to později.")
+        }
+    }
+
+    /// Načte veřejný seznam týmů pro registraci z webové stránky /auth/register.
+    /// Dočasně přes HTML parsing, dokud nebude dedikovaný API endpoint.
+    func fetchRegistrationTeams() async throws -> [RegistrationTeamOption] {
+        guard let url = URL(string: "https://provikart.cz/auth/register") else {
+            throw AuthError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("text/html", forHTTPHeaderField: "Accept")
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+            throw AuthError.serverError("Nepodařilo se načíst seznam týmů.")
+        }
+
+        guard let html = String(data: data, encoding: .utf8), !html.isEmpty else {
+            throw AuthError.serverError("Nepodařilo se zpracovat seznam týmů.")
+        }
+
+        let regex = try NSRegularExpression(
+            pattern: #"<option\s+value="(\d+)"[^>]*>([^<]+)</option>"#,
+            options: [.caseInsensitive]
+        )
+        let range = NSRange(html.startIndex..., in: html)
+        let matches = regex.matches(in: html, options: [], range: range)
+
+        let decoded: [RegistrationTeamOption] = matches.compactMap { match in
+            guard
+                let idRange = Range(match.range(at: 1), in: html),
+                let nameRange = Range(match.range(at: 2), in: html),
+                let id = Int(String(html[idRange]))
+            else { return nil }
+            let name = String(html[nameRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty else { return nil }
+            return RegistrationTeamOption(id: id, name: name)
+        }
+
+        let unique = Array(Set(decoded.map { "\($0.id)|\($0.name)" }))
+            .compactMap { entry -> RegistrationTeamOption? in
+                let parts = entry.split(separator: "|", maxSplits: 1).map(String.init)
+                guard parts.count == 2, let id = Int(parts[0]) else { return nil }
+                return RegistrationTeamOption(id: id, name: parts[1])
+            }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+
+        if unique.isEmpty {
+            throw AuthError.serverError("Seznam týmů je prázdný.")
+        }
+        return unique
     }
 
     /// Načte aktuálního uživatele podle tokenu (pro kontrolu plánu bez odhlášení).
