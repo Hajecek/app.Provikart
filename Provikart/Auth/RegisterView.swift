@@ -134,13 +134,7 @@ struct RegisterView: View {
                     }
 
                     stepActions
-
-                    Text("Tým a profilová fotka jsou zatím pouze lokální v aplikaci a neodesílají se do API.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.top, 4)
-                        }
+                }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 24)
             }
