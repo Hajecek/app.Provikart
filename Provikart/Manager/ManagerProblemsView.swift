@@ -99,6 +99,7 @@ struct ManagerProblemsView: View {
     @StateObject private var viewModel = ManagerProblemsViewModel()
     @State private var selectedFilter: TopFilter = .allActive
     @State private var selectedReport: UserReport?
+    @State private var isLocationsSheetPresented = false
     let refreshToken: UUID
 
     private var reports: [UserReport] {
@@ -248,8 +249,18 @@ struct ManagerProblemsView: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button {
+                        isLocationsSheetPresented = true
+                    } label: {
+                        Image(systemName: "mappin.and.ellipse")
+                    }
+                    .accessibilityLabel("Lokality týmu")
                     ProfileBarButton()
                 }
+            }
+            .sheet(isPresented: $isLocationsSheetPresented) {
+                ManagerLocationsSheetView()
+                    .environmentObject(authState)
             }
             .refreshable {
                 await viewModel.loadReports()

@@ -123,6 +123,7 @@ struct ManagerAttendanceView: View {
     @StateObject private var viewModel = ManagerAttendanceViewModel()
     @State private var selectedCell: AttendanceCellSelection?
     @State private var searchText = ""
+    @State private var isLocationsSheetPresented = false
 
     var body: some View {
         NavigationStack {
@@ -168,6 +169,12 @@ struct ManagerAttendanceView: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button {
+                        isLocationsSheetPresented = true
+                    } label: {
+                        Image(systemName: "mappin.and.ellipse")
+                    }
+                    .accessibilityLabel("Lokality týmu")
                     ProfileBarButton()
                 }
             }
@@ -225,6 +232,10 @@ struct ManagerAttendanceView: View {
                 Button("Zrušit", role: .cancel) {}
             } message: { selection in
                 Text("\(displayName(for: selection.user)) - \(dialogDate(selection.day))")
+            }
+            .sheet(isPresented: $isLocationsSheetPresented) {
+                ManagerLocationsSheetView()
+                    .environmentObject(authState)
             }
         }
     }
