@@ -120,7 +120,7 @@ private struct ManagerReportImagesView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(imagePaths.enumerated()), id: \.offset) { _, path in
-                if let url = URL(string: path.hasPrefix("http") ? path : managerReportImagesBaseURL + path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))) {
+                if let url = resolvedImageURL(for: path) {
                     ManagerReportImageView(url: url) {
                         fullScreenURL = ManagerIdentifiableURL(url: url)
                     }
@@ -133,6 +133,35 @@ private struct ManagerReportImagesView: View {
                 fullScreenURL = nil
             }
         }
+    }
+
+    private func resolvedImageURL(for rawPath: String) -> URL? {
+        let trimmed = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        if trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://") {
+            let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: .urlFragmentAllowed) ?? trimmed
+            return URL(string: encoded)
+        }
+
+        let relative = trimmed.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard !relative.isEmpty else { return nil }
+
+        if relative.contains("?") {
+            let parts = relative.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false)
+            let path = String(parts[0])
+            let query = parts.count > 1 ? String(parts[1]) : ""
+
+            var components = URLComponents()
+            components.scheme = "https"
+            components.host = "provikart.cz"
+            components.percentEncodedPath = "/" + path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)!
+            components.percentEncodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
+            return components.url
+        }
+
+        let encodedPath = relative.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? relative
+        return URL(string: managerReportImagesBaseURL + encodedPath)
     }
 }
 
