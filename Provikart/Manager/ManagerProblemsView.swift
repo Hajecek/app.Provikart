@@ -428,27 +428,25 @@ struct ManagerProblemsView: View {
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(Color(uiColor: .secondarySystemBackground))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    leadingBorderColor(for: report).opacity(0.16),
+                                    leadingBorderColor(for: report).opacity(0.06),
+                                    .clear
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                }
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(Color(uiColor: .separator).opacity(0.16), lineWidth: 1)
         )
-        .overlay(alignment: .leading) {
-            Capsule(style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            leadingBorderColor(for: report).opacity(0.85),
-                            leadingBorderColor(for: report).opacity(0.45)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .frame(width: 3)
-                .padding(.vertical, 10)
-                .padding(.leading, 2)
-        }
         .padding(.horizontal, 8)
         .padding(.vertical, 2)
         .shadow(color: .black.opacity(0.025), radius: 6, x: 0, y: 2)
