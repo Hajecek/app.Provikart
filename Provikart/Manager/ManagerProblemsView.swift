@@ -398,17 +398,22 @@ struct ManagerProblemsView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color(uiColor: .tertiaryLabel))
-                    .padding(.top, 2)
+                HStack(spacing: 8) {
+                    statusBadge(for: status)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                }
+                .padding(.top, 2)
             }
 
-            HStack(spacing: 8) {
-                statusBadge(for: status)
+            HStack(spacing: 6) {
                 if let created = report.created_at, !created.isEmpty {
-                    Label(formatCzechDate(created), systemImage: "calendar")
-                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        Image(systemName: "calendar")
+                        Text(formatCzechDate(created))
+                    }
+                    .lineLimit(1)
                     if let date = parseServerDate(created) {
                         Text("• \(date.formatted(.relative(presentation: .numeric)))")
                             .lineLimit(1)
@@ -429,9 +434,20 @@ struct ManagerProblemsView: View {
                 .stroke(Color(uiColor: .separator).opacity(0.16), lineWidth: 1)
         )
         .overlay(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(leadingBorderColor(for: report))
-                .frame(width: 4)
+            Capsule(style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            leadingBorderColor(for: report).opacity(0.85),
+                            leadingBorderColor(for: report).opacity(0.45)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .frame(width: 3)
+                .padding(.vertical, 10)
+                .padding(.leading, 2)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 2)
@@ -448,22 +464,22 @@ struct ManagerProblemsView: View {
             }
         }()
 
-        let title: String = {
+        let icon: String = {
             switch status {
-            case .created: return "Vytvořeno"
-            case .open: return "Otevřeno"
-            case .completed: return "Dokončeno"
-            case .unknown: return "Neznámé"
+            case .created: return "circle.fill"
+            case .open: return "clock.fill"
+            case .completed: return "checkmark.circle.fill"
+            case .unknown: return "questionmark.circle.fill"
             }
         }()
 
-        return Text(title)
-            .font(.caption2.weight(.semibold))
+        return Image(systemName: icon)
+            .font(.caption.weight(.semibold))
             .foregroundStyle(color)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(6)
             .background(color.opacity(0.14))
-            .clipShape(Capsule())
+            .clipShape(Circle())
+            .accessibilityLabel("Stav reportu")
     }
 
     private func reportDirectionLabel(for report: UserReport) -> String? {
