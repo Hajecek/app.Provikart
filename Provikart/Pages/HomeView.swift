@@ -96,6 +96,12 @@ struct HomeView: View {
                         Image(systemName: "chart.bar")
                     }
                     NavigationLink {
+                        UserLocationUpdateView()
+                            .environmentObject(authState)
+                    } label: {
+                        Image(systemName: "mappin.and.ellipse")
+                    }
+                    NavigationLink {
                         UserAttendanceView()
                             .environmentObject(authState)
                     } label: {
