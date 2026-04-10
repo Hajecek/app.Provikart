@@ -171,6 +171,14 @@ struct ManagerProblemsView: View {
         }
     }
 
+    private var createdReportsCount: Int {
+        activeReportsSorted.filter { normalizedStatus(for: $0) == .created }.count
+    }
+
+    private var openReportsCount: Int {
+        activeReportsSorted.filter { normalizedStatus(for: $0) == .open }.count
+    }
+
     var body: some View {
         NavigationStack {
             Group {
@@ -193,9 +201,9 @@ struct ManagerProblemsView: View {
                     List {
                         Section {
                             topFilterRow
-                                .padding(.vertical, 4)
+                                .padding(.vertical, 6)
                         }
-                        .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
 
@@ -211,7 +219,7 @@ struct ManagerProblemsView: View {
                                 .listRowSeparator(.hidden)
                             }
                         } else {
-                            Section("Aktivní reporty") {
+                            Section {
                                 ForEach(visibleReports) { report in
                                     Button {
                                         selectedReport = report
@@ -230,6 +238,8 @@ struct ManagerProblemsView: View {
                                     .listRowBackground(Color.clear)
                                     .listRowSeparator(.hidden)
                                 }
+                            } header: {
+                                activeReportsHeader
                             }
                         }
                     }
@@ -290,56 +300,119 @@ struct ManagerProblemsView: View {
     }
 
     private var topFilterRow: some View {
-        HStack(spacing: 8) {
-            ForEach(TopFilter.allCases) { filter in
-                let isSelected = filter == selectedFilter
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        selectedFilter = filter
-                    }
-                } label: {
-                    Text(filter.rawValue)
-                        .font(.subheadline.weight(.semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(isSelected ? Color.accentColor.opacity(0.16) : Color(uiColor: .secondarySystemBackground))
-                        )
-                        .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
-                        .overlay(
-                            Capsule(style: .continuous)
-                                .stroke(isSelected ? Color.accentColor.opacity(0.55) : Color(uiColor: .separator).opacity(0.25), lineWidth: 1)
-                        )
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                compactSummaryMetric(
+                    title: "Vytvořeno",
+                    value: createdReportsCount,
+                    icon: "sparkles",
+                    tint: .orange
+                )
+                compactSummaryMetric(
+                    title: "Otevřeno",
+                    value: openReportsCount,
+                    icon: "bolt.fill",
+                    tint: .yellow
+                )
+            }
+
+            Picker("Filtr reportů", selection: $selectedFilter) {
+                ForEach(TopFilter.allCases) { filter in
+                    Text(filter.rawValue).tag(filter)
                 }
-                .buttonStyle(.plain)
+            }
+            .pickerStyle(.segmented)
+        }
+    }
+
+    private func compactSummaryMetric(title: String, value: Int, icon: String, tint: Color) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(tint)
+                .frame(width: 18, height: 18)
+                .padding(6)
+                .background(tint.opacity(0.16))
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text("\(value)")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(.primary)
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var activeReportsHeader: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.bubble.fill")
+                .font(.subheadline)
+                .foregroundStyle(.orange)
+            Text("Aktivní reporty")
+                .textCase(nil)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+            Spacer(minLength: 0)
+            Text("\(visibleReports.count)")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color(uiColor: .tertiarySystemBackground))
+                .clipShape(Capsule())
+        }
+        .padding(.leading, 6)
     }
 
     private func managerReportRow(_ report: UserReport) -> some View {
         let direction = reportDirectionLabel(for: report)
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(report.order_number ?? "Objednávka bez čísla")
-                    .font(.headline)
-                Spacer()
-                if let direction, !direction.isEmpty {
-                    Text(direction)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color(uiColor: .tertiarySystemBackground))
-                    .clipShape(Capsule())
+        let status = normalizedStatus(for: report)
+        let orderNumber = report.order_number ?? "Objednávka bez čísla"
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: report.created_by_manager == true ? "person.2.badge.gearshape.fill" : "person.crop.circle.badge.exclamationmark")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(leadingBorderColor(for: report))
+                    .frame(width: 32, height: 32)
+                    .background(leadingBorderColor(for: report).opacity(0.14))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(orderNumber)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    if let direction, !direction.isEmpty {
+                        Text(direction)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                    .padding(.top, 2)
             }
 
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
+                statusBadge(for: status)
                 if let created = report.created_at, !created.isEmpty {
                     Label(formatCzechDate(created), systemImage: "calendar")
+                        .lineLimit(1)
+                    if let date = parseServerDate(created) {
+                        Text("• \(date.formatted(.relative(presentation: .numeric)))")
+                            .lineLimit(1)
+                    }
                 }
             }
             .font(.caption)
@@ -353,15 +426,44 @@ struct ManagerProblemsView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color(uiColor: .separator).opacity(0.2), lineWidth: 1)
+                .stroke(Color(uiColor: .separator).opacity(0.16), lineWidth: 1)
         )
         .overlay(alignment: .leading) {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(leadingBorderColor(for: report))
-                .frame(width: 5)
+                .frame(width: 4)
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 1)
+        .padding(.vertical, 2)
+        .shadow(color: .black.opacity(0.025), radius: 6, x: 0, y: 2)
+    }
+
+    private func statusBadge(for status: ManagerReportStatus) -> some View {
+        let color: Color = {
+            switch status {
+            case .created: return .orange
+            case .open: return .yellow
+            case .completed: return .green
+            case .unknown: return .gray
+            }
+        }()
+
+        let title: String = {
+            switch status {
+            case .created: return "Vytvořeno"
+            case .open: return "Otevřeno"
+            case .completed: return "Dokončeno"
+            case .unknown: return "Neznámé"
+            }
+        }()
+
+        return Text(title)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(color.opacity(0.14))
+            .clipShape(Capsule())
     }
 
     private func reportDirectionLabel(for report: UserReport) -> String? {
