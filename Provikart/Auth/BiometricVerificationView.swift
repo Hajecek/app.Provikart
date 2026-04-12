@@ -13,7 +13,7 @@ struct BiometricVerificationView: View {
 
     @State private var errorMessage: String?
     @State private var isAuthenticating = false
-    /// Po LAError.userInteractionRequired – krátké opakování (systém ještě nepřipravil UI).
+    /// Po LAError.Code.notInteractive – krátké opakování (systém ještě nepřipravil UI).
     @State private var userInteractionRetries = 0
     private let maxUserInteractionRetries = 6
 
@@ -113,7 +113,7 @@ struct BiometricVerificationView: View {
                 if success {
                     userInteractionRetries = 0
                     onSuccess()
-                } else if let laError = authError as? LAError, laError.code == .userInteractionRequired,
+                } else if let laError = authError as? LAError, laError.code == .notInteractive,
                           userInteractionRetries < maxUserInteractionRetries {
                     userInteractionRetries += 1
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
