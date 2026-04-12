@@ -13,6 +13,9 @@ struct BiometricVerificationView: View {
 
     @State private var errorMessage: String?
     @State private var isAuthenticating = false
+    /// Po LAError.userInteractionRequired – krátké opakování (systém ještě nepřipravil UI).
+    @State private var userInteractionRetries = 0
+    private let maxUserInteractionRetries = 6
 
     var body: some View {
         ZStack {
@@ -63,7 +66,11 @@ struct BiometricVerificationView: View {
             .padding()
         }
         .onAppear {
-            authenticate()
+            Task { @MainActor in
+                // Krátká prodleva po zobrazení overlay – Face ID po přechodu scény na .active jinak často selže.
+                try? await Task.sleep(nanoseconds: 380_000_000)
+                authenticate()
+            }
         }
     }
 
@@ -81,6 +88,8 @@ struct BiometricVerificationView: View {
     }
 
     private func authenticate() {
+        guard !isAuthenticating else { return }
+
         let context = LAContext()
         var biometricError: NSError?
         var passcodeError: NSError?
@@ -102,13 +111,18 @@ struct BiometricVerificationView: View {
             DispatchQueue.main.async {
                 isAuthenticating = false
                 if success {
+                    userInteractionRetries = 0
                     onSuccess()
-                } else {
-                    if let authError = authError as? LAError, authError.code == .userCancel {
-                        errorMessage = nil
-                    } else {
-                        errorMessage = authError?.localizedDescription ?? "Ověření se nezdařilo. Zkuste to znovu."
+                } else if let laError = authError as? LAError, laError.code == .userInteractionRequired,
+                          userInteractionRetries < maxUserInteractionRetries {
+                    userInteractionRetries += 1
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                        authenticate()
                     }
+                } else if let laError = authError as? LAError, laError.code == .userCancel {
+                    errorMessage = nil
+                } else {
+                    errorMessage = authError?.localizedDescription ?? "Ověření se nezdařilo. Zkuste to znovu."
                 }
             }
         }

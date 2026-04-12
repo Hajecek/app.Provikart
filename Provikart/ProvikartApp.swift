@@ -246,11 +246,13 @@ struct ProvikartApp: App {
                         CommissionBackgroundRefresh.scheduleNext()
                     }
                 case .inactive:
-                    if let at = backgroundedAt, Date().timeIntervalSince(at) >= 5, authState.isLoggedIn {
-                        showBiometricVerification = true
-                    }
+                    // Biometrii nespouštět ve .inactive – systém často vrátí „vyžadována akce uživatele“
+                    // (Face ID musí běžet až ve zcela aktivní scéně).
                     appLoginApprovalState.stopPolling()
                 case .active:
+                    if authState.isLoggedIn, let at = backgroundedAt, Date().timeIntervalSince(at) >= 5 {
+                        showBiometricVerification = true
+                    }
                     backgroundedAt = nil
                     if authState.isLoggedIn {
                         CommissionBackgroundRefresh.scheduleNext()
