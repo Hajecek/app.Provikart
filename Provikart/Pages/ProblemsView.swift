@@ -378,7 +378,7 @@ private struct ReportRow: View {
     }
 }
 
-// MARK: - Výroky jako timeline se svislou čárou (iOS styl)
+// MARK: - Vývoj jako timeline se svislou čárou (iOS styl)
 
 private let timelineTrackWidth: CGFloat = 10
 private let timelineLineWidth: CGFloat = 2
@@ -699,12 +699,12 @@ struct ReportDetailView: View {
                 }
             }
             if let statement = report.statement, !statement.isEmpty {
-                Section("Výrok") {
+                Section("Vývoj") {
                     Text(statement)
                 }
             }
             if let statements = report.statements, !statements.isEmpty {
-                Section("Výroky") {
+                Section("Vývoj") {
                     StatementsTimelineView(statements: statements, formatDate: formatDate)
                 }
             }
@@ -805,7 +805,7 @@ private struct ReplyToReportView: View {
                 } header: {
                     Text("Odpověď")
                 } footer: {
-                    Text("Odpověď se uloží jako výrok k tomuto reportu.")
+                    Text("Odpověď se uloží do vývoje tohoto reportu.")
                 }
 
                 if let errorMessage {

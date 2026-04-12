@@ -7,7 +7,7 @@
 
 import Foundation
 
-/// Jeden výrok v reportu (objekt z API: text, created_at, is_result).
+/// Jeden záznam vývoje v reportu (objekt z API: text, created_at, is_result).
 struct ReportStatement: Codable {
     let text: String
     let created_at: String?
@@ -24,7 +24,7 @@ struct UserReport: Codable, Identifiable, Hashable {
     let note: String?
     let user_note: String?
     let statement: String?
-    /// Pole výroků – API vrací objekty { "text": "...", "created_at": "...", "is_result": bool }.
+    /// Pole záznamů vývoje – API vrací objekty { "text": "...", "created_at": "...", "is_result": bool }.
     let statements: [ReportStatement]?
     let status: String?
     let created_at: String?

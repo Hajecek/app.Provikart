@@ -43,7 +43,7 @@ struct ManagerProblemDetailView: View {
             }
 
             if let statements = currentReport.statements, !statements.isEmpty {
-                Section("Historie výroků") {
+                Section("Historie vývoje") {
                     ManagerStatementsTimelineView(statements: statements, formatDate: formatDate)
                 }
             }
