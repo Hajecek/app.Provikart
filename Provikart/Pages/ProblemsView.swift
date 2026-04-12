@@ -432,6 +432,7 @@ private let reportImagesBaseURL = "https://provikart.cz/"
 
 private struct ReportImagesView: View {
     let imagePaths: [String]
+    var authToken: String?
 
     @State private var fullScreenURL: IdentifiableURL?
 
@@ -439,7 +440,7 @@ private struct ReportImagesView: View {
         VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(imagePaths.enumerated()), id: \.offset) { _, path in
                 if let url = resolvedImageURL(for: path) {
-                    ReportImageView(url: url) {
+                    ReportAttachmentThumbnailView(url: url, token: authToken) {
                         fullScreenURL = IdentifiableURL(url: url)
                     }
                 }
@@ -447,7 +448,7 @@ private struct ReportImagesView: View {
         }
         .padding(.vertical, 4)
         .fullScreenCover(item: $fullScreenURL) { item in
-            FullScreenReportImageView(url: item.url) {
+            FullScreenReportImageView(url: item.url, authToken: authToken) {
                 fullScreenURL = nil
             }
         }
@@ -492,47 +493,9 @@ private struct IdentifiableURL: Identifiable {
     }
 }
 
-private struct ReportImageView: View {
-    let url: URL
-    var onTap: (() -> Void)?
-
-    var body: some View {
-        AsyncImage(url: url) { phase in
-            switch phase {
-            case .empty:
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color(uiColor: .tertiarySystemFill))
-                    .frame(height: 160)
-                    .overlay { ProgressView() }
-            case .success(let image):
-                image
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(maxWidth: .infinity)
-                    .frame(maxHeight: 300)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-            case .failure:
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color(uiColor: .tertiarySystemFill))
-                    .frame(height: 80)
-                    .overlay {
-                        Label("Obrázek se nepodařilo načíst", systemImage: "photo")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-            @unknown default:
-                EmptyView()
-            }
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            onTap?()
-        }
-    }
-}
-
 private struct FullScreenReportImageView: View {
     let url: URL
+    var authToken: String?
     let onDismiss: () -> Void
 
     @State private var scale: CGFloat = 1
@@ -541,6 +504,7 @@ private struct FullScreenReportImageView: View {
     @State private var lastOffset: CGSize = .zero
     @State private var loadedImage: UIImage?
     @State private var showShareSheet = false
+    @State private var loadFailed = false
     private let minScale: CGFloat = 1
     private let maxScale: CGFloat = 5
 
@@ -549,13 +513,9 @@ private struct FullScreenReportImageView: View {
             ZStack {
                 Color.black.ignoresSafeArea()
 
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .empty:
-                        ProgressView()
-                            .tint(.white)
-                    case .success(let image):
-                        image
+                Group {
+                    if let loadedImage {
+                        Image(uiImage: loadedImage)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
                             .scaleEffect(scale)
@@ -590,12 +550,19 @@ private struct FullScreenReportImageView: View {
                                     lastOffset = .zero
                                 }
                             }
-                    case .failure:
-                        Image(systemName: "photo")
-                            .font(.largeTitle)
-                            .foregroundStyle(.white.opacity(0.5))
-                    @unknown default:
-                        EmptyView()
+                    } else if loadFailed {
+                        VStack(spacing: 16) {
+                            Image(systemName: "photo")
+                                .font(.largeTitle)
+                                .foregroundStyle(.white.opacity(0.5))
+                            Button("Zkusit znovu") {
+                                Task { await loadImage() }
+                            }
+                            .tint(.white)
+                        }
+                    } else {
+                        ProgressView()
+                            .tint(.white)
                     }
                 }
                 .padding()
@@ -624,8 +591,8 @@ private struct FullScreenReportImageView: View {
                     }
                 }
             }
-            .task(id: url) {
-                await loadImageForShare()
+            .task(id: "\(url.absoluteString)|\(authToken ?? "")") {
+                await loadImage()
             }
             .sheet(isPresented: $showShareSheet) {
                 ShareSheetView(items: loadedImage != nil ? [loadedImage!] : [url])
@@ -633,14 +600,15 @@ private struct FullScreenReportImageView: View {
         }
     }
 
-    private func loadImageForShare() async {
-        do {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            if let img = UIImage(data: data) {
-                await MainActor.run { loadedImage = img }
-            }
-        } catch {
-            await MainActor.run { loadedImage = nil }
+    private func loadImage() async {
+        await MainActor.run {
+            loadFailed = false
+            loadedImage = nil
+        }
+        let img = await ReportAttachmentImageLoader.loadUIImage(from: url, token: authToken)
+        await MainActor.run {
+            loadedImage = img
+            loadFailed = (img == nil)
         }
     }
 }
@@ -710,7 +678,7 @@ struct ReportDetailView: View {
             }
             if let images = report.images, !images.isEmpty {
                 Section("Fotky") {
-                    ReportImagesView(imagePaths: images)
+                    ReportImagesView(imagePaths: images, authToken: authState.authToken)
                 }
             }
             if let result = report.result, !result.isEmpty {
