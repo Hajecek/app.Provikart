@@ -15,6 +15,8 @@ struct BiometricVerificationView: View {
     @EnvironmentObject private var authState: AuthState
     @State private var errorMessage: String?
     @State private var isAuthenticating = false
+    @State private var isUnlockAnimating = false
+    @State private var didReportSuccess = false
     @State private var autoAuthTask: Task<Void, Never>?
     /// Po LAError.Code.notInteractive – krátké opakování (systém ještě nepřipravil UI).
     @State private var userInteractionRetries = 0
@@ -44,6 +46,10 @@ struct BiometricVerificationView: View {
                 Spacer()
             }
         }
+        .opacity(isUnlockAnimating ? 0 : 1)
+        .scaleEffect(isUnlockAnimating ? 1.04 : 1)
+        .blur(radius: isUnlockAnimating ? 7 : 0)
+        .animation(.easeInOut(duration: 0.42), value: isUnlockAnimating)
         .onAppear {
             // Auto-ověření spouštíme až ve chvíli, kdy je scéna opravdu aktivní.
             scheduleAutomaticAuthentication(initialDelay: true)
@@ -100,21 +106,8 @@ struct BiometricVerificationView: View {
         return "uživateli"
     }
 
-    private var biometricIconName: String {
-        let context = LAContext()
-        var error: NSError?
-        if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) {
-            switch context.biometryType {
-            case .faceID: return "faceid"
-            case .touchID: return "touchid"
-            default: return "lock.shield"
-            }
-        }
-        return "lock.shield"
-    }
-
     private func authenticate() {
-        guard !isAuthenticating else { return }
+        guard !isAuthenticating, !didReportSuccess else { return }
 
         let context = LAContext()
         var biometricError: NSError?
@@ -137,13 +130,12 @@ struct BiometricVerificationView: View {
             DispatchQueue.main.async {
                 isAuthenticating = false
                 if success {
-                    userInteractionRetries = 0
-                    onSuccess()
+                    handleSuccessfulAuthentication()
                 } else if let laError = authError as? LAError, laError.code == .notInteractive,
                           userInteractionRetries < maxUserInteractionRetries {
                     userInteractionRetries += 1
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-                        guard scenePhase == .active else { return }
+                        guard scenePhase == .active, !didReportSuccess else { return }
                         authenticate()
                     }
                 } else if let laError = authError as? LAError, laError.code == .notInteractive {
@@ -163,15 +155,28 @@ struct BiometricVerificationView: View {
         }
     }
 
+    private func handleSuccessfulAuthentication() {
+        guard !didReportSuccess else { return }
+        userInteractionRetries = 0
+        didReportSuccess = true
+        withAnimation(.easeInOut(duration: 0.42)) {
+            isUnlockAnimating = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.44) {
+            onSuccess()
+        }
+    }
+
     @MainActor
     private func scheduleAutomaticAuthentication(initialDelay: Bool) {
+        guard !didReportSuccess else { return }
         autoAuthTask?.cancel()
         autoAuthTask = Task { @MainActor in
             if initialDelay {
                 // Krátká prodleva po zobrazení overlay – Face ID po přechodu do .active jinak často selže.
                 try? await Task.sleep(nanoseconds: 650_000_000)
             }
-            guard !Task.isCancelled, scenePhase == .active else { return }
+            guard !Task.isCancelled, scenePhase == .active, !didReportSuccess else { return }
             authenticate()
         }
     }

@@ -208,10 +208,13 @@ struct ProvikartApp: App {
                 }
                 if shouldShowBiometricOverlay {
                     BiometricVerificationView(onSuccess: {
-                        showBiometricVerification = false
-                        hasVerifiedBiometricThisSession = true
+                        withAnimation(.easeInOut(duration: 0.35)) {
+                            showBiometricVerification = false
+                            hasVerifiedBiometricThisSession = true
+                        }
                     })
                     .ignoresSafeArea()
+                    .transition(.opacity)
                     .zIndex(3)
                 }
             }
