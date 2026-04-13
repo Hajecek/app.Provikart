@@ -11,67 +11,93 @@ import SwiftUI
 struct BiometricVerificationView: View {
     var onSuccess: () -> Void
 
+    @Environment(\.scenePhase) private var scenePhase
+    @EnvironmentObject private var authState: AuthState
     @State private var errorMessage: String?
     @State private var isAuthenticating = false
+    @State private var autoAuthTask: Task<Void, Never>?
     /// Po LAError.Code.notInteractive – krátké opakování (systém ještě nepřipravil UI).
     @State private var userInteractionRetries = 0
-    private let maxUserInteractionRetries = 6
+    private let maxUserInteractionRetries = 12
 
     var body: some View {
         ZStack {
-            Color(.systemBackground)
+            AnimatedStripeBackground()
                 .ignoresSafeArea()
 
-            VStack(spacing: 24) {
-                Image(systemName: biometricIconName)
-                    .font(.system(size: 56))
-                    .foregroundStyle(.secondary)
+            VStack(spacing: 0) {
+                Spacer()
 
-                Text("Ověření totožnosti")
-                    .font(.title2.bold())
+                VStack(spacing: 18) {
+                    profileAvatar
 
-                Text("Pro pokračování ověřte svou totožnost")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-
-                if let errorMessage {
-                    Text(errorMessage)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
+                    Text("Hezký den, \(displayName)!")
+                        .font(.system(size: 29, weight: .bold, design: .default))
+                        .foregroundStyle(.white)
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal)
+                        .minimumScaleFactor(0.8)
+                        .lineLimit(1)
+                        .padding(.horizontal, 24)
                 }
+                .padding(.bottom, 8)
 
-                Button {
-                    authenticate()
-                } label: {
-                    HStack {
-                        if isAuthenticating {
-                            ProgressView()
-                                .tint(.white)
-                        }
-                        Text(isAuthenticating ? "Čekám…" : "Ověřit totožnost")
-                            .fontWeight(.semibold)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .foregroundStyle(.white)
-                }
-                .padding(.horizontal, 32)
-                .padding(.top, 8)
-                .disabled(isAuthenticating)
+                Spacer()
             }
-            .padding()
         }
         .onAppear {
-            Task { @MainActor in
-                // Krátká prodleva po zobrazení overlay – Face ID po přechodu scény na .active jinak často selže.
-                try? await Task.sleep(nanoseconds: 380_000_000)
-                authenticate()
+            // Auto-ověření spouštíme až ve chvíli, kdy je scéna opravdu aktivní.
+            scheduleAutomaticAuthentication(initialDelay: true)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                scheduleAutomaticAuthentication(initialDelay: false)
             }
         }
+        .onDisappear {
+            autoAuthTask?.cancel()
+            autoAuthTask = nil
+        }
+    }
+
+    @ViewBuilder
+    private var profileAvatar: some View {
+        if let url = authState.currentUser?.profileImageURL {
+            AuthenticatedProfileImageView(
+                url: url,
+                token: authState.authToken,
+                size: 82
+            )
+            .overlay {
+                Circle()
+                    .stroke(Color.white.opacity(0.92), lineWidth: 2)
+            }
+            .shadow(color: .black.opacity(0.26), radius: 10, y: 5)
+        } else {
+            Image(systemName: "person.crop.circle.fill")
+                .resizable()
+                .scaledToFill()
+                .foregroundStyle(.white.opacity(0.95))
+                .frame(width: 82, height: 82)
+                .background(Color.white.opacity(0.16), in: Circle())
+                .overlay {
+                    Circle()
+                        .stroke(Color.white.opacity(0.92), lineWidth: 2)
+                }
+                .shadow(color: .black.opacity(0.26), radius: 10, y: 5)
+        }
+    }
+
+    private var displayName: String {
+        if let first = authState.currentUser?.firstname?.trimmingCharacters(in: .whitespacesAndNewlines), !first.isEmpty {
+            return first
+        }
+        if let name = authState.currentUser?.name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            return name.components(separatedBy: " ").first ?? name
+        }
+        if let username = authState.currentUser?.username?.trimmingCharacters(in: .whitespacesAndNewlines), !username.isEmpty {
+            return username
+        }
+        return "uživateli"
     }
 
     private var biometricIconName: String {
@@ -117,18 +143,156 @@ struct BiometricVerificationView: View {
                           userInteractionRetries < maxUserInteractionRetries {
                     userInteractionRetries += 1
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                        guard scenePhase == .active else { return }
                         authenticate()
                     }
+                } else if let laError = authError as? LAError, laError.code == .notInteractive {
+                    // NotInteractive se při návratu z pozadí může vracet opakovaně.
+                    // Místo chybové hlášky zkusíme ověření znovu po krátké pauze.
+                    userInteractionRetries = 0
+                    errorMessage = nil
+                    scheduleAutomaticAuthentication(initialDelay: true)
                 } else if let laError = authError as? LAError, laError.code == .userCancel {
+                    userInteractionRetries = 0
                     errorMessage = nil
                 } else {
+                    userInteractionRetries = 0
                     errorMessage = authError?.localizedDescription ?? "Ověření se nezdařilo. Zkuste to znovu."
                 }
             }
+        }
+    }
+
+    @MainActor
+    private func scheduleAutomaticAuthentication(initialDelay: Bool) {
+        autoAuthTask?.cancel()
+        autoAuthTask = Task { @MainActor in
+            if initialDelay {
+                // Krátká prodleva po zobrazení overlay – Face ID po přechodu do .active jinak často selže.
+                try? await Task.sleep(nanoseconds: 650_000_000)
+            }
+            guard !Task.isCancelled, scenePhase == .active else { return }
+            authenticate()
+        }
+    }
+}
+
+private struct AnimatedStripeBackground: View {
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+            Canvas { context, size in
+                let t = timeline.date.timeIntervalSinceReferenceDate
+                let background = Path(CGRect(origin: .zero, size: size))
+                context.fill(background, with: .color(Color(red: 0.04, green: 0.05, blue: 0.08)))
+
+                drawStripeCluster(
+                    in: context,
+                    size: size,
+                    center: CGPoint(
+                        x: size.width * 0.12 + CGFloat(sin(t * 0.27)) * 26,
+                        y: size.height * 0.32 + CGFloat(cos(t * 0.20)) * 20
+                    ),
+                    baseRadius: min(size.width, size.height) * 0.14,
+                    rings: 22,
+                    tint: Color.white.opacity(0.14),
+                    time: t,
+                    rotationBase: .degrees(-18),
+                    rotationSwing: .degrees(11),
+                    directionalDrift: CGPoint(x: 20, y: -14),
+                    phaseOffset: 0
+                )
+
+                drawStripeCluster(
+                    in: context,
+                    size: size,
+                    center: CGPoint(
+                        x: size.width * 0.88 + CGFloat(cos(t * 0.23)) * 18,
+                        y: size.height * 0.75 + CGFloat(sin(t * 0.21)) * 16
+                    ),
+                    baseRadius: min(size.width, size.height) * 0.10,
+                    rings: 17,
+                    tint: Color.white.opacity(0.10),
+                    time: t,
+                    rotationBase: .degrees(162),
+                    rotationSwing: .degrees(14),
+                    directionalDrift: CGPoint(x: -18, y: 13),
+                    phaseOffset: 1.15
+                )
+
+                drawStripeCluster(
+                    in: context,
+                    size: size,
+                    center: CGPoint(
+                        x: size.width * 0.60 + CGFloat(cos(t * 0.16)) * 12,
+                        y: size.height * 0.08 + CGFloat(sin(t * 0.25)) * 10
+                    ),
+                    baseRadius: min(size.width, size.height) * 0.08,
+                    rings: 13,
+                    tint: Color.white.opacity(0.08),
+                    time: t,
+                    rotationBase: .degrees(74),
+                    rotationSwing: .degrees(10),
+                    directionalDrift: CGPoint(x: 12, y: 22),
+                    phaseOffset: 2.4
+                )
+
+                context.addFilter(.colorMultiply(.black.opacity(0.42)))
+                context.fill(background, with: .color(.black.opacity(0.32)))
+            }
+        }
+    }
+
+    private func drawStripeCluster(
+        in context: GraphicsContext,
+        size: CGSize,
+        center: CGPoint,
+        baseRadius: CGFloat,
+        rings: Int,
+        tint: Color,
+        time: TimeInterval,
+        rotationBase: Angle,
+        rotationSwing: Angle,
+        directionalDrift: CGPoint,
+        phaseOffset: Double
+    ) {
+        for index in 0..<rings {
+            let step = CGFloat(index)
+            let phase = time + phaseOffset
+            let wobble = CGFloat(sin(phase * 1.05 + Double(index) * 0.55)) * 6
+            let radius = baseRadius + step * 21 + wobble
+            let travel = CGFloat(sin(phase * 0.58 + Double(index) * 0.33))
+            let centerX = center.x + directionalDrift.x * travel
+            let centerY = center.y + directionalDrift.y * travel
+            let stretchX = 1.45 + CGFloat(sin(phase * 0.34 + Double(index) * 0.17)) * 0.24
+            let stretchY = 0.88 + CGFloat(cos(phase * 0.40 + Double(index) * 0.13)) * 0.16
+
+            let rect = CGRect(
+                x: centerX - radius * stretchX,
+                y: centerY - radius * stretchY,
+                width: radius * stretchX * 2,
+                height: radius * stretchY * 2
+            )
+            let dynamicRotation = rotationBase.radians
+                + rotationSwing.radians * sin(phase * 0.22 + Double(index) * 0.09)
+            var path = Path(ellipseIn: rect)
+            let rotate = CGAffineTransform(
+                translationX: centerX,
+                y: centerY
+            )
+            .rotated(by: dynamicRotation)
+            .translatedBy(x: -centerX, y: -centerY)
+            path = path.applying(rotate)
+
+            context.stroke(
+                path,
+                with: .color(tint.opacity(0.72 - Double(index) * 0.018)),
+                lineWidth: 1.35
+            )
         }
     }
 }
 
 #Preview {
     BiometricVerificationView(onSuccess: {})
+        .environmentObject(AuthState())
 }
