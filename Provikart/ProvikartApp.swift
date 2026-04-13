@@ -168,9 +168,14 @@ struct ProvikartApp: App {
     @State private var backgroundedAt: Date?
     @Environment(\.scenePhase) private var scenePhase
 
+    private var needsImmediateBiometricOnResume: Bool {
+        guard authState.isLoggedIn, scenePhase == .active, let at = backgroundedAt else { return false }
+        return Date().timeIntervalSince(at) >= 5
+    }
+
     private var shouldShowBiometricOverlay: Bool {
         guard authState.isLoggedIn else { return false }
-        if showBiometricVerification { return true }
+        if showBiometricVerification || needsImmediateBiometricOnResume { return true }
         if !showLaunchScreen, hasCompletedOnboarding, !hasVerifiedBiometricThisSession { return true }
         return false
     }
@@ -252,6 +257,11 @@ struct ProvikartApp: App {
                     // Biometrii nespouštět ve .inactive – systém často vrátí „vyžadována akce uživatele“
                     // (Face ID musí běžet až ve zcela aktivní scéně).
                     appLoginApprovalState.stopPolling()
+                    // Při návratu z pozadí připrav overlay už ve .inactive, aby po přechodu do .active
+                    // neproblikl hlavní obsah ještě před zobrazením biometrie.
+                    if authState.isLoggedIn, let at = backgroundedAt, Date().timeIntervalSince(at) >= 5 {
+                        showBiometricVerification = true
+                    }
                 case .active:
                     if authState.isLoggedIn, let at = backgroundedAt, Date().timeIntervalSince(at) >= 5 {
                         showBiometricVerification = true
