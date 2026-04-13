@@ -415,7 +415,7 @@ struct ManagerProblemsView: View {
                     }
                     .lineLimit(1)
                     if let date = parseServerDate(created) {
-                        Text("• \(date.formatted(.relative(presentation: .numeric)))")
+                        Text("• \(date.formatted(.relative(presentation: .named).locale(Locale(identifier: "cs_CZ"))))")
                             .lineLimit(1)
                     }
                 }
@@ -523,7 +523,7 @@ struct ManagerProblemsView: View {
                 let out = DateFormatter()
                 out.locale = Locale(identifier: "cs_CZ")
                 out.timeZone = .current
-                out.dateFormat = "d. M. yyyy HH:mm"
+                out.dateFormat = "dd.MM.yyyy '•' HH:mm"
                 return out.string(from: date)
             }
         }
