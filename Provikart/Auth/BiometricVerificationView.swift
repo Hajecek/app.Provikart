@@ -18,9 +18,6 @@ struct BiometricVerificationView: View {
     @State private var isUnlockAnimating = false
     @State private var didReportSuccess = false
     @State private var autoAuthTask: Task<Void, Never>?
-    /// Po LAError.Code.notInteractive – krátké opakování (systém ještě nepřipravil UI).
-    @State private var userInteractionRetries = 0
-    private let maxUserInteractionRetries = 12
 
     var body: some View {
         ZStack {
@@ -52,11 +49,11 @@ struct BiometricVerificationView: View {
         .animation(.easeInOut(duration: 0.42), value: isUnlockAnimating)
         .onAppear {
             // Auto-ověření spouštíme až ve chvíli, kdy je scéna opravdu aktivní.
-            scheduleAutomaticAuthentication(initialDelay: true)
+            scheduleAutomaticAuthentication(delay: 0.55)
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
-                scheduleAutomaticAuthentication(initialDelay: false)
+                scheduleAutomaticAuthentication(delay: 0.2)
             }
         }
         .onDisappear {
@@ -131,25 +128,17 @@ struct BiometricVerificationView: View {
                 isAuthenticating = false
                 if success {
                     handleSuccessfulAuthentication()
-                } else if let laError = authError as? LAError, laError.code == .notInteractive,
-                          userInteractionRetries < maxUserInteractionRetries {
-                    userInteractionRetries += 1
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-                        guard scenePhase == .active, !didReportSuccess else { return }
-                        authenticate()
-                    }
                 } else if let laError = authError as? LAError, laError.code == .notInteractive {
-                    // NotInteractive se při návratu z pozadí může vracet opakovaně.
-                    // Místo chybové hlášky zkusíme ověření znovu po krátké pauze.
-                    userInteractionRetries = 0
+                    // UI ještě není plně interaktivní, zkusíme to znovu.
                     errorMessage = nil
-                    scheduleAutomaticAuthentication(initialDelay: true)
+                    scheduleAutomaticAuthentication(delay: 0.3)
                 } else if let laError = authError as? LAError, laError.code == .userCancel {
-                    userInteractionRetries = 0
+                    // I po zrušení systémové výzvy držíme lockscreen, dokud ověření neproběhne.
                     errorMessage = nil
+                    scheduleAutomaticAuthentication(delay: 0.6)
                 } else {
-                    userInteractionRetries = 0
                     errorMessage = authError?.localizedDescription ?? "Ověření se nezdařilo. Zkuste to znovu."
+                    scheduleAutomaticAuthentication(delay: 0.75)
                 }
             }
         }
@@ -157,25 +146,24 @@ struct BiometricVerificationView: View {
 
     private func handleSuccessfulAuthentication() {
         guard !didReportSuccess else { return }
-        userInteractionRetries = 0
         didReportSuccess = true
+        autoAuthTask?.cancel()
+        autoAuthTask = nil
         withAnimation(.easeInOut(duration: 0.42)) {
             isUnlockAnimating = true
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.44) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
             onSuccess()
         }
     }
 
     @MainActor
-    private func scheduleAutomaticAuthentication(initialDelay: Bool) {
+    private func scheduleAutomaticAuthentication(delay: TimeInterval) {
         guard !didReportSuccess else { return }
         autoAuthTask?.cancel()
         autoAuthTask = Task { @MainActor in
-            if initialDelay {
-                // Krátká prodleva po zobrazení overlay – Face ID po přechodu do .active jinak často selže.
-                try? await Task.sleep(nanoseconds: 650_000_000)
-            }
+            let delayNs = UInt64(max(0, delay) * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: delayNs)
             guard !Task.isCancelled, scenePhase == .active, !didReportSuccess else { return }
             authenticate()
         }
