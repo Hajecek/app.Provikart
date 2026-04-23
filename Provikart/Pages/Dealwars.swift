@@ -123,16 +123,20 @@ struct DealwarsView: View {
                 weekFilterMenu
             }
         }
-        .task {
+        .task(id: selectedSeason) {
             if selectedSeason.isEmpty {
                 selectedSeason = WeekOption.currentSeasonCode()
-            } else {
-                await loadSeason()
+                return
             }
-        }
-        .onChange(of: selectedSeason) { _, newValue in
-            guard !newValue.isEmpty else { return }
-            Task { await loadSeason() }
+
+            await loadSeason()
+
+            // Průběžná aktualizace žebříčku (pseudo realtime).
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 12_000_000_000)
+                if Task.isCancelled { break }
+                await loadSeason(silent: true)
+            }
         }
         .refreshable { await loadSeason() }
     }
@@ -333,10 +337,12 @@ struct DealwarsView: View {
         return "\(formatter.string(from: NSNumber(value: value)) ?? "0") b"
     }
 
-    private func loadSeason() async {
+    private func loadSeason(silent: Bool = false) async {
         await MainActor.run {
-            isLoading = true
-            errorMessage = nil
+            if !silent {
+                isLoading = true
+                errorMessage = nil
+            }
         }
         do {
             let payload = try await service.fetchSeason(
@@ -352,7 +358,9 @@ struct DealwarsView: View {
         } catch {
             await MainActor.run {
                 isLoading = false
-                errorMessage = error.localizedDescription
+                if !silent {
+                    errorMessage = error.localizedDescription
+                }
             }
         }
     }
