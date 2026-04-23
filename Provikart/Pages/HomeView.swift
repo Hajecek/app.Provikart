@@ -172,7 +172,7 @@ struct HomeView: View {
         HStack(alignment: .center, spacing: 14) {
             ZStack {
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.orange.opacity(0.2))
+                    .fill(Color.orange.opacity(0.24))
                     .frame(width: 44, height: 44)
                 Image(systemName: "trophy.fill")
                     .font(.title3)
@@ -194,7 +194,8 @@ struct HomeView: View {
                 .font(.title3.weight(.bold))
                 .foregroundStyle(.orange)
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 2)
         .listRowBackground(dealwarsBackground)
         .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16))
     }
@@ -206,15 +207,18 @@ struct HomeView: View {
                 .fill(
                     LinearGradient(
                         colors: [
-                            Color.orange.opacity(0.12),
-                            Color.orange.opacity(0.06)
+                            Color(red: 0.33, green: 0.24, blue: 0.17),
+                            Color(red: 0.24, green: 0.18, blue: 0.15),
+                            Color(red: 0.18, green: 0.14, blue: 0.13)
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
             shape
-                .stroke(Color.orange.opacity(0.35), lineWidth: 1)
+                .fill(Color.black.opacity(0.08))
+            shape
+                .stroke(Color.orange.opacity(0.5), lineWidth: 1)
         }
     }
 
