@@ -126,12 +126,10 @@ struct CalendarView: View {
                     .accessibilityLabel("Otevřít docházku")
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    if let openAddSheet {
-                        Button {
-                            openAddSheet()
-                        } label: {
-                            Image(systemName: "plus")
-                        }
+                    NavigationLink {
+                        DealwarsView()
+                    } label: {
+                        Image(systemName: "trophy")
                     }
                     ProfileBarButton()
                 }

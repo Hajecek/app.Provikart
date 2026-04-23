@@ -145,12 +145,10 @@ struct OrdersView: View {
                     }
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    if openAddSheet != nil {
-                        Button {
-                            openAddSheet?()
-                        } label: {
-                            Image(systemName: "plus")
-                        }
+                    NavigationLink {
+                        DealwarsView()
+                    } label: {
+                        Image(systemName: "trophy")
                     }
                     ProfileBarButton()
                 }
