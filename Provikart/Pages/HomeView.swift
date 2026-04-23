@@ -24,12 +24,17 @@ struct HomeView: View {
     @State private var servicesCount: Int?
     /// Počet záznamů z Karty vchodu za aktuální měsíc. nil = nenačteno.
     @State private var entryCardsCount: Int?
+    /// Dealwars: moje pořadí v aktuální sezoně.
+    @State private var dealwarsRank: Int?
+    /// Dealwars: moje XP v aktuální sezoně.
+    @State private var dealwarsXP: Double?
 
     private let commissionService = CommissionService()
     private let userGoalsService = UserGoalsService()
     private let pendingCompletionService = OrderItemsPendingCompletionService()
     private let orderItemsCountService = OrderItemsCountService()
     private let entryCardsCountService = EntryCardsCountService()
+    private let dealwarsSeasonService = DealwarsSeasonService()
 
     private var effectiveCommissionGoal: Double {
         commissionGoal ?? 100_000
@@ -67,6 +72,16 @@ struct HomeView: View {
                 }
 
                 // Přehledové karty
+                Section {
+                    NavigationLink {
+                        DealwarsView()
+                            .environmentObject(authState)
+                    } label: {
+                        dealwarsRow
+                    }
+                    .buttonStyle(.plain)
+                }
+
                 Section {
                     commissionRow
                 }
@@ -128,6 +143,7 @@ struct HomeView: View {
             await loadPendingCompletion()
             await loadServicesCount()
             await loadEntryCardsCount()
+            await loadDealwarsSummary()
             // Periodické obnovení provize a nedokončených na pozadí (každých 5 s)
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
@@ -137,6 +153,7 @@ struct HomeView: View {
                 await loadPendingCompletion()
                 await loadServicesCount()
                 await loadEntryCardsCount()
+                await loadDealwarsSummary()
             }
         }
         .refreshable {
@@ -145,10 +162,61 @@ struct HomeView: View {
             await loadPendingCompletion()
             await loadServicesCount()
             await loadEntryCardsCount()
+            await loadDealwarsSummary()
         }
     }
 
     // MARK: - Commission Row (iOS List style)
+
+    private var dealwarsRow: some View {
+        HStack(alignment: .center, spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color.orange.opacity(0.2))
+                    .frame(width: 44, height: 44)
+                Image(systemName: "trophy.fill")
+                    .font(.title3)
+                    .foregroundStyle(.orange)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Dealwars")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text("Moje pořadí \(dealwarsRank.map { "#\($0)" } ?? "—")")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(pointsLabel)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(.orange)
+        }
+        .padding(.vertical, 6)
+        .listRowBackground(dealwarsBackground)
+        .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16))
+    }
+
+    private var dealwarsBackground: some View {
+        let shape = RoundedRectangle(cornerRadius: 12)
+        return ZStack {
+            shape
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.orange.opacity(0.12),
+                            Color.orange.opacity(0.06)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            shape
+                .stroke(Color.orange.opacity(0.35), lineWidth: 1)
+        }
+    }
 
     private var commissionRow: some View {
         Button {
@@ -208,7 +276,12 @@ struct HomeView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 if let c = commission, !isCommissionHidden {
-                    CommissionProgressBarView(value: c.commission, goal: effectiveCommissionGoal)
+                    CommissionProgressBarView(
+                        value: c.commission,
+                        goal: effectiveCommissionGoal,
+                        barHeight: 22,
+                        scaleFontSize: 10
+                    )
                 }
 
             }
@@ -257,7 +330,7 @@ struct HomeView: View {
                     CommissionProgressBarView(
                         value: Double(count),
                         goal: effectiveServicesGoal,
-                        barHeight: 36,
+                        barHeight: 22,
                         scaleFontSize: 10
                     )
                 }
@@ -307,7 +380,7 @@ struct HomeView: View {
                     CommissionProgressBarView(
                         value: Double(count),
                         goal: 200,
-                        barHeight: 36,
+                        barHeight: 22,
                         scaleFontSize: 10
                     )
                 }
@@ -573,6 +646,16 @@ struct HomeView: View {
         return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
     }
 
+    private var pointsLabel: String {
+        guard let dealwarsXP else { return "0 XP" }
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.maximumFractionDigits = 0
+        formatter.groupingSeparator = " "
+        let value = formatter.string(from: NSNumber(value: dealwarsXP)) ?? "0"
+        return "\(value) XP"
+    }
+
     /// Načte počet položek čekajících na dokončení. Při chybě nastaví 0 (container se nezobrazí).
     private func loadPendingCompletion() async {
         let token = await MainActor.run { authState.authToken }
@@ -620,6 +703,33 @@ struct HomeView: View {
             }
         } catch {
             await MainActor.run { entryCardsCount = nil }
+        }
+    }
+
+    /// Načte moje pořadí a XP z Dealwars sezóny.
+    private func loadDealwarsSummary() async {
+        let token = await MainActor.run { authState.authToken }
+        let currentUserId = await MainActor.run { authState.currentUser?.id }
+        guard let token, !token.isEmpty, let currentUserId else {
+            await MainActor.run {
+                dealwarsRank = nil
+                dealwarsXP = nil
+            }
+            return
+        }
+
+        do {
+            let payload = try await dealwarsSeasonService.fetchSeason(token: token, season: nil, scope: "team")
+            let mine = payload.leaderboard.first(where: { $0.userId == currentUserId })
+            await MainActor.run {
+                dealwarsRank = mine?.rank
+                dealwarsXP = mine?.points
+            }
+        } catch {
+            await MainActor.run {
+                dealwarsRank = nil
+                dealwarsXP = nil
+            }
         }
     }
 }
