@@ -66,21 +66,20 @@ struct HomeView: View {
                     .listRowBackground(Color.clear)
                 }
 
-                // Provize
+                // Přehledové karty
                 Section {
                     commissionRow
                 }
 
-                // Služby
                 Section {
                     servicesCountRow
                 }
 
-                // Karta vchodu
                 Section {
                     entryCardsRow
                 }
             }
+            .homeListSectionSpacing()
             .listStyle(.insetGrouped)
             .scrollContentBackground(.visible)
             .background(Color(uiColor: .systemGroupedBackground))
@@ -629,6 +628,15 @@ struct HomeView: View {
 
 // Jednoduchý shimmer efekt pro skeleton (iOS 15+ fallback bez animace)
 private extension View {
+    @ViewBuilder
+    func homeListSectionSpacing() -> some View {
+        if #available(iOS 17.0, *) {
+            self.listSectionSpacing(8)
+        } else {
+            self
+        }
+    }
+
     @ViewBuilder
     func shimmer(active: Bool = true, duration: Double = 1.2) -> some View {
         if #available(iOS 15.0, *), active {
