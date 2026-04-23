@@ -468,12 +468,28 @@ struct HomeView: View {
                 }
             }
 
-            if !isCommissionHidden, let entryCards = c.commission_entry_cards, entryCards > 0 {
-                Text("z toho \(formatCommission(entryCards)) Kč za kartu vchodu")
+            if !isCommissionHidden, let breakdownText = commissionBreakdownText(for: c) {
+                Text(breakdownText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    private func commissionBreakdownText(for response: CommissionResponse) -> String? {
+        let entryCards = response.commission_entry_cards ?? 0
+        let kpiCommission = response.commission_kpi ?? 0
+
+        if entryCards > 0 && kpiCommission > 0 {
+            return "z toho \(formatCommission(entryCards)) KV a \(formatCommission(kpiCommission)) KPI"
+        }
+        if entryCards > 0 {
+            return "z toho \(formatCommission(entryCards)) KV"
+        }
+        if kpiCommission > 0 {
+            return "z toho \(formatCommission(kpiCommission)) KPI"
+        }
+        return nil
     }
 
     // MARK: - Data Loading

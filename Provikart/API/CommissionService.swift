@@ -15,6 +15,10 @@ struct CommissionResponse: Codable {
     let commission: Double
     /// Celková provize z karty vchodů za aktuální měsíc.
     let commission_entry_cards: Double?
+    /// KPI bonus za internety (každých 6 dokončených = 5 000 Kč).
+    let commission_kpi: Double?
+    /// Počet dokončených internetů započítaných do KPI za aktuální měsíc.
+    let completed_internet_count: Int?
     let currency: String
 }
 
