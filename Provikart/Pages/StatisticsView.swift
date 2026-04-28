@@ -122,11 +122,16 @@ struct StatisticsView: View {
     @State private var selectedMonth: Date = Date()
     @State private var selectedMetric: Metric = .count
 
-    private let service = OrderItemsByInstallationDateService()
+    private let service = OrderItemsConnectedStatsService()
     private let calendar = Calendar.current
 
     private var monthStart: Date {
         calendar.date(from: calendar.dateComponents([.year, .month], from: selectedMonth)) ?? selectedMonth
+    }
+
+    private var monthRequestID: String {
+        let components = calendar.dateComponents([.year, .month], from: monthStart)
+        return "\(components.year ?? 0)-\(components.month ?? 0)"
     }
 
     private var itemsInMonth: [OrderItemByInstallationDate] {
@@ -249,7 +254,7 @@ struct StatisticsView: View {
             }
         }
         .toolbarBackground(.visible, for: .navigationBar)
-        .task { await loadItems() }
+        .task(id: monthRequestID) { await loadItems() }
         .refreshable { await loadItems() }
     }
 
@@ -462,7 +467,12 @@ struct StatisticsView: View {
         }
         await MainActor.run { isLoading = true; errorMessage = nil }
         do {
-            let fetched = try await service.fetchOrderItems(token: authState.authToken, installationDate: nil)
+            let components = calendar.dateComponents([.year, .month], from: monthStart)
+            let fetched = try await service.fetchConnectedItems(
+                token: authState.authToken,
+                month: components.month ?? calendar.component(.month, from: Date()),
+                year: components.year ?? calendar.component(.year, from: Date())
+            )
             await MainActor.run {
                 items = fetched
                 isLoading = false
