@@ -7,21 +7,138 @@
 
 import SwiftUI
 
+enum ManagerLocationReportStatus: Equatable {
+    case reported
+    case absent(String)
+    case missing
+
+    var subtitle: String {
+        switch self {
+        case .reported:
+            return "Lokalita nahlášena"
+        case .absent(let status):
+            return status == "N" ? "Nemoc" : "Volno / dovolená"
+        case .missing:
+            return "Čeká na nahlášení lokality"
+        }
+    }
+
+    var badgeText: String {
+        switch self {
+        case .reported:
+            return "Vyplněno"
+        case .absent:
+            return "Nepřítomen"
+        case .missing:
+            return "Nezadáno"
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .reported:
+            return "person.fill.checkmark"
+        case .absent:
+            return "calendar"
+        case .missing:
+            return "person.fill.xmark"
+        }
+    }
+
+    var badgeIconName: String {
+        switch self {
+        case .reported:
+            return "checkmark.circle.fill"
+        case .absent:
+            return "calendar.circle.fill"
+        case .missing:
+            return "exclamationmark.circle.fill"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .reported:
+            return .green
+        case .absent(let status):
+            return status == "N" ? .red : .blue
+        case .missing:
+            return .orange
+        }
+    }
+
+    var rowFill: Color {
+        switch self {
+        case .reported:
+            return Color(uiColor: .secondarySystemGroupedBackground)
+        case .absent:
+            return tint.opacity(0.08)
+        case .missing:
+            return Color.orange.opacity(0.09)
+        }
+    }
+
+    var rowStroke: Color {
+        switch self {
+        case .reported:
+            return Color.primary.opacity(0.05)
+        case .absent:
+            return tint.opacity(0.22)
+        case .missing:
+            return Color.orange.opacity(0.25)
+        }
+    }
+
+    var emptyContentText: String {
+        switch self {
+        case .reported:
+            return "Uživatel zatím nezadal lokalitu"
+        case .absent(let status):
+            return status == "N" ? "Uživatel je nemocný" : "Uživatel má volno / dovolenou"
+        case .missing:
+            return "Uživatel zatím nezadal lokalitu"
+        }
+    }
+
+    var emptyContentIcon: String {
+        switch self {
+        case .reported, .missing:
+            return "mappin.slash"
+        case .absent:
+            return "calendar"
+        }
+    }
+
+    var isAbsent: Bool {
+        if case .absent = self {
+            return true
+        }
+        return false
+    }
+
+    var showsLocationDetails: Bool {
+        !isAbsent
+    }
+}
+
 @MainActor
 final class ManagerLocationsViewModel: ObservableObject {
     @Published var selectedDate: Date = Date()
     @Published var members: [ManagerTeamMember] = []
     @Published var locationsByUser: [Int: [ManagerLocationItem]] = [:]
+    @Published var attendanceByUser: [Int: ManagerAttendanceUser] = [:]
     @Published var isLoading = false
     @Published var errorMessage: String?
 
     private let locationsService = ManagerLocationsService()
     private let membersService = ManagerTeamMembersService()
+    private let attendanceService = ManagerAttendanceService()
 
     func load(token: String?) async {
         guard let token, !token.isEmpty else {
             members = []
             locationsByUser = [:]
+            attendanceByUser = [:]
             errorMessage = "Nejste přihlášeni."
             return
         }
@@ -29,15 +146,21 @@ final class ManagerLocationsViewModel: ObservableObject {
         errorMessage = nil
         do {
             let date = Self.apiDateFormatter.string(from: selectedDate)
+            let month = Self.monthAPIFormatter.string(from: selectedDate)
             async let fetchedMembers = membersService.fetchMembers(token: token)
             async let fetchedLocations = locationsService.fetchLocations(token: token, workDate: date)
-            let (membersPayload, locationsPayload) = try await (fetchedMembers, fetchedLocations)
+            async let fetchedAttendance = attendanceService.fetchAttendance(token: token, month: month, includeSelf: true)
+            let (membersPayload, locationsPayload, attendancePayload) = try await (fetchedMembers, fetchedLocations, fetchedAttendance)
             members = membersPayload
             locationsByUser = Dictionary(grouping: locationsPayload, by: { $0.userId })
+            attendanceByUser = attendancePayload.users.reduce(into: [:]) { result, user in
+                result[user.userId] = user
+            }
             isLoading = false
         } catch {
             members = []
             locationsByUser = [:]
+            attendanceByUser = [:]
             isLoading = false
             errorMessage = error.localizedDescription
         }
@@ -70,11 +193,55 @@ final class ManagerLocationsViewModel: ObservableObject {
         }
     }
 
+    func locationStatus(for member: ManagerTeamMember) -> ManagerLocationReportStatus {
+        if let absence = absenceStatus(for: member) {
+            return .absent(absence)
+        }
+        if hasLocation(for: member) {
+            return .reported
+        }
+        return .missing
+    }
+
+    func isReported(for member: ManagerTeamMember) -> Bool {
+        locationStatus(for: member) == .reported
+    }
+
+    func isMissingLocation(for member: ManagerTeamMember) -> Bool {
+        locationStatus(for: member) == .missing
+    }
+
+    func isAbsent(for member: ManagerTeamMember) -> Bool {
+        locationStatus(for: member).isAbsent
+    }
+
+    private func absenceStatus(for member: ManagerTeamMember) -> String? {
+        let day = Self.apiDateFormatter.string(from: selectedDate)
+        guard let entry = attendanceByUser[member.id]?.attendance[day] else {
+            return nil
+        }
+        let status = Self.normalizedAttendanceStatus(entry.status)
+        return ["V", "N"].contains(status) ? status : nil
+    }
+
+    private static func normalizedAttendanceStatus(_ raw: String) -> String {
+        let status = raw.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return status == "D" ? "V" : status
+    }
+
     private static let apiDateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.timeZone = .current
         f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    private static let monthAPIFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = .current
+        f.dateFormat = "yyyy-MM"
         return f
     }()
 
@@ -161,77 +328,97 @@ struct ManagerLocationsSheetView: View {
     }
 
     private var summaryStrip: some View {
-        let filledCount = viewModel.members.filter { viewModel.hasLocation(for: $0) }.count
-        let missingCount = max(0, viewModel.members.count - filledCount)
+        let filledCount = viewModel.members.filter { viewModel.isReported(for: $0) }.count
+        let absentCount = viewModel.members.filter { viewModel.isAbsent(for: $0) }.count
+        let missingCount = viewModel.members.filter { viewModel.isMissingLocation(for: $0) }.count
 
-        return HStack(spacing: 10) {
-            summaryCard(
-                title: "Vyplněno",
-                value: "\(filledCount)",
-                icon: "checkmark.circle.fill",
-                tint: .green
-            )
-            summaryCard(
-                title: "Nezadáno",
-                value: "\(missingCount)",
-                icon: "exclamationmark.circle.fill",
-                tint: .orange
-            )
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Přehled hlášení", systemImage: "list.bullet.clipboard")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Spacer()
+                Text("\(viewModel.members.count) členů")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 8) {
+                summaryMetric(
+                    title: "Vyplněno",
+                    value: "\(filledCount)",
+                    icon: "checkmark.circle.fill",
+                    tint: .green
+                )
+                summaryMetric(
+                    title: "Nepřítomni",
+                    value: "\(absentCount)",
+                    icon: "calendar.circle.fill",
+                    tint: .blue
+                )
+                summaryMetric(
+                    title: "Nezadáno",
+                    value: "\(missingCount)",
+                    icon: "exclamationmark.circle.fill",
+                    tint: .orange
+                )
+            }
         }
+        .padding(14)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
-    private func summaryCard(title: String, value: String, icon: String, tint: Color) -> some View {
-        HStack(spacing: 10) {
+    private func summaryMetric(title: String, value: String, icon: String, tint: Color) -> some View {
+        VStack(spacing: 6) {
             Image(systemName: icon)
-                .font(.title3)
+                .font(.callout.weight(.semibold))
                 .foregroundStyle(tint)
-                .frame(width: 28)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(value)
-                    .font(.headline)
-                    .foregroundStyle(.primary)
-            }
-            Spacer(minLength: 0)
+            Text(value)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(.primary)
+            Text(title)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
-        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity)
         .padding(.vertical, 10)
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .background(tint.opacity(0.12))
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func memberRow(_ member: ManagerTeamMember) -> some View {
         let entries = viewModel.userLocations(for: member)
-        let hasLocation = viewModel.hasLocation(for: member)
+        let status = viewModel.locationStatus(for: member)
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center) {
                 Circle()
-                    .fill((hasLocation ? Color.green : Color.orange).opacity(0.16))
+                    .fill(status.tint.opacity(0.16))
                     .frame(width: 34, height: 34)
                     .overlay(
-                        Image(systemName: hasLocation ? "person.fill.checkmark" : "person.fill.xmark")
+                        Image(systemName: status.iconName)
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(hasLocation ? .green : .orange)
+                            .foregroundStyle(status.tint)
                     )
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(viewModel.displayName(for: member))
                         .font(.headline)
                         .lineLimit(1)
-                    Text(hasLocation ? "Lokalita nahlášena" : "Čeká na nahlášení lokality")
+                    Text(status.subtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
                 Spacer(minLength: 8)
-                statusBadge(hasLocation: hasLocation)
+                statusBadge(status)
             }
 
-            locationsContent(entries: entries)
+            locationsContent(entries: entries, status: status)
 
-            if let note = firstNote(in: entries) {
+            if status.showsLocationDetails, let note = firstNote(in: entries) {
                 Label(note, systemImage: "text.alignleft")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -239,30 +426,39 @@ struct ManagerLocationsSheetView: View {
         }
         .padding(.vertical, 12)
         .padding(.horizontal, 12)
-        .background(rowBackground(hasLocation: hasLocation))
+        .background(rowBackground(status: status))
     }
 
     @ViewBuilder
-    private func statusBadge(hasLocation: Bool) -> some View {
+    private func statusBadge(_ status: ManagerLocationReportStatus) -> some View {
         HStack(spacing: 4) {
-            Image(systemName: hasLocation ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-            Text(hasLocation ? "Vyplněno" : "Nezadáno")
+            Image(systemName: status.badgeIconName)
+            Text(status.badgeText)
         }
         .font(.caption.weight(.semibold))
-        .foregroundStyle(hasLocation ? Color.green : Color.red)
+        .foregroundStyle(status.tint)
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .background((hasLocation ? Color.green : Color.red).opacity(0.14))
+        .background(status.tint.opacity(0.14))
         .clipShape(Capsule())
     }
 
     @ViewBuilder
-    private func locationsContent(entries: [ManagerLocationItem]) -> some View {
-        if entries.isEmpty {
+    private func locationsContent(entries: [ManagerLocationItem], status: ManagerLocationReportStatus) -> some View {
+        if case .absent = status {
             HStack(spacing: 6) {
-                Image(systemName: "mappin.slash")
-                    .foregroundStyle(.orange)
-                Text("Uživatel zatím nezadal lokalitu")
+                Image(systemName: status.emptyContentIcon)
+                    .foregroundStyle(status.tint)
+                Text(status.emptyContentText)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 2)
+        } else if entries.isEmpty {
+            HStack(spacing: 6) {
+                Image(systemName: status.emptyContentIcon)
+                    .foregroundStyle(status.tint)
+                Text(status.emptyContentText)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -301,22 +497,13 @@ struct ManagerLocationsSheetView: View {
     }
 
     @ViewBuilder
-    private func rowBackground(hasLocation: Bool) -> some View {
+    private func rowBackground(status: ManagerLocationReportStatus) -> some View {
         let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
         ZStack {
             shape
-                .fill(
-                    hasLocation
-                        ? Color(uiColor: .secondarySystemGroupedBackground)
-                        : Color.orange.opacity(0.09)
-                )
+                .fill(status.rowFill)
             shape
-                .stroke(
-                    hasLocation
-                        ? Color.primary.opacity(0.05)
-                        : Color.orange.opacity(0.25),
-                    lineWidth: 1
-                )
+                .stroke(status.rowStroke, lineWidth: 1)
         }
     }
 }
