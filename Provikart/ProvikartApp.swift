@@ -234,9 +234,12 @@ struct ProvikartApp: App {
               } else {
                 appDelegate.clearUserInfo()
                 CommissionLiveActivityManager.endAll()
+                ManagerTeamLiveActivityManager.endAll()
                 WidgetDataStore.clearCommission()
                 WidgetDataStore.clearReports()
                 WidgetDataStore.clearInstallations()
+                WidgetDataStore.clearManagerData()
+                WidgetDataStore.clearUserRole()
               }
             }
             .onAppear {

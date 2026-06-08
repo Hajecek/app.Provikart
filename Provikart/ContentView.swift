@@ -71,14 +71,18 @@ struct ContentView: View {
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active, authState.isLoggedIn, let token = authState.authToken, !token.isEmpty {
-                Task { await refreshCommissionAndLiveActivity(token: token) }
+                Task { await refreshWidgetsAndLiveActivity(token: token) }
             }
         }
     }
 
-    /// Při návratu aplikace do popředí načte aktuální provizi a aktualizuje widget + Live Activity
-    /// (např. po dokončení položky na hodinkách).
-    private func refreshCommissionAndLiveActivity(token: String) async {
+    /// Při návratu aplikace do popředí aktualizuje widgety a Live Activity podle role.
+    private func refreshWidgetsAndLiveActivity(token: String) async {
+        if authState.currentRole == .manager {
+            await ManagerWidgetRefresh.refreshAll(token: token)
+            return
+        }
+
         do {
             let response = try await commissionService.fetchCommission(token: token)
             let (goal, _) = (try? await userGoalsService.fetchGoals(token: token)) ?? (nil, nil)

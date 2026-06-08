@@ -49,6 +49,18 @@ struct SettingsView: View {
         return "Verze \(version) (\(build))"
     }
 
+    private var liveActivityToggleTitle: String {
+        authState.currentRole == .manager
+            ? "Tým na Lock Screenu a v Dynamic Island"
+            : "Provize na Lock Screenu a v Dynamic Island"
+    }
+
+    private var liveActivityFooter: String {
+        authState.currentRole == .manager
+            ? "Když je zapnuto, aplikace zobrazí otevřené problémy týmu a docházku na Lock Screenu a v Dynamic Island."
+            : "Když je zapnuto, aplikace zobrazí aktuální provizi a postup k cíli na Lock Screenu a v Dynamic Island."
+    }
+
     var body: some View {
         Form {
             Section {
@@ -89,17 +101,21 @@ struct SettingsView: View {
 
             Section {
                 Toggle(isOn: $liveActivityEnabled) {
-                    Label("Provize na Lock Screenu a v Dynamic Island", systemImage: "livephoto")
+                    Label(liveActivityToggleTitle, systemImage: "livephoto")
                 }
                 .onChange(of: liveActivityEnabled) { _, enabled in
                     if !enabled {
-                        CommissionLiveActivityManager.endAll()
+                        if authState.currentRole == .manager {
+                            ManagerTeamLiveActivityManager.endAll()
+                        } else {
+                            CommissionLiveActivityManager.endAll()
+                        }
                     }
                 }
             } header: {
                 Text("Live Activity")
             } footer: {
-                Text("Když je zapnuto, aplikace zobrazí aktuální provizi a postup k cíli na Lock Screenu a v Dynamic Island.")
+                Text(liveActivityFooter)
             }
 
             Section {

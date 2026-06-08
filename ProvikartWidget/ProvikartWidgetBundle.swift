@@ -14,5 +14,9 @@ struct ProvikartWidgetBundle: WidgetBundle {
         ProvikartReportsWidget()
         ProvikartInstallationsWidget()
         CommissionLiveActivityWidget()
+        ProvikartManagerProblemsWidget()
+        ProvikartManagerAttendanceWidget()
+        ProvikartManagerTeamWidget()
+        ManagerTeamLiveActivityWidget()
     }
 }

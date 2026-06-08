@@ -17,6 +17,9 @@ enum WidgetDataStore {
     private static let widgetKindCommission = "ProvikartWidget"
     private static let widgetKindReports = "ProvikartReportsWidget"
     private static let widgetKindInstallations = "ProvikartInstallationsWidget"
+    private static let widgetKindManagerProblems = "ProvikartManagerProblemsWidget"
+    private static let widgetKindManagerAttendance = "ProvikartManagerAttendanceWidget"
+    private static let widgetKindManagerTeam = "ProvikartManagerTeamWidget"
 
     private static var suite: UserDefaults? {
         UserDefaults(suiteName: appGroupIdentifier)
@@ -32,6 +35,61 @@ enum WidgetDataStore {
         static let installations = "widget_installations"
         static let commissionHidden = "widget_commission_hidden"
         static let commissionGoal = "widget_commission_goal"
+        static let userRole = "widget_user_role"
+        static let managerOpenProblems = "widget_manager_open_problems"
+        static let managerTeamSize = "widget_manager_team_size"
+        static let managerPresentToday = "widget_manager_present_today"
+        static let managerAbsentNames = "widget_manager_absent_names"
+        static let managerProblemsPreview = "widget_manager_problems_preview"
+    }
+
+    /// Náhled otevřeného problému týmu pro widget.
+    struct ManagerProblemPreview: Codable, Identifiable {
+        let user_name: String?
+        let order_number: String?
+        let note: String?
+
+        var id: String { "\(user_name ?? "")-\(order_number ?? "")-\(note ?? "")" }
+
+        var displayLine: String {
+            var parts: [String] = []
+            if let name = user_name, !name.isEmpty { parts.append(name) }
+            if let order = order_number, !order.isEmpty { parts.append("obj. \(order)") }
+            if parts.isEmpty, let note, !note.isEmpty {
+                let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+                parts.append(String(trimmed.prefix(40)))
+            }
+            return parts.isEmpty ? "Otevřený problém" : parts.joined(separator: " · ")
+        }
+    }
+
+    /// Uloží roli uživatele – widgety podle ní zobrazí jiný obsah.
+    static func saveUserRole(_ role: UserRole) {
+        suite?.set(role.rawValue, forKey: Keys.userRole)
+        reloadManagerWidgetTimelines()
+    }
+
+    static var isManager: Bool {
+        suite?.string(forKey: Keys.userRole) == UserRole.manager.rawValue
+    }
+
+    static var managerOpenProblemsCount: Int? {
+        guard let raw = suite?.object(forKey: Keys.managerOpenProblems) else { return nil }
+        return (raw as? NSNumber)?.intValue ?? raw as? Int
+    }
+
+    static var managerTeamSize: Int? {
+        guard let raw = suite?.object(forKey: Keys.managerTeamSize) else { return nil }
+        return (raw as? NSNumber)?.intValue ?? raw as? Int
+    }
+
+    static var managerPresentTodayCount: Int? {
+        guard let raw = suite?.object(forKey: Keys.managerPresentToday) else { return nil }
+        return (raw as? NSNumber)?.intValue ?? raw as? Int
+    }
+
+    static func clearUserRole() {
+        suite?.removeObject(forKey: Keys.userRole)
     }
 
     /// Položka pro widget instalací (minimální payload pro App Group).
@@ -141,5 +199,44 @@ enum WidgetDataStore {
     static func clearInstallations() {
         suite?.removeObject(forKey: Keys.installations)
         WidgetCenter.shared.reloadTimelines(ofKind: widgetKindInstallations)
+    }
+
+    /// Uloží přehled problémů týmu pro manažerské widgety.
+    static func saveManagerProblems(openCount: Int, preview: [ManagerProblemPreview]) {
+        suite?.set(NSNumber(value: openCount), forKey: Keys.managerOpenProblems)
+        if let data = try? JSONEncoder().encode(preview) {
+            suite?.set(data, forKey: Keys.managerProblemsPreview)
+        } else {
+            suite?.removeObject(forKey: Keys.managerProblemsPreview)
+        }
+        reloadManagerWidgetTimelines()
+    }
+
+    /// Uloží docházku týmu pro dnešní den.
+    static func saveManagerAttendance(teamSize: Int, presentToday: Int, absentNames: [String]) {
+        suite?.set(NSNumber(value: teamSize), forKey: Keys.managerTeamSize)
+        suite?.set(NSNumber(value: presentToday), forKey: Keys.managerPresentToday)
+        if let data = try? JSONEncoder().encode(absentNames) {
+            suite?.set(data, forKey: Keys.managerAbsentNames)
+        } else {
+            suite?.removeObject(forKey: Keys.managerAbsentNames)
+        }
+        reloadManagerWidgetTimelines()
+    }
+
+    /// Smaže manažerská data widgetů (po odhlášení).
+    static func clearManagerData() {
+        suite?.removeObject(forKey: Keys.managerOpenProblems)
+        suite?.removeObject(forKey: Keys.managerTeamSize)
+        suite?.removeObject(forKey: Keys.managerPresentToday)
+        suite?.removeObject(forKey: Keys.managerAbsentNames)
+        suite?.removeObject(forKey: Keys.managerProblemsPreview)
+        reloadManagerWidgetTimelines()
+    }
+
+    private static func reloadManagerWidgetTimelines() {
+        WidgetCenter.shared.reloadTimelines(ofKind: widgetKindManagerProblems)
+        WidgetCenter.shared.reloadTimelines(ofKind: widgetKindManagerAttendance)
+        WidgetCenter.shared.reloadTimelines(ofKind: widgetKindManagerTeam)
     }
 }

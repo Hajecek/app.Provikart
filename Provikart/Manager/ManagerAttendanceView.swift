@@ -33,6 +33,7 @@ final class ManagerAttendanceViewModel: ObservableObject {
             let payload = try await service.fetchAttendance(token: token, month: month, includeSelf: true)
             users = payload.users
             days = payload.days
+            saveAttendanceWidgetData(users: payload.users)
             isLoading = false
         } catch {
             users = []
@@ -100,6 +101,59 @@ final class ManagerAttendanceViewModel: ObservableObject {
     var monthTitle: String {
         Self.monthTitleFormatter.string(from: selectedMonthDate).capitalized
     }
+
+    private func saveAttendanceWidgetData(users: [ManagerAttendanceUser]) {
+        let todayKey = Self.dayKeyFormatter.string(from: Date())
+        var present = 0
+        var absentNames: [String] = []
+
+        for user in users {
+            let status = normalizedAttendanceStatus(user.attendance[todayKey]?.status ?? "")
+            if status == "P" {
+                present += 1
+            } else {
+                absentNames.append(displayName(for: user))
+            }
+        }
+
+        WidgetDataStore.saveManagerAttendance(
+            teamSize: users.count,
+            presentToday: present,
+            absentNames: Array(absentNames.prefix(6))
+        )
+
+        let openProblems = WidgetDataStore.managerOpenProblemsCount ?? 0
+        ManagerTeamLiveActivityManager.update(
+            openProblems: openProblems,
+            teamSize: users.count,
+            presentToday: present,
+            latestProblemLabel: nil
+        )
+    }
+
+    private func normalizedAttendanceStatus(_ raw: String) -> String {
+        let status = raw.uppercased()
+        if status == "D" { return "V" }
+        return status
+    }
+
+    private func displayName(for user: ManagerAttendanceUser) -> String {
+        if !user.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return user.name
+        }
+        if let username = user.username, !username.isEmpty {
+            return "@\(username)"
+        }
+        return "Uživatel #\(user.userId)"
+    }
+
+    private static let dayKeyFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = .current
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
 
     private static let monthAPIFormatter: DateFormatter = {
         let f = DateFormatter()

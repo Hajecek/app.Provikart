@@ -45,7 +45,13 @@ enum CommissionBackgroundRefresh {
             return
         }
         Task {
-            let success = await refreshCommission(token: token)
+            let success: Bool
+            if WidgetDataStore.isManager {
+                await ManagerWidgetRefresh.refreshAll(token: token)
+                success = true
+            } else {
+                success = await refreshCommission(token: token)
+            }
             await MainActor.run {
                 task.setTaskCompleted(success: success)
             }

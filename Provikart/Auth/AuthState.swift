@@ -26,8 +26,10 @@ final class AuthState: ObservableObject {
         didSet {
             if let user = currentUser, let data = try? JSONEncoder().encode(user) {
                 UserDefaults.standard.set(data, forKey: userKey)
+                WidgetDataStore.saveUserRole(UserRole(apiValue: user.role))
             } else {
                 UserDefaults.standard.removeObject(forKey: userKey)
+                WidgetDataStore.clearUserRole()
             }
         }
     }
@@ -60,6 +62,9 @@ final class AuthState: ObservableObject {
             self.currentUser = nil
         }
         self.authToken = UserDefaults.standard.string(forKey: tokenKey)
+        if let user = currentUser {
+            WidgetDataStore.saveUserRole(UserRole(apiValue: user.role))
+        }
     }
 
     func setLoggedIn(_ value: Bool, user: UserInfo? = nil, token: String? = nil) {

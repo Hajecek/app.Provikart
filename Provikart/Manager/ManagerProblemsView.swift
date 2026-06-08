@@ -51,12 +51,31 @@ final class ManagerProblemsViewModel: ObservableObject {
             try await updateService.deleteManagerReport(id: id, token: token)
             errorMessage = nil
             reports.removeAll { $0.id == id }
-            let incomplete = reports.filter { !$0.isCompleted }.count
-            WidgetDataStore.saveReports(incompleteCount: incomplete)
+            saveManagerWidgetData(from: reports)
         } catch {
             guard !isCancellation(error) else { return }
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func saveManagerWidgetData(from reports: [UserReport]) {
+        let open = reports.filter { !$0.isCompleted }
+        let preview = open.prefix(5).map {
+            WidgetDataStore.ManagerProblemPreview(
+                user_name: $0.user_name,
+                order_number: $0.order_number,
+                note: $0.note
+            )
+        }
+        WidgetDataStore.saveManagerProblems(openCount: open.count, preview: Array(preview))
+        let teamSize = WidgetDataStore.managerTeamSize ?? 0
+        let presentToday = WidgetDataStore.managerPresentTodayCount ?? 0
+        ManagerTeamLiveActivityManager.update(
+            openProblems: open.count,
+            teamSize: teamSize,
+            presentToday: presentToday,
+            latestProblemLabel: preview.first?.displayLine
+        )
     }
 
     func loadReports(silent: Bool = false) async {
@@ -77,8 +96,7 @@ final class ManagerProblemsViewModel: ObservableObject {
                 isLoading = false
                 errorMessage = nil
             }
-            let incomplete = fetched.filter { !$0.isCompleted }.count
-            WidgetDataStore.saveReports(incompleteCount: incomplete)
+            saveManagerWidgetData(from: fetched)
         } catch {
             if isCancellation(error) {
                 if !silent {
