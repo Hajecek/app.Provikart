@@ -273,9 +273,17 @@ struct ManagerProblemsView: View {
                 )
                 .environmentObject(authState)
             }
-            .navigationTitle("Provikart")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Image("logo")
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 44, height: 44)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .accessibilityLabel("Provikart")
+                }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
                         isLocationsSheetPresented = true
