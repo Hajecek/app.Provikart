@@ -33,6 +33,10 @@ struct UserReport: Codable, Identifiable, Hashable {
     let result: String?
     let images: [String]?
     let is_term_selection_issue: Bool
+    let is_deferred_sale_issue: Bool
+    let is_incomplete_order_issue: Bool
+    let issue_type: String?
+    let issue_type_label: String?
     let created_by_manager: Bool?
     /// Manager endpoint: jméno člena týmu, který report vytvořil.
     let user_name: String?
@@ -46,7 +50,9 @@ struct UserReport: Codable, Identifiable, Hashable {
     enum CodingKeys: String, CodingKey {
         case id, user_id, order_number, note, user_note, statement, statements
         case status, created_at, updated_at, statement_updated_at, result, images
-        case is_term_selection_issue, created_by_manager, user_name, username, profile_image, profile_image_url
+        case is_term_selection_issue, is_deferred_sale_issue, is_incomplete_order_issue
+        case issue_type, issue_type_label
+        case created_by_manager, user_name, username, profile_image, profile_image_url
     }
 
     init(from decoder: Decoder) throws {
@@ -65,6 +71,10 @@ struct UserReport: Codable, Identifiable, Hashable {
         result = try c.decodeIfPresent(String.self, forKey: .result)
         images = (try? c.decode([String].self, forKey: .images)) ?? nil
         is_term_selection_issue = (try? c.decode(Bool.self, forKey: .is_term_selection_issue)) ?? false
+        is_deferred_sale_issue = (try? c.decode(Bool.self, forKey: .is_deferred_sale_issue)) ?? false
+        is_incomplete_order_issue = (try? c.decode(Bool.self, forKey: .is_incomplete_order_issue)) ?? false
+        issue_type = try c.decodeIfPresent(String.self, forKey: .issue_type)
+        issue_type_label = try c.decodeIfPresent(String.self, forKey: .issue_type_label)
         created_by_manager = try c.decodeIfPresent(Bool.self, forKey: .created_by_manager)
         user_name = try c.decodeIfPresent(String.self, forKey: .user_name)
         username = try c.decodeIfPresent(String.self, forKey: .username)
@@ -94,6 +104,53 @@ struct UserReport: Codable, Identifiable, Hashable {
     /// Report je dokončený při statusu "completed". Nedokončené jsou "created" a "open".
     var isCompleted: Bool {
         (status ?? "").lowercased() == "completed"
+    }
+
+    /// Hlavní titulek reportu v seznamu manažera (odložené prodeje nemají číslo objednávky).
+    var managerListTitle: String {
+        if is_deferred_sale_issue {
+            return issue_type_label ?? "Odložený prodej"
+        }
+        if let order = order_number?.trimmingCharacters(in: .whitespacesAndNewlines), !order.isEmpty {
+            return order
+        }
+        if let label = issue_type_label?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty {
+            return label
+        }
+        return "Report #\(id)"
+    }
+
+    /// Titulek detailu reportu pro navigaci.
+    var managerDetailTitle: String {
+        if is_deferred_sale_issue {
+            return issue_type_label ?? "Odložený prodej"
+        }
+        if let order = order_number?.trimmingCharacters(in: .whitespacesAndNewlines), !order.isEmpty {
+            return "Obj. \(order)"
+        }
+        if let label = issue_type_label?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty {
+            return label
+        }
+        return "Report #\(id)"
+    }
+
+    /// Popisek typu problému pro badge v seznamu.
+    var managerIssueTypeBadge: String? {
+        guard let label = issue_type_label?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty else {
+            return nil
+        }
+        if is_deferred_sale_issue || is_incomplete_order_issue || is_term_selection_issue {
+            return label
+        }
+        return nil
+    }
+
+    /// Filtr API pro opětovné načtení tohoto reportu.
+    var managerReportsFilter: ManagerReportsFilter {
+        if is_deferred_sale_issue { return .deferredSales }
+        if is_incomplete_order_issue { return .incompleteOrders }
+        if is_term_selection_issue { return .termSelection }
+        return .regular
     }
 
     /// České zobrazení stavu z API (`created` / `open` / `completed`).

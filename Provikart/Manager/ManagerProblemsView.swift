@@ -7,11 +7,23 @@
 
 import SwiftUI
 
+private struct DeleteReportRequest: Identifiable, Equatable {
+    let id: Int
+    let title: String
+}
+
 @MainActor
 final class ManagerProblemsViewModel: ObservableObject {
     @Published var reports: [UserReport] = []
     @Published var errorMessage: String?
     @Published var isLoading = false
+    @Published var selectedCategories: Set<ManagerReportsFilter> = [.regular]
+    @Published var deferredSalesCount = 0
+    @Published var incompleteOrdersCount = 0
+    @Published var termSelectionCount = 0
+    @Published var regularReportsCount = 0
+
+    private(set) var isRefreshPaused = false
 
     var getToken: (() -> String?)?
     private let service = ManagerReportsService()
@@ -33,6 +45,37 @@ final class ManagerProblemsViewModel: ObservableObject {
     func stopPolling() {
         pollingTask?.cancel()
         pollingTask = nil
+    }
+
+    func categoryCount(for category: ManagerReportsFilter) -> Int {
+        switch category {
+        case .regular: return regularReportsCount
+        case .incompleteOrders: return incompleteOrdersCount
+        case .deferredSales: return deferredSalesCount
+        case .termSelection: return termSelectionCount
+        }
+    }
+
+    func isCategorySelected(_ category: ManagerReportsFilter) -> Bool {
+        selectedCategories.contains(category)
+    }
+
+    func toggleCategory(_ category: ManagerReportsFilter) {
+        if selectedCategories.contains(category) {
+            guard selectedCategories.count > 1 else { return }
+            selectedCategories.remove(category)
+        } else {
+            selectedCategories.insert(category)
+        }
+        Task { await loadReports() }
+    }
+
+    func pauseRefresh() {
+        isRefreshPaused = true
+    }
+
+    func resumeRefresh() {
+        isRefreshPaused = false
     }
 
     private func isCancellation(_ error: Error) -> Bool {
@@ -78,11 +121,15 @@ final class ManagerProblemsViewModel: ObservableObject {
         )
     }
 
-    func loadReports(silent: Bool = false) async {
+    func loadReports(silent: Bool = false, categories: Set<ManagerReportsFilter>? = nil) async {
         guard let token = getToken?(), !token.isEmpty else {
             reports = []
             errorMessage = nil
             isLoading = false
+            return
+        }
+        let activeCategories = categories ?? selectedCategories
+        if silent && isRefreshPaused {
             return
         }
         if !silent {
@@ -90,13 +137,21 @@ final class ManagerProblemsViewModel: ObservableObject {
             isLoading = true
         }
         do {
-            let fetched = try await service.fetchManagerReports(token: token)
-            reports = fetched
+            let result = try await service.fetchManagerReports(token: token, filters: activeCategories)
+            reports = result.reports
+            deferredSalesCount = result.deferredSalesCount
+            incompleteOrdersCount = result.incompleteOrdersCount
+            termSelectionCount = result.termSelectionCount
+            if activeCategories.contains(.regular) {
+                regularReportsCount = result.reports.filter {
+                    !$0.isCompleted && $0.managerReportsFilter == .regular
+                }.count
+            }
             if !silent {
                 isLoading = false
                 errorMessage = nil
             }
-            saveManagerWidgetData(from: fetched)
+            saveManagerWidgetData(from: result.reports)
         } catch {
             if isCancellation(error) {
                 if !silent {
@@ -115,21 +170,13 @@ final class ManagerProblemsViewModel: ObservableObject {
 struct ManagerProblemsView: View {
     @EnvironmentObject private var authState: AuthState
     @StateObject private var viewModel = ManagerProblemsViewModel()
-    @State private var selectedFilter: TopFilter = .allActive
     @State private var selectedReport: UserReport?
+    @State private var deleteRequest: DeleteReportRequest?
     @State private var isLocationsSheetPresented = false
     let refreshToken: UUID
 
     private var reports: [UserReport] {
         viewModel.reports
-    }
-
-    private enum TopFilter: String, CaseIterable, Identifiable {
-        case allActive = "Vše aktivní"
-        case created = "Vytvořeno"
-        case open = "Otevřeno"
-
-        var id: String { rawValue }
     }
 
     init(refreshToken: UUID = UUID()) {
@@ -178,215 +225,270 @@ struct ManagerProblemsView: View {
         }
     }
 
-    private var visibleReports: [UserReport] {
-        switch selectedFilter {
-        case .allActive:
-            return activeReportsSorted
-        case .created:
-            return activeReportsSorted.filter { normalizedStatus(for: $0) == .created }
-        case .open:
-            return activeReportsSorted.filter { normalizedStatus(for: $0) == .open }
-        }
+    private var createdReports: [UserReport] {
+        activeReportsSorted.filter { normalizedStatus(for: $0) == .created }
     }
 
-    private var createdReportsCount: Int {
-        activeReportsSorted.filter { normalizedStatus(for: $0) == .created }.count
-    }
-
-    private var openReportsCount: Int {
-        activeReportsSorted.filter { normalizedStatus(for: $0) == .open }.count
+    private var openReports: [UserReport] {
+        activeReportsSorted.filter { normalizedStatus(for: $0) == .open }
     }
 
     var body: some View {
         NavigationStack {
-            Group {
-                if viewModel.isLoading && viewModel.reports.isEmpty {
-                    ProgressView("Načítám reporty…")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let message = viewModel.errorMessage, viewModel.reports.isEmpty {
-                    ContentUnavailableView(
-                        "Nepodařilo se načíst reporty",
-                        systemImage: "wifi.exclamationmark",
-                        description: Text(message)
-                    )
-                } else if activeReportsSorted.isEmpty {
-                    ContentUnavailableView(
-                        "Žádné aktivní reporty",
-                        systemImage: "checkmark.circle",
-                        description: Text("Všechny reporty jsou momentálně dokončené.")
-                    )
-                } else {
-                    List {
-                        Section {
-                            topFilterRow
-                                .padding(.vertical, 6)
-                        }
-                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
+            stackContent
+        }
+    }
 
-                        if visibleReports.isEmpty {
-                            Section {
-                                ContentUnavailableView(
-                                    "Žádné položky ve filtru",
-                                    systemImage: "line.3.horizontal.decrease.circle",
-                                    description: Text("Zkuste přepnout filtr na jiný stav.")
-                                )
-                                .frame(maxWidth: .infinity)
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
-                            }
-                        } else {
-                            Section {
-                                ForEach(visibleReports) { report in
-                                    Button {
-                                        selectedReport = report
-                                    } label: {
-                                        managerReportRow(report)
-                                    }
-                                    .buttonStyle(.plain)
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                        Button(role: .destructive) {
-                                            Task { await viewModel.deleteReport(id: report.id) }
-                                        } label: {
-                                            Label("Smazat", systemImage: "trash")
-                                        }
-                                    }
-                                    .listRowInsets(EdgeInsets(top: 2, leading: 0, bottom: 2, trailing: 0))
-                                    .listRowBackground(Color.clear)
-                                    .listRowSeparator(.hidden)
-                                }
-                            } header: {
-                                activeReportsHeader
-                            }
-                        }
-                    }
-                    .listStyle(.insetGrouped)
-                    .scrollContentBackground(.hidden)
-                    .background(Color(uiColor: .systemGroupedBackground))
-                }
+    private var stackContent: some View {
+        mainContent
+            .modifier(ManagerProblemsNavigationModifier(
+                selectedReport: $selectedReport,
+                isLocationsSheetPresented: $isLocationsSheetPresented,
+                authState: authState
+            ))
+            .modifier(ManagerProblemsLifecycleModifier(
+                viewModel: viewModel,
+                authState: authState,
+                refreshToken: refreshToken
+            ))
+            .modifier(DeleteReportConfirmationModifier(
+                deleteRequest: $deleteRequest,
+                viewModel: viewModel
+            ))
+    }
+
+    @ViewBuilder
+    private var mainContent: some View {
+        if viewModel.isLoading && viewModel.reports.isEmpty {
+            ProgressView("Načítám reporty…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let message = viewModel.errorMessage, viewModel.reports.isEmpty {
+            ContentUnavailableView(
+                "Nepodařilo se načíst reporty",
+                systemImage: "wifi.exclamationmark",
+                description: Text(message)
+            )
+        } else {
+            reportsList
+        }
+    }
+
+    private var reportsList: some View {
+        List {
+            Section {
+                topFilterRow
             }
-            .navigationDestination(item: $selectedReport) { report in
-                ManagerProblemDetailView(
-                    report: report,
-                    selectedReport: $selectedReport
+            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+
+            reportSections
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color(uiColor: .systemGroupedBackground))
+    }
+
+    @ViewBuilder
+    private var reportSections: some View {
+        if activeReportsSorted.isEmpty {
+            Section {
+                ContentUnavailableView(
+                    emptyCategoryTitle,
+                    systemImage: "line.3.horizontal.decrease.circle",
+                    description: Text(emptyCategoryDescription)
                 )
-                .environmentObject(authState)
+                .frame(maxWidth: .infinity)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
             }
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Image("logo")
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 44, height: 44)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .accessibilityLabel("Provikart")
-                }
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button {
-                        isLocationsSheetPresented = true
-                    } label: {
-                        Image(systemName: "mappin.and.ellipse")
+        } else {
+            if !createdReports.isEmpty {
+                Section {
+                    ForEach(createdReports) { report in
+                        reportRowButton(report)
                     }
-                    .accessibilityLabel("Lokality týmu")
-                    ProfileBarButton()
+                } header: {
+                    reportsSectionHeader(
+                        title: "Nové",
+                        subtitle: "Čekají na vaši reakci",
+                        count: createdReports.count,
+                        tint: .orange,
+                        icon: "sparkles"
+                    )
                 }
             }
-            .sheet(isPresented: $isLocationsSheetPresented) {
-                ManagerLocationsSheetView()
-                    .environmentObject(authState)
-            }
-            .refreshable {
-                await viewModel.loadReports()
-            }
-            .background(Color(uiColor: .systemGroupedBackground))
-            .onAppear {
-                viewModel.getToken = { [authState] in authState.authToken }
-                if authState.isLoggedIn {
-                    viewModel.startPolling()
+
+            if !openReports.isEmpty {
+                Section {
+                    ForEach(openReports) { report in
+                        reportRowButton(report)
+                    }
+                } header: {
+                    reportsSectionHeader(
+                        title: "Probíhající",
+                        subtitle: "Již se řeší",
+                        count: openReports.count,
+                        tint: .yellow,
+                        icon: "arrow.triangle.2.circlepath"
+                    )
                 }
-            }
-            .onChange(of: authState.isLoggedIn) { _, isLoggedIn in
-                if isLoggedIn {
-                    viewModel.startPolling()
-                } else {
-                    viewModel.stopPolling()
-                    viewModel.reports = []
-                }
-            }
-            .onChange(of: refreshToken) { _, _ in
-                Task { await viewModel.loadReports() }
-            }
-            .onDisappear {
-                viewModel.stopPolling()
             }
         }
+    }
+
+    private var emptyCategoryTitle: String {
+        if viewModel.selectedCategories.count > 1 {
+            return "Žádné aktivní reporty"
+        }
+        if let only = viewModel.selectedCategories.first {
+            switch only {
+            case .regular:
+                return "Žádné aktivní reporty"
+            case .incompleteOrders:
+                return "Žádné nedokončené objednávky"
+            case .deferredSales:
+                return "Žádné odložené prodeje"
+            case .termSelection:
+                return "Žádné problémy s termínem"
+            }
+        }
+        return "Žádné aktivní reporty"
+    }
+
+    private var emptyCategoryDescription: String {
+        if viewModel.selectedCategories.count > 1 {
+            return "Ve vybraných kategoriích nejsou žádné otevřené reporty."
+        }
+        if let only = viewModel.selectedCategories.first {
+            switch only {
+            case .regular:
+                return "Všechny běžné reporty jsou momentálně dokončené."
+            case .incompleteOrders:
+                return "V této kategorii nejsou žádné otevřené nedokončené objednávky."
+            case .deferredSales:
+                return "V této kategorii nejsou žádné otevřené odložené prodeje."
+            case .termSelection:
+                return "V této kategorii nejsou žádné otevřené problémy s výběrem termínu."
+            }
+        }
+        return "Vyberte alespoň jednu kategorii."
     }
 
     private var topFilterRow: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                compactSummaryMetric(
-                    title: "Vytvořeno",
-                    value: createdReportsCount,
-                    icon: "sparkles",
-                    tint: .orange
-                )
-                compactSummaryMetric(
-                    title: "Otevřeno",
-                    value: openReportsCount,
-                    icon: "bolt.fill",
-                    tint: .yellow
-                )
-            }
-
-            Picker("Filtr reportů", selection: $selectedFilter) {
-                ForEach(TopFilter.allCases) { filter in
-                    Text(filter.rawValue).tag(filter)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(ManagerReportsFilter.allCases) { category in
+                    iosFilterChip(category)
                 }
             }
-            .pickerStyle(.segmented)
+            .scrollTargetLayout()
+        }
+        .scrollTargetBehavior(.viewAligned)
+        .scrollClipDisabled()
+    }
+
+    private func iosFilterChip(_ category: ManagerReportsFilter) -> some View {
+        let isSelected = viewModel.isCategorySelected(category)
+        let count = viewModel.categoryCount(for: category)
+
+        return Button {
+            withAnimation(.snappy(duration: 0.2)) {
+                viewModel.toggleCategory(category)
+            }
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: category.icon)
+                    .font(.subheadline.weight(.medium))
+                    .symbolRenderingMode(.hierarchical)
+
+                Text(category.title)
+                    .font(.subheadline.weight(.semibold))
+
+                Text("\(count)")
+                    .font(.caption.weight(.bold))
+                    .monospacedDigit()
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(isSelected ? Color.white.opacity(0.22) : Color.primary.opacity(0.08))
+                    .clipShape(Capsule())
+            }
+            .foregroundStyle(isSelected ? .white : .primary)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 11)
+            .background {
+                Capsule(style: .continuous)
+                    .fill(isSelected ? Color.accentColor : Color(uiColor: .quaternarySystemFill))
+            }
+            .contentShape(Capsule(style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .sensoryFeedback(.selection, trigger: isSelected)
+        .accessibilityLabel("\(category.title), \(countLabel(count))")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func countLabel(_ count: Int) -> String {
+        switch count {
+        case 0: return "Žádné aktivní"
+        case 1: return "1 aktivní"
+        case 2...4: return "\(count) aktivní"
+        default: return "\(count) aktivních"
         }
     }
 
-    private func compactSummaryMetric(title: String, value: Int, icon: String, tint: Color) -> some View {
-        HStack(spacing: 8) {
+    @ViewBuilder
+    private func reportRowButton(_ report: UserReport) -> some View {
+        Button {
+            selectedReport = report
+        } label: {
+            managerReportRow(report)
+        }
+        .buttonStyle(.plain)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button {
+                deleteRequest = DeleteReportRequest(
+                    id: report.id,
+                    title: report.managerListTitle
+                )
+            } label: {
+                Label("Smazat", systemImage: "trash")
+            }
+            .tint(.red)
+        }
+        .listRowInsets(EdgeInsets(top: 2, leading: 0, bottom: 2, trailing: 0))
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+    }
+
+    private func reportsSectionHeader(
+        title: String,
+        subtitle: String,
+        count: Int,
+        tint: Color,
+        icon: String
+    ) -> some View {
+        HStack(alignment: .center, spacing: 10) {
             Image(systemName: icon)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(tint)
-                .frame(width: 18, height: 18)
-                .padding(6)
-                .background(tint.opacity(0.16))
+                .frame(width: 24, height: 24)
+                .background(tint.opacity(0.14))
                 .clipShape(Circle())
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
+                    .textCase(nil)
+                    .font(.subheadline.weight(.semibold))
+                Text(subtitle)
+                    .textCase(nil)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                Text("\(value)")
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(.primary)
             }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
 
-    private var activeReportsHeader: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.bubble.fill")
-                .font(.subheadline)
-                .foregroundStyle(.orange)
-            Text("Aktivní reporty")
-                .textCase(nil)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
             Spacer(minLength: 0)
-            Text("\(visibleReports.count)")
+
+            Text("\(count)")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 8)
@@ -394,16 +496,25 @@ struct ManagerProblemsView: View {
                 .background(Color(uiColor: .tertiarySystemBackground))
                 .clipShape(Capsule())
         }
-        .padding(.leading, 6)
+        .padding(.leading, 4)
+    }
+
+    private func categoryTint(_ category: ManagerReportsFilter) -> Color {
+        switch category {
+        case .regular: return .orange
+        case .incompleteOrders: return .red
+        case .deferredSales: return .purple
+        case .termSelection: return .blue
+        }
     }
 
     private func managerReportRow(_ report: UserReport) -> some View {
         let direction = reportDirectionLabel(for: report)
         let status = normalizedStatus(for: report)
-        let orderNumber = report.order_number ?? "Objednávka bez čísla"
+        let title = report.managerListTitle
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: report.created_by_manager == true ? "person.2.badge.gearshape.fill" : "person.crop.circle.badge.exclamationmark")
+                Image(systemName: rowIcon(for: report))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(leadingBorderColor(for: report))
                     .frame(width: 32, height: 32)
@@ -411,14 +522,20 @@ struct ManagerProblemsView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(orderNumber)
+                    Text(title)
                         .font(.headline)
                         .foregroundStyle(.primary)
-                        .lineLimit(1)
+                        .lineLimit(2)
                     if let direction, !direction.isEmpty {
                         Text(direction)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    } else if let badge = report.managerIssueTypeBadge,
+                              !report.is_deferred_sale_issue {
+                        Text(badge)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(leadingBorderColor(for: report))
                             .lineLimit(1)
                     }
                 }
@@ -488,22 +605,23 @@ struct ManagerProblemsView: View {
             }
         }()
 
-        let icon: String = {
+        let label: String = {
             switch status {
-            case .created: return "circle.fill"
-            case .open: return "clock.fill"
-            case .completed: return "checkmark.circle.fill"
-            case .unknown: return "questionmark.circle.fill"
+            case .created: return "Nové"
+            case .open: return "Probíhá"
+            case .completed: return "Hotovo"
+            case .unknown: return "Neznámé"
             }
         }()
 
-        return Image(systemName: icon)
-            .font(.caption.weight(.semibold))
+        return Text(label)
+            .font(.caption2.weight(.semibold))
             .foregroundStyle(color)
-            .padding(6)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
             .background(color.opacity(0.14))
-            .clipShape(Circle())
-            .accessibilityLabel("Stav reportu")
+            .clipShape(Capsule())
+            .accessibilityLabel("Stav: \(label)")
     }
 
     private func reportDirectionLabel(for report: UserReport) -> String? {
@@ -517,7 +635,32 @@ struct ManagerProblemsView: View {
         return nil
     }
 
+    private func rowIcon(for report: UserReport) -> String {
+        if report.is_deferred_sale_issue {
+            return "clock.arrow.circlepath"
+        }
+        if report.is_incomplete_order_issue {
+            return "cart.badge.minus"
+        }
+        if report.is_term_selection_issue {
+            return "calendar.badge.exclamationmark"
+        }
+        if report.created_by_manager == true {
+            return "person.2.badge.gearshape.fill"
+        }
+        return "person.crop.circle.badge.exclamationmark"
+    }
+
     private func leadingBorderColor(for report: UserReport) -> Color {
+        if report.is_deferred_sale_issue {
+            return .purple
+        }
+        if report.is_incomplete_order_issue {
+            return .red
+        }
+        if report.is_term_selection_issue {
+            return .blue
+        }
         if report.created_by_manager == true {
             return .blue
         }
@@ -574,4 +717,122 @@ struct ManagerProblemsView: View {
         return nil
     }
 
+}
+
+private struct ManagerProblemsNavigationModifier: ViewModifier {
+    @Binding var selectedReport: UserReport?
+    @Binding var isLocationsSheetPresented: Bool
+    let authState: AuthState
+
+    func body(content: Content) -> some View {
+        content
+            .navigationDestination(item: $selectedReport) { report in
+                ManagerProblemDetailView(
+                    report: report,
+                    selectedReport: $selectedReport
+                )
+                .environmentObject(authState)
+            }
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    ProvikartBrandLogoView(style: .large)
+                }
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button {
+                        isLocationsSheetPresented = true
+                    } label: {
+                        Image(systemName: "mappin.and.ellipse")
+                    }
+                    .accessibilityLabel("Lokality týmu")
+                    ProfileBarButton()
+                }
+            }
+            .toolbarBackground(.visible, for: .navigationBar)
+            .sheet(isPresented: $isLocationsSheetPresented) {
+                ManagerLocationsSheetView()
+                    .environmentObject(authState)
+            }
+    }
+}
+
+private struct ManagerProblemsLifecycleModifier: ViewModifier {
+    @ObservedObject var viewModel: ManagerProblemsViewModel
+    @ObservedObject var authState: AuthState
+    let refreshToken: UUID
+
+    func body(content: Content) -> some View {
+        content
+            .refreshable {
+                await viewModel.loadReports(categories: viewModel.selectedCategories)
+            }
+            .background(Color(uiColor: .systemGroupedBackground))
+            .onAppear {
+                viewModel.getToken = { [authState] in authState.authToken }
+                if authState.isLoggedIn {
+                    viewModel.startPolling()
+                }
+            }
+            .onChange(of: refreshToken) { _, _ in
+                Task { await viewModel.loadReports(categories: viewModel.selectedCategories) }
+            }
+            .onChange(of: authState.isLoggedIn) { _, isLoggedIn in
+                if isLoggedIn {
+                    viewModel.startPolling()
+                } else {
+                    viewModel.stopPolling()
+                    viewModel.reports = []
+                }
+            }
+            .onDisappear {
+                viewModel.stopPolling()
+            }
+    }
+}
+
+private struct DeleteReportConfirmationModifier: ViewModifier {
+    @Binding var deleteRequest: DeleteReportRequest?
+    @ObservedObject var viewModel: ManagerProblemsViewModel
+
+    func body(content: Content) -> some View {
+        content
+            .alert(
+                "Smazat report?",
+                isPresented: Binding(
+                    get: { deleteRequest != nil },
+                    set: { isPresented in
+                        if !isPresented {
+                            deleteRequest = nil
+                        }
+                    }
+                )
+            ) {
+                Button("Smazat", role: .destructive) {
+                    if let request = deleteRequest {
+                        Task { await viewModel.deleteReport(id: request.id) }
+                    }
+                    deleteRequest = nil
+                }
+                Button("Zrušit", role: .cancel) {
+                    deleteRequest = nil
+                }
+            } message: {
+                Text(alertMessage)
+            }
+            .onChange(of: deleteRequest) { oldValue, newValue in
+                if newValue != nil {
+                    viewModel.pauseRefresh()
+                } else if oldValue != nil {
+                    viewModel.resumeRefresh()
+                }
+            }
+    }
+
+    private var alertMessage: String {
+        guard let request = deleteRequest else {
+            return "Report bude trvale odstraněn. Tuto akci nelze vrátit."
+        }
+        return "Report „\(request.title)“ bude trvale odstraněn. Tuto akci nelze vrátit."
+    }
 }

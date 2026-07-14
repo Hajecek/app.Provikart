@@ -130,6 +130,34 @@ struct ProfileBarButton: View {
     }
 }
 
+/// Logo Provikart pro navigaci – velké (jako large title) nebo kompaktní (při scrollu).
+struct ProvikartBrandLogoView: View {
+    enum Style {
+        case compact
+        case large
+
+        var size: CGFloat {
+            switch self {
+            case .compact: 26
+            case .large: 34
+            }
+        }
+
+        var cornerRadius: CGFloat { size * 0.22 }
+    }
+
+    var style: Style = .large
+
+    var body: some View {
+        Image("logo")
+            .resizable()
+            .scaledToFill()
+            .frame(width: style.size, height: style.size)
+            .clipShape(RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous))
+            .accessibilityLabel("Provikart")
+    }
+}
+
 /// Vlastní hlavička: velký nadpis vlevo, ikona profilu vpravo (např. pro fullscreen flow bez NavigationStack).
 struct PageHeaderBar: View {
     @EnvironmentObject private var authState: AuthState

@@ -31,7 +31,14 @@ struct ManagerProblemDetailView: View {
             }
 
             Section("Základní údaje") {
-                detailRow("Obj. číslo", currentReport.order_number ?? "—")
+                if currentReport.is_deferred_sale_issue {
+                    detailRow("Typ", currentReport.issue_type_label ?? "Odložený prodej")
+                } else if let issueLabel = currentReport.issue_type_label, !issueLabel.isEmpty {
+                    detailRow("Typ", issueLabel)
+                }
+                if !currentReport.is_deferred_sale_issue {
+                    detailRow("Obj. číslo", currentReport.order_number ?? "—")
+                }
                 detailRow("Stav", currentReport.statusDisplayCzech)
                 detailRow("Dokončeno", currentReport.isCompleted ? "Ano" : "Ne")
                 if let created = currentReport.created_at, !created.isEmpty {
@@ -61,7 +68,7 @@ struct ManagerProblemDetailView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .navigationTitle(currentReport.order_number.map { "Obj. \($0)" } ?? "Report #\(currentReport.id)")
+        .navigationTitle(currentReport.managerDetailTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -101,8 +108,11 @@ struct ManagerProblemDetailView: View {
     private func refreshReport() async {
         guard let token = authState.authToken, !token.isEmpty else { return }
         do {
-            let reports = try await managerReportsService.fetchManagerReports(token: token)
-            guard let updated = reports.first(where: { $0.id == report.id }) else { return }
+            let result = try await managerReportsService.fetchManagerReports(
+                token: token,
+                filter: currentReport.managerReportsFilter
+            )
+            guard let updated = result.reports.first(where: { $0.id == report.id }) else { return }
             refreshedReport = updated
             selectedReport = updated
         } catch {
