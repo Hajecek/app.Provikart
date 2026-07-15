@@ -10,13 +10,14 @@ import SwiftUI
 enum ManagerTabs: Hashable {
     case problems
     case attendance
-    case add
+    case team
     case settings
 }
 
 struct ManagerTabMenuView: View {
     @EnvironmentObject private var authState: AuthState
     @EnvironmentObject private var appLoginApprovalState: AppLoginApprovalState
+    @StateObject private var reportIssueSheet = ManagerReportIssueSheetState()
     @State private var selectedTab: ManagerTabs = .problems
     @State private var problemsRefreshToken = UUID()
 
@@ -25,23 +26,19 @@ struct ManagerTabMenuView: View {
             Tab("Problémy", systemImage: "exclamationmark.bubble", value: .problems) {
                 ManagerProblemsView(refreshToken: problemsRefreshToken)
                     .environmentObject(authState)
+                    .environmentObject(reportIssueSheet)
             }
 
             Tab("Docházka", systemImage: "person.badge.clock", value: .attendance) {
                 ManagerAttendanceView()
                     .environmentObject(authState)
+                    .environmentObject(reportIssueSheet)
             }
 
-            Tab("Přidat", systemImage: "plus", value: .add) {
-                ManagerReportIssueView(
-                    isPresented: .constant(true),
-                    authState: authState,
-                    isModalPresentation: false,
-                    onClose: {
-                        selectedTab = .problems
-                        problemsRefreshToken = UUID()
-                    }
-                )
+            Tab("Tým", systemImage: "person.3", value: .team) {
+                ManagerTeamProfilesView()
+                    .environmentObject(authState)
+                    .environmentObject(reportIssueSheet)
             }
 
             Tab("Nastavení", systemImage: "gearshape", value: .settings) {
@@ -51,6 +48,18 @@ struct ManagerTabMenuView: View {
                 }
             }
 
+        }
+        .sheet(isPresented: $reportIssueSheet.isPresented) {
+            ManagerReportIssueView(
+                isPresented: $reportIssueSheet.isPresented,
+                authState: authState,
+                isModalPresentation: true,
+                onClose: {
+                    reportIssueSheet.isPresented = false
+                    problemsRefreshToken = UUID()
+                }
+            )
+            .environmentObject(authState)
         }
         .modifier(LoginApprovalBottomAccessoryModifier(approvalState: appLoginApprovalState))
     }

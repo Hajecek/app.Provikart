@@ -740,6 +740,7 @@ private struct ManagerProblemsNavigationModifier: ViewModifier {
                     ProvikartBrandLogoView(style: .large)
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
+                    ManagerAddReportToolbarButton()
                     Button {
                         isLocationsSheetPresented = true
                     } label: {

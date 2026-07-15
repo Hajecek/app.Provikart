@@ -357,6 +357,7 @@ struct ManagerAttendanceView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
+                    ManagerAddReportToolbarButton()
                     Button {
                         isLocationsSheetPresented = true
                     } label: {
