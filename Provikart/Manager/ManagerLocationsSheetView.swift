@@ -189,12 +189,19 @@ final class ManagerLocationsViewModel: ObservableObject {
             }
             isLoading = false
         } catch {
-            members = []
-            locationsByUser = [:]
-            attendanceByUser = [:]
             isLoading = false
-            errorMessage = error.localizedDescription
+            guard !Self.isCancellation(error) else { return }
+            // Při chybě nemažeme stávající data (např. cancel z pull-to-refresh).
+            if members.isEmpty {
+                errorMessage = error.localizedDescription
+            }
         }
+    }
+
+    private static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        if let url = error as? URLError, url.code == .cancelled { return true }
+        return false
     }
 
     fileprivate func filteredMembers(search: String, filter: ManagerLocationFilter) -> [ManagerTeamMember] {

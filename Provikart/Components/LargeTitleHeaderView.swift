@@ -142,8 +142,6 @@ struct ProvikartBrandLogoView: View {
             case .large: 34
             }
         }
-
-        var cornerRadius: CGFloat { size * 0.22 }
     }
 
     var style: Style = .large
@@ -153,7 +151,7 @@ struct ProvikartBrandLogoView: View {
             .resizable()
             .scaledToFill()
             .frame(width: style.size, height: style.size)
-            .clipShape(RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous))
+            .clipShape(Circle())
             .accessibilityLabel("Provikart")
     }
 }
