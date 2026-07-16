@@ -96,8 +96,17 @@ struct HomeView: View {
             }
             .homeListSectionSpacing()
             .listStyle(.insetGrouped)
-            .scrollContentBackground(.visible)
-            .background(Color(uiColor: .systemGroupedBackground))
+            .scrollContentBackground(.hidden)
+            .background {
+                ZStack(alignment: .top) {
+                    Color(uiColor: .systemGroupedBackground)
+
+                    // Barvy loga v oblouku odshora dolů do ztracena
+                    HomeTopArchGlow()
+                        .ignoresSafeArea(edges: .top)
+                        .allowsHitTesting(false)
+                }
+            }
             .navigationTitle("Domů")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
@@ -735,6 +744,80 @@ struct HomeView: View {
                 dealwarsXP = nil
             }
         }
+    }
+}
+
+/// Měkký oblouk v barvách loga (oranžová + zlatá + jemná fialová).
+private struct HomeTopArchGlow: View {
+    private let logoOrange = Color(red: 0.97, green: 0.58, blue: 0.12)
+    private let logoGold = Color(red: 0.98, green: 0.69, blue: 0.23)
+    private let logoPurple = Color(red: 0.30, green: 0.05, blue: 0.22)
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            let height: CGFloat = 380
+
+            ZStack(alignment: .top) {
+                LinearGradient(
+                    stops: [
+                        .init(color: logoOrange.opacity(0.30), location: 0),
+                        .init(color: logoGold.opacity(0.18), location: 0.32),
+                        .init(color: logoGold.opacity(0.08), location: 0.58),
+                        .init(color: logoGold.opacity(0.02), location: 0.8),
+                        .init(color: .clear, location: 1)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+
+                LinearGradient(
+                    colors: [
+                        logoPurple.opacity(0.12),
+                        logoPurple.opacity(0.04),
+                        .clear
+                    ],
+                    startPoint: .topTrailing,
+                    endPoint: .bottomLeading
+                )
+            }
+            .frame(width: width, height: height)
+            .mask {
+                // Oblouk + měkký alpha fade, ať okraj není ostrý
+                HomeTopArchShape()
+                    .fill(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .white, location: 0),
+                                .init(color: .white, location: 0.45),
+                                .init(color: .white.opacity(0.55), location: 0.72),
+                                .init(color: .white.opacity(0.15), location: 0.9),
+                                .init(color: .clear, location: 1)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+            }
+            .frame(width: width, height: height, alignment: .top)
+        }
+        .frame(height: 380)
+    }
+}
+
+/// Spodní hrana do oblouku (výraznější uprostřed, měkčí po stranách).
+private struct HomeTopArchShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: 0, y: 0))
+        path.addLine(to: CGPoint(x: rect.maxX, y: 0))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY * 0.58))
+        path.addQuadCurve(
+            to: CGPoint(x: 0, y: rect.maxY * 0.58),
+            control: CGPoint(x: rect.midX, y: rect.maxY)
+        )
+        path.closeSubpath()
+        return path
     }
 }
 
