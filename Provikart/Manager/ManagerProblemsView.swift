@@ -385,7 +385,19 @@ struct ManagerProblemsView: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        .background(Color(uiColor: .systemGroupedBackground))
+        .background {
+            managerHomeBackground
+        }
+    }
+
+    private var managerHomeBackground: some View {
+        ZStack(alignment: .top) {
+            Color(uiColor: .systemGroupedBackground)
+                .ignoresSafeArea()
+            ManagerTopArchGlow()
+                .ignoresSafeArea(edges: .top)
+                .allowsHitTesting(false)
+        }
     }
 
     @ViewBuilder
@@ -860,7 +872,7 @@ private struct ManagerProblemsNavigationModifier: ViewModifier {
                     ProfileBarButton()
                 }
             }
-            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .sheet(isPresented: $isLocationsSheetPresented) {
                 ManagerLocationsSheetView()
                     .environmentObject(authState)
@@ -878,7 +890,15 @@ private struct ManagerProblemsLifecycleModifier: ViewModifier {
             .refreshable {
                 await viewModel.loadReports(categories: Set(ManagerReportsFilter.allCases))
             }
-            .background(Color(uiColor: .systemGroupedBackground))
+            .background {
+                ZStack(alignment: .top) {
+                    Color(uiColor: .systemGroupedBackground)
+                        .ignoresSafeArea()
+                    ManagerTopArchGlow()
+                        .ignoresSafeArea(edges: .top)
+                        .allowsHitTesting(false)
+                }
+            }
             .onAppear {
                 viewModel.getToken = { [authState] in authState.authToken }
                 if authState.isLoggedIn {
@@ -945,5 +965,65 @@ private struct DeleteReportConfirmationModifier: ViewModifier {
             return "Report bude trvale odstraněn. Tuto akci nelze vrátit."
         }
         return "Report „\(request.title)“ bude trvale odstraněn. Tuto akci nelze vrátit."
+    }
+}
+
+/// Měkké pozadí v barvách loga – oblouk odshora dolů do ztracena (bez tmavého pruhu).
+private struct ManagerTopArchGlow: View {
+    private let logoOrange = Color(red: 0.97, green: 0.58, blue: 0.12)
+    private let logoGold = Color(red: 0.98, green: 0.69, blue: 0.23)
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            let height: CGFloat = 340
+
+            LinearGradient(
+                stops: [
+                    .init(color: logoOrange.opacity(0.26), location: 0),
+                    .init(color: logoGold.opacity(0.14), location: 0.25),
+                    .init(color: logoGold.opacity(0.06), location: 0.52),
+                    .init(color: logoGold.opacity(0.02), location: 0.75),
+                    .init(color: .clear, location: 1)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(width: width, height: height)
+            .mask {
+                ManagerTopArchShape()
+                    .fill(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .white, location: 0),
+                                .init(color: .white, location: 0.35),
+                                .init(color: .white.opacity(0.6), location: 0.62),
+                                .init(color: .white.opacity(0.18), location: 0.85),
+                                .init(color: .clear, location: 1)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+            }
+            .frame(width: width, height: height, alignment: .top)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .allowsHitTesting(false)
+    }
+}
+
+private struct ManagerTopArchShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: 0, y: 0))
+        path.addLine(to: CGPoint(x: rect.maxX, y: 0))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY * 0.48))
+        path.addQuadCurve(
+            to: CGPoint(x: 0, y: rect.maxY * 0.48),
+            control: CGPoint(x: rect.midX, y: rect.maxY)
+        )
+        path.closeSubpath()
+        return path
     }
 }

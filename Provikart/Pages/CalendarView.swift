@@ -2,7 +2,7 @@
 //  CalendarView.swift
 //  Provikart
 //
-//  Kalendář instalací – nativní iOS vzhled.
+//  Kalendář instalací – přehledný design ve stylu Domů / docházky.
 //
 
 import SwiftUI
@@ -48,6 +48,8 @@ struct CalendarView: View {
     private let service = OrderItemsByInstallationDateService()
     private let calendar = Calendar.current
 
+    private let logoOrange = Color(red: 0.97, green: 0.58, blue: 0.12)
+
     private var daysWithItems: Set<Date> {
         Set(items.compactMap { parseInstallationDate($0.installation_date) }.map { calendar.startOfDay(for: $0) })
     }
@@ -61,61 +63,58 @@ struct CalendarView: View {
         .sorted { sortDate(for: $0) < sortDate(for: $1) }
     }
 
-    private func formatSectionDate(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.dateStyle = .long
-        f.timeStyle = .none
-        f.locale = Locale(identifier: "cs_CZ")
-        return f.string(from: date)
-    }
-
-    /// Nadpis sekce ve stylu iOS Kalendáře: "Dnes", "Zítra" nebo "v sobotu 7. 3."
     private func relativeSectionHeader(for date: Date) -> String {
-        let cal = Calendar.current
-        if cal.isDateInToday(date) {
-            return "Dnes"
-        }
-        if cal.isDateInTomorrow(date) {
-            return "Zítra"
-        }
+        if calendar.isDateInToday(date) { return "Dnes" }
+        if calendar.isDateInTomorrow(date) { return "Zítra" }
         let dayMonth = DateFormatter()
         dayMonth.locale = Locale(identifier: "cs_CZ")
         dayMonth.dateFormat = "d. M."
         let weekday = DateFormatter()
         weekday.locale = Locale(identifier: "cs_CZ")
         weekday.dateFormat = "EEEE"
-        let weekdayLower = weekday.string(from: date).lowercased()
-        return "\(weekdayLower) \(dayMonth.string(from: date))"
+        let weekdayText = weekday.string(from: date)
+        let capitalized = weekdayText.prefix(1).uppercased() + weekdayText.dropFirst()
+        return "\(capitalized) \(dayMonth.string(from: date))"
     }
 
-    private func dateHeaderColor(for date: Date) -> Color {
-        if calendar.isDateInToday(date) { return Color.accentColor }
-        return Color.primary
+    private var selectedDayItems: [OrderItemByInstallationDate] {
+        guard let date = selectedDate else { return [] }
+        return items(for: date)
+    }
+
+    private var monthTitle: String {
+        Self.monthTitleFormatter.string(from: selectedDate ?? Date()).capitalized
     }
 
     var body: some View {
         NavigationStack {
             Group {
                 if isLoading && items.isEmpty {
-                    ProgressView("Načítám…")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let msg = errorMessage {
+                    loadingView
+                } else if let msg = errorMessage, items.isEmpty {
                     errorView(msg)
                 } else if items.isEmpty {
                     emptyView
                 } else {
-                    mainList
+                    mainContent
                 }
             }
-            .background(Color(uiColor: .systemGroupedBackground))
-            .navigationTitle(Self.monthTitleFormatter.string(from: selectedDate ?? Date()).capitalized)
-            .navigationBarTitleDisplayMode(.large)
+            .background {
+                ZStack(alignment: .top) {
+                    Color(uiColor: .systemGroupedBackground)
+                    CalendarTopArchGlow()
+                        .ignoresSafeArea(edges: .top)
+                        .allowsHitTesting(false)
+                }
+            }
+            .navigationTitle("Kalendář")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarLeading) {
                     if !items.isEmpty {
                         Button("Dnes") {
                             let today = calendar.startOfDay(for: Date())
-                            withAnimation(.easeInOut(duration: 0.22)) { selectedDate = today }
+                            withAnimation(.snappy(duration: 0.22)) { selectedDate = today }
                         }
                     }
                     Button {
@@ -135,6 +134,14 @@ struct CalendarView: View {
                 }
             }
             .toolbarBackground(.visible, for: .navigationBar)
+            .overlay(alignment: .top) {
+                if isLoading && !items.isEmpty {
+                    ProgressView()
+                        .padding(10)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .padding(.top, 8)
+                }
+            }
         }
         .sheet(isPresented: $showAttendance) {
             UserAttendanceView()
@@ -147,13 +154,25 @@ struct CalendarView: View {
         .refreshable { await loadItems() }
     }
 
+    private var loadingView: some View {
+        VStack(spacing: 16) {
+            ProgressView()
+                .controlSize(.large)
+            Text("Načítám kalendář…")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     private func errorView(_ msg: String) -> some View {
         ContentUnavailableView {
-            Label("Chyba", systemImage: "exclamationmark.triangle")
+            Label("Nepodařilo se načíst kalendář", systemImage: "exclamationmark.triangle")
         } description: {
             Text(msg)
         } actions: {
             Button("Zkusit znovu") { Task { await loadItems() } }
+                .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -171,7 +190,206 @@ struct CalendarView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - Hlavní obsah (přehledný iOS design)
+    private var mainContent: some View {
+        ScrollView {
+            VStack(spacing: 20) {
+                monthCard
+                daySummaryCard
+                installationsSection
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 28)
+        }
+    }
+
+    private var monthCard: some View {
+        let base = selectedDate ?? Date()
+        let firstOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: base)) ?? base
+
+        return VStack(spacing: 14) {
+            HStack(spacing: 12) {
+                monthStepButton(systemName: "chevron.left") {
+                    if let prev = calendar.date(byAdding: .month, value: -1, to: firstOfMonth) {
+                        withAnimation(.snappy(duration: 0.22)) { selectedDate = prev }
+                    }
+                }
+
+                VStack(spacing: 2) {
+                    Text(monthTitle)
+                        .font(.subheadline.weight(.semibold))
+                        .contentTransition(.numericText())
+                    Text("\(daysWithItemsInSelectedMonth) dní s instalací")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+
+                monthStepButton(systemName: "chevron.right") {
+                    if let next = calendar.date(byAdding: .month, value: 1, to: firstOfMonth) {
+                        withAnimation(.snappy(duration: 0.22)) { selectedDate = next }
+                    }
+                }
+            }
+
+            MonthGridView(
+                monthDate: firstOfMonth,
+                selectedDate: $selectedDate,
+                calendar: calendar,
+                daysWithItems: daysWithItems,
+                accent: logoOrange
+            )
+        }
+        .padding(16)
+        .background(cardBackground(tint: logoOrange))
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 40)
+                .onEnded { value in
+                    let threshold: CGFloat = 50
+                    if value.translation.width < -threshold,
+                       let next = calendar.date(byAdding: .month, value: 1, to: firstOfMonth) {
+                        withAnimation(.snappy(duration: 0.25)) { selectedDate = next }
+                    } else if value.translation.width > threshold,
+                              let prev = calendar.date(byAdding: .month, value: -1, to: firstOfMonth) {
+                        withAnimation(.snappy(duration: 0.25)) { selectedDate = prev }
+                    }
+                }
+        )
+    }
+
+    private var daysWithItemsInSelectedMonth: Int {
+        let base = selectedDate ?? Date()
+        return daysWithItems.filter { calendar.isDate($0, equalTo: base, toGranularity: .month) }.count
+    }
+
+    private var daySummaryCard: some View {
+        let date = selectedDate ?? Date()
+        let count = selectedDayItems.count
+        let isToday = calendar.isDateInToday(date)
+
+        return HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(logoOrange.opacity(0.14))
+                    .frame(width: 52, height: 52)
+                Image(systemName: count > 0 ? "calendar.badge.checkmark" : "calendar")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(logoOrange)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(relativeSectionHeader(for: date))
+                    .font(.headline.weight(.bold))
+                Text(
+                    count == 0
+                        ? "Žádné instalace na tento den"
+                        : "\(count) \(installationsWord(count))"
+                )
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 0)
+
+            if isToday {
+                Text("Dnes")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(Color.accentColor)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.accentColor.opacity(0.12), in: Capsule())
+            }
+        }
+        .padding(16)
+        .background(cardBackground(tint: .blue))
+    }
+
+    private var installationsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Instalace")
+                    .font(.title3.weight(.bold))
+                Spacer()
+                Text("\(selectedDayItems.count)")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color.primary.opacity(0.06), in: Capsule())
+            }
+            .padding(.horizontal, 4)
+
+            if selectedDayItems.isEmpty {
+                VStack(spacing: 10) {
+                    Image(systemName: "calendar.badge.clock")
+                        .font(.title2)
+                        .foregroundStyle(.tertiary)
+                    Text("Vyberte jiný den nebo přidejte položku")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 28)
+                .background(cardBackground(tint: .secondary))
+            } else {
+                LazyVStack(spacing: 10) {
+                    ForEach(selectedDayItems) { item in
+                        Button {
+                            selectedItem = item
+                        } label: {
+                            InstallationCard(item: item, accent: logoOrange)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    private func monthStepButton(systemName: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 40, height: 40)
+                .background(Color.accentColor.opacity(0.12), in: Circle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func cardBackground(tint: Color) -> some View {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .fill(Color(uiColor: .secondarySystemGroupedBackground))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                tint.opacity(0.14),
+                                tint.opacity(0.05),
+                                .clear
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.04), radius: 8, x: 0, y: 3)
+    }
+
+    private func installationsWord(_ count: Int) -> String {
+        switch count {
+        case 1: return "instalace"
+        case 2...4: return "instalace"
+        default: return "instalací"
+        }
+    }
 
     private static let monthTitleFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -180,131 +398,23 @@ struct CalendarView: View {
         return f
     }()
 
-    private var mainList: some View {
-        List {
-            Section {
-                monthGridSection
-            }
-            .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16))
-            .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
-            .listRowSeparator(.hidden)
-
-            if let date = selectedDate {
-                Section {
-                    let dayItems = items(for: date)
-                    if dayItems.isEmpty {
-                        VStack(spacing: 8) {
-                            Image(systemName: "calendar.badge.clock")
-                                .font(.title2)
-                                .foregroundStyle(.tertiary)
-                            Text("Žádné instalace na tento den")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 20)
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                    } else {
-                        ForEach(dayItems) { item in
-                            Button {
-                                selectedItem = item
-                            } label: {
-                                HStack(alignment: .center, spacing: 12) {
-                                    InstallationListRow(item: item)
-                                    Spacer(minLength: 8)
-                                    Image(systemName: "chevron.right")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(Color(uiColor: .tertiaryLabel))
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                } header: {
-                    Text(relativeSectionHeader(for: date))
-                        .textCase(nil)
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(dateHeaderColor(for: date))
-                } footer: {
-                    if !items(for: date).isEmpty {
-                        Text("Klepněte na položku pro detail")
-                            .textCase(nil)
-                    }
-                }
-            }
-        }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.visible)
-    }
-
-    // MARK: - Měsíční mřížka
-
-    private var monthGridSection: some View {
-        let base = selectedDate ?? Date()
-        let firstOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: base)) ?? base
-        return VStack(spacing: 12) {
-            HStack {
-                Button {
-                    if let prev = calendar.date(byAdding: .month, value: -1, to: firstOfMonth) {
-                        withAnimation(.easeInOut(duration: 0.2)) { selectedDate = prev }
-                    }
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(Color.accentColor)
-                        .frame(width: 44, height: 44)
-                }
-                Spacer()
-                Button {
-                    if let next = calendar.date(byAdding: .month, value: 1, to: firstOfMonth) {
-                        withAnimation(.easeInOut(duration: 0.2)) { selectedDate = next }
-                    }
-                } label: {
-                    Image(systemName: "chevron.right")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(Color.accentColor)
-                        .frame(width: 44, height: 44)
-                }
-            }
-            MonthGridView(
-                monthDate: firstOfMonth,
-                selectedDate: $selectedDate,
-                calendar: calendar,
-                daysWithItems: daysWithItems
-            )
-        }
-        .contentShape(Rectangle())
-        .gesture(
-            DragGesture(minimumDistance: 40)
-                .onEnded { value in
-                    let threshold: CGFloat = 50
-                    if value.translation.width < -threshold, let next = calendar.date(byAdding: .month, value: 1, to: firstOfMonth) {
-                        withAnimation(.easeInOut(duration: 0.25)) { selectedDate = next }
-                    } else if value.translation.width > threshold, let prev = calendar.date(byAdding: .month, value: -1, to: firstOfMonth) {
-                        withAnimation(.easeInOut(duration: 0.25)) { selectedDate = prev }
-                    }
-                }
-        )
-    }
-
     private func loadItems() async {
         guard authState.authToken != nil else {
             await MainActor.run { errorMessage = "Pro zobrazení kalendáře se přihlaste." }
             return
         }
-        await MainActor.run { isLoading = true; errorMessage = nil }
+        await MainActor.run {
+            isLoading = true
+            if items.isEmpty { errorMessage = nil }
+        }
         do {
             let fetched = try await service.fetchOrderItems(token: authState.authToken, installationDate: nil)
             await MainActor.run {
                 items = fetched
                 isLoading = false
+                errorMessage = nil
                 WidgetDataStore.saveInstallations(items: fetched)
             }
-            // Nastavení selectedDate v dalším run loopu, aby nedocházelo k rekurzi v layoutu
-            // (List + LazyVGrid při současné změně items a selectedDate na macOS).
             let today = calendar.startOfDay(for: Date())
             await MainActor.run {
                 if selectedDate == nil {
@@ -312,23 +422,89 @@ struct CalendarView: View {
                 }
             }
         } catch {
+            if error is CancellationError { return }
+            if let url = error as? URLError, url.code == .cancelled { return }
             await MainActor.run {
-                items = []
                 isLoading = false
-                errorMessage = error.localizedDescription
+                if items.isEmpty {
+                    errorMessage = error.localizedDescription
+                }
             }
         }
     }
 }
 
-// MARK: - Mřížka celého měsíce
+// MARK: - Arch glow
+
+private struct CalendarTopArchGlow: View {
+    private let logoOrange = Color(red: 0.97, green: 0.58, blue: 0.12)
+    private let logoGold = Color(red: 0.98, green: 0.69, blue: 0.23)
+    private let logoPurple = Color(red: 0.30, green: 0.05, blue: 0.22)
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            let height: CGFloat = 320
+
+            ZStack(alignment: .top) {
+                LinearGradient(
+                    stops: [
+                        .init(color: logoOrange.opacity(0.22), location: 0),
+                        .init(color: logoGold.opacity(0.12), location: 0.4),
+                        .init(color: .clear, location: 1)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                LinearGradient(
+                    colors: [logoPurple.opacity(0.08), .clear],
+                    startPoint: .topTrailing,
+                    endPoint: .bottomLeading
+                )
+            }
+            .frame(width: width, height: height)
+            .mask {
+                CalendarTopArchShape()
+                    .fill(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .white, location: 0),
+                                .init(color: .white.opacity(0.55), location: 0.7),
+                                .init(color: .clear, location: 1)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+            }
+        }
+        .frame(height: 320)
+    }
+}
+
+private struct CalendarTopArchShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: 0, y: 0))
+        path.addLine(to: CGPoint(x: rect.maxX, y: 0))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY * 0.58))
+        path.addQuadCurve(
+            to: CGPoint(x: 0, y: rect.maxY * 0.58),
+            control: CGPoint(x: rect.midX, y: rect.maxY)
+        )
+        path.closeSubpath()
+        return path
+    }
+}
+
+// MARK: - Mřížka měsíce
 
 private struct MonthGridView: View {
     let monthDate: Date
     @Binding var selectedDate: Date?
     let calendar: Calendar
-    /// Dny, které mají alespoň jednu instalaci (pro tečku v buňce). Set místo closure kvůli stabilnímu layoutu.
     let daysWithItems: Set<Date>
+    var accent: Color = .accentColor
 
     private static var czechCalendar: Calendar {
         var c = Calendar(identifier: .gregorian)
@@ -344,19 +520,16 @@ private struct MonthGridView: View {
         calendar.range(of: .day, in: .month, for: monthStart)?.count ?? 31
     }
 
-    /// První den v týdnu: 1 = neděle (Apple), pro zobrazení Po první je offset (weekday - 2 + 7) % 7
     private var firstWeekdayOffset: Int {
         let w = calendar.component(.weekday, from: monthStart)
         return (w - 2 + 7) % 7
     }
 
-    /// Po, Út, St, Čt, Pá, So, Ne (česky, pondělí první)
     private var weekdaySymbols: [String] {
         let syms = Self.czechCalendar.shortWeekdaySymbols
         return [1, 2, 3, 4, 5, 6, 0].map { syms[$0] }
     }
 
-    /// Buňky pro mřížku: nil = prázdné, 1...31 = den v měsíci
     private var gridDays: [Int?] {
         var out: [Int?] = Array(repeating: nil, count: firstWeekdayOffset)
         for d in 1...numberOfDays { out.append(d) }
@@ -365,18 +538,16 @@ private struct MonthGridView: View {
     }
 
     var body: some View {
-        VStack(spacing: 8) {
-            // Řádek s názvy dnů (Po–Ne)
+        VStack(spacing: 10) {
             HStack(spacing: 4) {
                 ForEach(Array(weekdaySymbols.enumerated()), id: \.offset) { _, symbol in
                     Text(symbol)
-                        .font(.caption2)
-                        .fontWeight(.medium)
+                        .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity)
                 }
             }
-            // 6 řádků dnů – VStack+HStack místo LazyVGrid kvůli rekurzi layoutu na macOS (List + LazyVGrid)
+
             let days = gridDays
             ForEach(0..<6, id: \.self) { row in
                 HStack(spacing: 4) {
@@ -396,35 +567,128 @@ private struct MonthGridView: View {
            let date = calendar.date(byAdding: .day, value: day - 1, to: monthStart) {
             let isSelected = selectedDate.map { calendar.isDate(date, inSameDayAs: $0) } ?? false
             let isToday = calendar.isDateInToday(date)
+            let hasItems = daysWithItems.contains(calendar.startOfDay(for: date))
+
             Button {
-                withAnimation(.easeInOut(duration: 0.2)) { selectedDate = date }
+                withAnimation(.snappy(duration: 0.2)) { selectedDate = date }
             } label: {
-                ZStack {
-                    if isSelected {
-                        Circle().fill(Color.accentColor)
-                    } else if isToday {
-                        Circle().stroke(Color.accentColor, lineWidth: 2)
+                VStack(spacing: 3) {
+                    ZStack {
+                        if isSelected {
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [accent, accent.opacity(0.82)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .shadow(color: accent.opacity(0.35), radius: 6, y: 2)
+                        } else if isToday {
+                            Circle()
+                                .stroke(accent, lineWidth: 2)
+                        }
+
+                        Text("\(day)")
+                            .font(.subheadline.weight(isSelected || isToday ? .bold : .medium))
+                            .foregroundStyle(isSelected ? .white : (isToday ? accent : .primary))
                     }
-                    Text("\(day)")
-                        .font(.caption)
-                        .fontWeight(isSelected || isToday ? .semibold : .regular)
-                        .foregroundColor(isSelected ? .white : (isToday ? Color.accentColor : .primary))
-                    if daysWithItems.contains(calendar.startOfDay(for: date)) && !isSelected {
-                        Circle()
-                            .fill(Color.accentColor)
-                            .frame(width: 4, height: 4)
-                            .offset(x: 10, y: -10)
-                    }
+                    .frame(width: 34, height: 34)
+
+                    Circle()
+                        .fill(hasItems ? (isSelected ? Color.white.opacity(0.9) : accent) : Color.clear)
+                        .frame(width: 5, height: 5)
                 }
-                .frame(height: 32)
                 .frame(maxWidth: .infinity)
+                .padding(.vertical, 2)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("\(day)")
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
+            .accessibilityValue(hasItems ? "Má instalace" : "Bez instalací")
         } else {
             Color.clear
-                .frame(height: 32)
+                .frame(height: 44)
                 .frame(maxWidth: .infinity)
         }
+    }
+}
+
+// MARK: - Karta instalace
+
+private struct InstallationCard: View {
+    let item: OrderItemByInstallationDate
+    var accent: Color = .accentColor
+
+    private var timeText: String? {
+        let t = item.installation_time?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return t.isEmpty ? nil : t
+    }
+
+    var body: some View {
+        HStack(spacing: 14) {
+            VStack(spacing: 2) {
+                Image(systemName: "wrench.and.screwdriver.fill")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(accent)
+            }
+            .frame(width: 44, height: 44)
+            .background(accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(item.item_name)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+
+                HStack(spacing: 8) {
+                    Text("Obj. \(item.displayOrderNumber)")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+
+                    if let timeText {
+                        Text("·")
+                            .foregroundStyle(.tertiary)
+                        Label(timeText, systemImage: "clock")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .labelStyle(.titleAndIcon)
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    if item.base_price > 0 {
+                        Text(Formatting.price(item.base_price))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(accent)
+                    }
+                    if !item.status.isEmpty {
+                        Text(item.status)
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(Color.primary.opacity(0.06), in: Capsule())
+                    }
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(Color(uiColor: .tertiaryLabel))
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+                }
+                .shadow(color: .black.opacity(0.04), radius: 8, y: 3)
+        )
     }
 }
 
@@ -487,45 +751,6 @@ private struct InstallationDetailSheet: View {
         f.timeStyle = .none
         f.locale = Locale(identifier: "cs_CZ")
         return f.string(from: date)
-    }
-}
-
-// MARK: - Řádek instalace (přehledný, iOS styl)
-
-private struct InstallationListRow: View {
-    let item: OrderItemByInstallationDate
-
-    private var timeAndOrder: String {
-        var parts: [String] = ["Obj. \(item.displayOrderNumber)"]
-        if let t = item.installation_time, !t.isEmpty { parts.append(t) }
-        return parts.joined(separator: " · ")
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(item.item_name)
-                .font(.body)
-                .fontWeight(.medium)
-                .foregroundStyle(.primary)
-            Text(timeAndOrder)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            if item.base_price > 0 || !item.status.isEmpty {
-                HStack(spacing: 8) {
-                    if item.base_price > 0 {
-                        Text(Formatting.price(item.base_price))
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
-                    if !item.status.isEmpty {
-                        Text(item.status)
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-            }
-        }
-        .padding(.vertical, 4)
     }
 }
 

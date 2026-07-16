@@ -109,6 +109,33 @@ struct UserOrder: Decodable, Identifiable, Hashable {
     var statusDisplay: String {
         status?.trimmingCharacters(in: .whitespaces) ?? ""
     }
+
+    /// Stav odvozený z položek (API `status` objednávky často zůstane completed i po vrácení položek).
+    var effectiveStatus: String {
+        guard !items.isEmpty else { return statusDisplay.lowercased() }
+        if items.allSatisfy({ $0.statusDisplay.lowercased() == "completed" }) {
+            return "completed"
+        }
+        return "pending"
+    }
+
+    /// Provize jen z dokončených položek.
+    var completedCommission: Double {
+        items
+            .filter { $0.statusDisplay.lowercased() == "completed" }
+            .map(\.commission)
+            .reduce(0, +)
+    }
+
+    /// Podpis obsahu pro realtime UI – mění se při změně stavů/termínů položek.
+    var realtimeSignature: String {
+        let itemsSig = items
+            .map {
+                "\($0.id):\($0.statusDisplay):\($0.commission):\($0.installation_day ?? ""):\($0.installation_time ?? "")"
+            }
+            .joined(separator: "|")
+        return "\(id):\(statusDisplay):\(itemsSig)"
+    }
 }
 
 /// Odpověď API user_orders.php
