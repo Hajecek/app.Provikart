@@ -80,6 +80,9 @@ struct HomeView: View {
                         dealwarsRow
                     }
                     .buttonStyle(.plain)
+                    .navigationLinkIndicatorVisibility(.hidden)
+                    .listRowBackground(dealwarsBackground)
+                    .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16))
                 }
 
                 Section {
@@ -180,55 +183,134 @@ struct HomeView: View {
     private var dealwarsRow: some View {
         HStack(alignment: .center, spacing: 14) {
             ZStack {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.orange.opacity(0.24))
-                    .frame(width: 44, height: 44)
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                Color(red: 0.98, green: 0.72, blue: 0.28).opacity(0.55),
+                                Color(red: 0.97, green: 0.58, blue: 0.12).opacity(0.18)
+                            ],
+                            center: .topLeading,
+                            startRadius: 2,
+                            endRadius: 28
+                        )
+                    )
+                    .frame(width: 52, height: 52)
+                Circle()
+                    .stroke(Color(red: 0.98, green: 0.69, blue: 0.23).opacity(0.45), lineWidth: 1)
+                    .frame(width: 52, height: 52)
                 Image(systemName: "trophy.fill")
-                    .font(.title3)
-                    .foregroundStyle(.orange)
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 1.0, green: 0.86, blue: 0.42),
+                                Color(red: 0.97, green: 0.58, blue: 0.12)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .shadow(color: Color(red: 0.97, green: 0.58, blue: 0.12).opacity(0.45), radius: 8, y: 2)
             }
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text("Dealwars")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Text("Moje pořadí \(dealwarsRank.map { "#\($0)" } ?? "—")")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+
+                HStack(spacing: 8) {
+                    Text(dealwarsRank.map { "#\($0)" } ?? "—")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Color(red: 0.22, green: 0.08, blue: 0.16))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            Color(red: 1.0, green: 0.86, blue: 0.42),
+                                            Color(red: 0.97, green: 0.62, blue: 0.18)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                        )
+
+                    Text("Moje pořadí")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.72))
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Text(pointsLabel)
-                .font(.title3.weight(.bold))
-                .foregroundStyle(.orange)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(pointsValueLabel)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(.white)
+                    .monospacedDigit()
+                Text("XP")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Color(red: 0.98, green: 0.69, blue: 0.23))
+            }
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white.opacity(0.45))
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
         .padding(.horizontal, 2)
-        .listRowBackground(dealwarsBackground)
-        .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Dealwars, pořadí \(dealwarsRank.map { String($0) } ?? "neznámé"), \(pointsLabel)")
     }
 
     private var dealwarsBackground: some View {
-        let shape = RoundedRectangle(cornerRadius: 12)
+        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
         return ZStack {
+            // Teplé oranžovo-jantarové pozadí (ne šedé)
             shape
                 .fill(
                     LinearGradient(
                         colors: [
-                            Color(red: 0.33, green: 0.24, blue: 0.17),
-                            Color(red: 0.24, green: 0.18, blue: 0.15),
-                            Color(red: 0.18, green: 0.14, blue: 0.13)
+                            Color(red: 0.72, green: 0.38, blue: 0.08),
+                            Color(red: 0.52, green: 0.22, blue: 0.10),
+                            Color(red: 0.36, green: 0.12, blue: 0.14)
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
+
             shape
-                .fill(Color.black.opacity(0.08))
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 1.0, green: 0.78, blue: 0.28).opacity(0.35),
+                            Color(red: 0.97, green: 0.55, blue: 0.12).opacity(0.12),
+                            .clear
+                        ],
+                        startPoint: .topTrailing,
+                        endPoint: .bottomLeading
+                    )
+                )
+
             shape
-                .stroke(Color.orange.opacity(0.5), lineWidth: 1)
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 1.0, green: 0.86, blue: 0.42).opacity(0.7),
+                            Color(red: 0.97, green: 0.58, blue: 0.12).opacity(0.35),
+                            Color(red: 0.30, green: 0.05, blue: 0.22).opacity(0.25)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1.5
+                )
         }
+        .shadow(color: Color(red: 0.97, green: 0.58, blue: 0.12).opacity(0.22), radius: 10, y: 4)
     }
 
     private var commissionRow: some View {
@@ -660,13 +742,16 @@ struct HomeView: View {
     }
 
     private var pointsLabel: String {
-        guard let dealwarsXP else { return "0 XP" }
+        "\(pointsValueLabel) XP"
+    }
+
+    private var pointsValueLabel: String {
+        guard let dealwarsXP else { return "0" }
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
         formatter.maximumFractionDigits = 0
         formatter.groupingSeparator = " "
-        let value = formatter.string(from: NSNumber(value: dealwarsXP)) ?? "0"
-        return "\(value) XP"
+        return formatter.string(from: NSNumber(value: dealwarsXP)) ?? "0"
     }
 
     /// Načte počet položek čekajících na dokončení. Při chybě nastaví 0 (container se nezobrazí).
