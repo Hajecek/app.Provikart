@@ -14,7 +14,7 @@ private struct DeleteReportRequest: Identifiable, Equatable {
 
 @MainActor
 final class ManagerProblemsViewModel: ObservableObject {
-    @Published var reports: [UserReport] = []
+    @Published private(set) var reportsByFilter: [ManagerReportsFilter: [UserReport]] = [:]
     @Published var errorMessage: String?
     @Published var isLoading = false
     @Published var selectedCategories: Set<ManagerReportsFilter> = [.regular]
@@ -29,15 +29,32 @@ final class ManagerProblemsViewModel: ObservableObject {
     private let service = ManagerReportsService()
     private let updateService = ReportUpdateService()
     private var pollingTask: Task<Void, Never>?
+    private var loadTask: Task<Void, Never>?
+    private var loadGeneration = 0
+
+    /// Reporty pro aktuálně vybrané filtry (okamžitě z cache).
+    var reports: [UserReport] {
+        Self.mergedReports(from: reportsByFilter, categories: selectedCategories)
+    }
+
+    /// True, když máme v cache data pro všechny vybrané kategorie.
+    var hasCacheForSelection: Bool {
+        selectedCategories.allSatisfy { reportsByFilter[$0] != nil }
+    }
+
+    func clearReports() {
+        reportsByFilter = [:]
+    }
 
     func startPolling() {
         pollingTask?.cancel()
         pollingTask = Task { @MainActor in
-            await loadReports(silent: false)
+            // Načti všechny kategorie najednou → přepínání filtrů je pak okamžité.
+            await loadReports(silent: false, categories: Set(ManagerReportsFilter.allCases))
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
                 if Task.isCancelled { break }
-                await loadReports(silent: true)
+                await loadReports(silent: true, categories: selectedCategories)
             }
         }
     }
@@ -45,6 +62,8 @@ final class ManagerProblemsViewModel: ObservableObject {
     func stopPolling() {
         pollingTask?.cancel()
         pollingTask = nil
+        loadTask?.cancel()
+        loadTask = nil
     }
 
     func categoryCount(for category: ManagerReportsFilter) -> Int {
@@ -67,7 +86,19 @@ final class ManagerProblemsViewModel: ObservableObject {
         } else {
             selectedCategories.insert(category)
         }
-        Task { await loadReports() }
+
+        let selection = selectedCategories
+        let missing = selection.filter { reportsByFilter[$0] == nil }
+
+        if missing.isEmpty {
+            // Cache hit — seznam se přepne hned, na pozadí tiše obnovíme.
+            Task { await loadReports(silent: true, categories: selection) }
+        } else if isLoading {
+            // Probíhá prefetch všech kategorií — počkáme na něj, UI se přepne z cache.
+            return
+        } else {
+            Task { await loadReports(silent: false, categories: Set(missing)) }
+        }
     }
 
     func pauseRefresh() {
@@ -93,7 +124,16 @@ final class ManagerProblemsViewModel: ObservableObject {
         do {
             try await updateService.deleteManagerReport(id: id, token: token)
             errorMessage = nil
-            reports.removeAll { $0.id == id }
+            var next = reportsByFilter
+            for key in next.keys {
+                next[key]?.removeAll { $0.id == id }
+            }
+            reportsByFilter = next
+            if let regular = reportsByFilter[.regular] {
+                regularReportsCount = regular.filter {
+                    !$0.isCompleted && $0.managerReportsFilter == .regular
+                }.count
+            }
             saveManagerWidgetData(from: reports)
         } catch {
             guard !isCancellation(error) else { return }
@@ -122,48 +162,110 @@ final class ManagerProblemsViewModel: ObservableObject {
     }
 
     func loadReports(silent: Bool = false, categories: Set<ManagerReportsFilter>? = nil) async {
+        let activeCategories = categories ?? selectedCategories
+        guard !activeCategories.isEmpty else { return }
+
+        if silent && (isRefreshPaused || isLoading) { return }
+
         guard let token = getToken?(), !token.isEmpty else {
-            reports = []
+            clearReports()
             errorMessage = nil
             isLoading = false
             return
         }
-        let activeCategories = categories ?? selectedCategories
-        if silent && isRefreshPaused {
-            return
-        }
+
+        loadTask?.cancel()
+        loadGeneration += 1
+        let generation = loadGeneration
+        let categoriesToFetch = activeCategories
+
         if !silent {
             errorMessage = nil
             isLoading = true
         }
-        do {
-            let result = try await service.fetchManagerReports(token: token, filters: activeCategories)
-            reports = result.reports
-            deferredSalesCount = result.deferredSalesCount
-            incompleteOrdersCount = result.incompleteOrdersCount
-            termSelectionCount = result.termSelectionCount
-            if activeCategories.contains(.regular) {
-                regularReportsCount = result.reports.filter {
-                    !$0.isCompleted && $0.managerReportsFilter == .regular
-                }.count
-            }
-            if !silent {
-                isLoading = false
-                errorMessage = nil
-            }
-            saveManagerWidgetData(from: result.reports)
-        } catch {
-            if isCancellation(error) {
+
+        let task = Task { @MainActor in
+            do {
+                let result = try await service.fetchManagerReports(token: token, filters: categoriesToFetch)
+                guard generation == loadGeneration, !Task.isCancelled else { return }
+
+                var next = reportsByFilter
+                for (filter, items) in result.reportsByFilter {
+                    next[filter] = items
+                }
+                reportsByFilter = next
+
+                deferredSalesCount = result.deferredSalesCount
+                incompleteOrdersCount = result.incompleteOrdersCount
+                termSelectionCount = result.termSelectionCount
+                if let regular = next[.regular] {
+                    regularReportsCount = regular.filter {
+                        !$0.isCompleted && $0.managerReportsFilter == .regular
+                    }.count
+                }
+
                 if !silent {
                     isLoading = false
+                    errorMessage = nil
                 }
-                return
-            }
-            if !silent {
-                errorMessage = error.localizedDescription
-                isLoading = false
+                saveManagerWidgetData(from: reports)
+            } catch {
+                guard generation == loadGeneration else { return }
+                if isCancellation(error) {
+                    if !silent { isLoading = false }
+                    return
+                }
+                if !silent {
+                    errorMessage = error.localizedDescription
+                    isLoading = false
+                }
             }
         }
+        loadTask = task
+        await task.value
+    }
+
+    private static func mergedReports(
+        from cache: [ManagerReportsFilter: [UserReport]],
+        categories: Set<ManagerReportsFilter>
+    ) -> [UserReport] {
+        guard categories.allSatisfy({ cache[$0] != nil }) else { return [] }
+
+        var merged: [UserReport] = []
+        var seen = Set<Int>()
+        for category in ManagerReportsFilter.allCases where categories.contains(category) {
+            for report in cache[category] ?? [] where seen.insert(report.id).inserted {
+                merged.append(report)
+            }
+        }
+        return merged.sorted { lhs, rhs in
+            let lDate = parseReportDate(lhs.created_at)
+            let rDate = parseReportDate(rhs.created_at)
+            switch (lDate, rDate) {
+            case let (l?, r?): return l > r
+            case (_?, nil): return true
+            case (nil, _?): return false
+            case (nil, nil): return lhs.id > rhs.id
+            }
+        }
+    }
+
+    private static func parseReportDate(_ raw: String?) -> Date? {
+        guard let raw, !raw.isEmpty else { return nil }
+        let formats = [
+            "yyyy-MM-dd HH:mm:ss",
+            "yyyy-MM-dd'T'HH:mm:ssZ",
+            "yyyy-MM-dd'T'HH:mm:ss.SSSZ",
+            "yyyy-MM-dd"
+        ]
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        for format in formats {
+            formatter.dateFormat = format
+            if let date = formatter.date(from: raw) { return date }
+        }
+        return nil
     }
 }
 
@@ -259,10 +361,7 @@ struct ManagerProblemsView: View {
 
     @ViewBuilder
     private var mainContent: some View {
-        if viewModel.isLoading && viewModel.reports.isEmpty {
-            ProgressView("Načítám reporty…")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let message = viewModel.errorMessage, viewModel.reports.isEmpty {
+        if let message = viewModel.errorMessage, !viewModel.hasCacheForSelection, !viewModel.isLoading {
             ContentUnavailableView(
                 "Nepodařilo se načíst reporty",
                 systemImage: "wifi.exclamationmark",
@@ -291,7 +390,18 @@ struct ManagerProblemsView: View {
 
     @ViewBuilder
     private var reportSections: some View {
-        if activeReportsSorted.isEmpty {
+        if viewModel.isLoading && !viewModel.hasCacheForSelection {
+            Section {
+                HStack {
+                    Spacer()
+                    ProgressView("Načítám reporty…")
+                    Spacer()
+                }
+                .padding(.vertical, 24)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
+        } else if activeReportsSorted.isEmpty {
             Section {
                 ContentUnavailableView(
                     emptyCategoryTitle,
@@ -766,7 +876,7 @@ private struct ManagerProblemsLifecycleModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .refreshable {
-                await viewModel.loadReports(categories: viewModel.selectedCategories)
+                await viewModel.loadReports(categories: Set(ManagerReportsFilter.allCases))
             }
             .background(Color(uiColor: .systemGroupedBackground))
             .onAppear {
@@ -783,7 +893,7 @@ private struct ManagerProblemsLifecycleModifier: ViewModifier {
                     viewModel.startPolling()
                 } else {
                     viewModel.stopPolling()
-                    viewModel.reports = []
+                    viewModel.clearReports()
                 }
             }
             .onDisappear {

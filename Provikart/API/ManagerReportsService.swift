@@ -85,6 +85,7 @@ enum ManagerReportsFilter: String, CaseIterable, Identifiable {
 
 struct ManagerReportsFetchResult {
     let reports: [UserReport]
+    let reportsByFilter: [ManagerReportsFilter: [UserReport]]
     let deferredSalesCount: Int
     let incompleteOrdersCount: Int
     let termSelectionCount: Int
@@ -116,7 +117,7 @@ enum ManagerReportsError: LocalizedError {
 final class ManagerReportsService {
     private let baseURL = "https://provikart.cz/api"
 
-    /// Načte reporty pro jednu nebo více kategorií a sloučí výsledky.
+    /// Načte reporty pro jednu nebo více kategorií paralelně a sloučí výsledky.
     func fetchManagerReports(
         token: String?,
         filters: Set<ManagerReportsFilter>
@@ -125,28 +126,41 @@ final class ManagerReportsService {
         guard !requests.isEmpty else {
             return ManagerReportsFetchResult(
                 reports: [],
+                reportsByFilter: [:],
                 deferredSalesCount: 0,
                 incompleteOrdersCount: 0,
                 termSelectionCount: 0
             )
         }
 
-        var merged: [UserReport] = []
+        var reportsByFilter: [ManagerReportsFilter: [UserReport]] = [:]
         var deferredCount = 0
         var incompleteCount = 0
         var termCount = 0
 
-        for filter in requests {
-            let result = try await fetchManagerReports(token: token, filter: filter)
-            merged.append(contentsOf: result.reports)
-            deferredCount = result.deferredSalesCount
-            incompleteCount = result.incompleteOrdersCount
-            termCount = result.termSelectionCount
+        try await withThrowingTaskGroup(of: (ManagerReportsFilter, ManagerReportsFetchResult).self) { group in
+            for filter in requests {
+                group.addTask {
+                    let result = try await self.fetchManagerReports(token: token, filter: filter)
+                    return (filter, result)
+                }
+            }
+            for try await (filter, result) in group {
+                reportsByFilter[filter] = result.reports
+                deferredCount = result.deferredSalesCount
+                incompleteCount = result.incompleteOrdersCount
+                termCount = result.termSelectionCount
+            }
         }
 
         var seen = Set<Int>()
-        let unique = merged.filter { seen.insert($0.id).inserted }
-        let sorted = unique.sorted { lhs, rhs in
+        var merged: [UserReport] = []
+        for filter in requests {
+            for report in reportsByFilter[filter] ?? [] where seen.insert(report.id).inserted {
+                merged.append(report)
+            }
+        }
+        let sorted = merged.sorted { lhs, rhs in
             let lDate = Self.parseReportDate(lhs.created_at)
             let rDate = Self.parseReportDate(rhs.created_at)
             switch (lDate, rDate) {
@@ -159,6 +173,7 @@ final class ManagerReportsService {
 
         return ManagerReportsFetchResult(
             reports: sorted,
+            reportsByFilter: reportsByFilter,
             deferredSalesCount: deferredCount,
             incompleteOrdersCount: incompleteCount,
             termSelectionCount: termCount
@@ -205,6 +220,7 @@ final class ManagerReportsService {
                 }
                 return ManagerReportsFetchResult(
                     reports: decoded.reports,
+                    reportsByFilter: [filter: decoded.reports],
                     deferredSalesCount: decoded.deferred_sales_count ?? 0,
                     incompleteOrdersCount: decoded.incomplete_orders_count ?? 0,
                     termSelectionCount: decoded.term_selection_count ?? 0

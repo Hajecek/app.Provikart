@@ -29,10 +29,17 @@ final class ManagerTeamProfileDetailViewModel: ObservableObject {
             isLoading = false
         } catch {
             isLoading = false
+            guard !Self.isCancellation(error) else { return }
             if profile == nil {
                 errorMessage = error.localizedDescription
             }
         }
+    }
+
+    private static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        if let url = error as? URLError, url.code == .cancelled { return true }
+        return false
     }
 }
 
