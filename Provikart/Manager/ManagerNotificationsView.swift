@@ -19,8 +19,11 @@ final class ManagerNotificationsViewModel: ObservableObject {
     private let reportsService = ManagerReportsService()
 
     var availableCategories: [ManagerNotificationCategory] {
-        let set = Set(notifications.map(\.category))
-        return set.sorted()
+        var categories = ManagerNotificationCategory.filterCases
+        if notifications.contains(where: { $0.category == .other }) {
+            categories.append(.other)
+        }
+        return categories
     }
 
     var filteredNotifications: [ManagerNotificationItem] {
@@ -196,14 +199,12 @@ struct ManagerNotificationsView: View {
 
     private var listContent: some View {
         List {
-            if viewModel.availableCategories.count > 1 {
-                Section {
-                    categoryFilters
-                }
-                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
+            Section {
+                categoryFilters
             }
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
 
             if viewModel.filteredNotifications.isEmpty {
                 Section {
@@ -311,7 +312,14 @@ struct ManagerNotificationsView: View {
     ) -> some View {
         HStack(spacing: 8) {
             Image(systemName: category.systemImage)
-            Text(category.title)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(category.title)
+                if category != .other {
+                    Text(category.subtitle)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
             Spacer(minLength: 0)
             if unread > 0 {
                 Text("\(unread) nových")

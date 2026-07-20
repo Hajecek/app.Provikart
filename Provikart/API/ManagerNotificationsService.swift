@@ -90,12 +90,13 @@ struct ManagerNotificationItem: Decodable, Identifiable, Hashable {
     /// Font Awesome class → SF Symbol.
     var systemImageName: String {
         let raw = (icon ?? "").lowercased()
+        if raw.contains("cake") || raw.contains("gift") || raw.contains("birthday") { return "birthday.cake.fill" }
         if raw.contains("triangle") || raw.contains("exclamation") { return "exclamationmark.triangle.fill" }
         if raw.contains("check") { return "checkmark.circle.fill" }
-        if raw.contains("clock") || raw.contains("time") { return "clock.fill" }
+        if raw.contains("clock") || raw.contains("time") { return "clock.arrow.circlepath" }
         if raw.contains("user") || raw.contains("person") { return "person.crop.circle.fill" }
         if raw.contains("calendar") { return "calendar" }
-        if raw.contains("cart") || raw.contains("shopping") { return "cart.fill" }
+        if raw.contains("cart") || raw.contains("shopping") { return "cart.badge.minus" }
         if raw.contains("bell") { return "bell.fill" }
         if raw.contains("flag") { return "flag.fill" }
         if raw.contains("info") { return "info.circle.fill" }
@@ -103,7 +104,13 @@ struct ManagerNotificationItem: Decodable, Identifiable, Hashable {
     }
 
     var category: ManagerNotificationCategory {
-        ManagerNotificationCategory.resolve(key: key, typeLabel: type_label, icon: icon, title: title)
+        ManagerNotificationCategory.resolve(
+            key: key,
+            typeLabel: type_label,
+            icon: icon,
+            title: title,
+            body: body
+        )
     }
 
     func withReadState(_ isRead: Bool) -> ManagerNotificationItem {
@@ -122,46 +129,60 @@ struct ManagerNotificationItem: Decodable, Identifiable, Hashable {
     }
 }
 
-/// Kategorie notifikačního inboxu – podle `key` / `type_label`.
+/// Kategorie notifikačního inboxu – podle `key` / `type_label` / textu.
 enum ManagerNotificationCategory: Hashable, Identifiable, Comparable {
-    case reports
-    case attendance
-    case performance
-    case locations
-    case team
+    case birthdays
+    case problemUpdates
+    case deferredSales
+    case incompleteOrders
     case other
+
+    /// Filtry vždy dostupné v UI (bez „Ostatní“).
+    static let filterCases: [ManagerNotificationCategory] = [
+        .birthdays,
+        .problemUpdates,
+        .deferredSales,
+        .incompleteOrders
+    ]
 
     var id: String { sortKey }
 
     var title: String {
         switch self {
-        case .reports: return "Problémy"
-        case .attendance: return "Docházka"
-        case .performance: return "Výkon"
-        case .locations: return "Lokality"
-        case .team: return "Tým"
+        case .birthdays: return "Narozeniny"
+        case .problemUpdates: return "Vývoj"
+        case .deferredSales: return "Odložené"
+        case .incompleteOrders: return "Nedokončené"
         case .other: return "Ostatní"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .birthdays: return "Narozeniny týmu"
+        case .problemUpdates: return "Vývoj problémů"
+        case .deferredSales: return "Odložené prodeje"
+        case .incompleteOrders: return "Nedokončené objednávky"
+        case .other: return "Ostatní oznámení"
         }
     }
 
     var systemImage: String {
         switch self {
-        case .reports: return "exclamationmark.bubble.fill"
-        case .attendance: return "person.badge.clock.fill"
-        case .performance: return "chart.bar.fill"
-        case .locations: return "mappin.and.ellipse"
-        case .team: return "person.3.fill"
+        case .birthdays: return "birthday.cake.fill"
+        case .problemUpdates: return "text.bubble.fill"
+        case .deferredSales: return "clock.arrow.circlepath"
+        case .incompleteOrders: return "cart.badge.minus"
         case .other: return "bell.fill"
         }
     }
 
     private var sortKey: String {
         switch self {
-        case .reports: return "0"
-        case .attendance: return "1"
-        case .performance: return "2"
-        case .locations: return "3"
-        case .team: return "4"
+        case .birthdays: return "0"
+        case .problemUpdates: return "1"
+        case .deferredSales: return "2"
+        case .incompleteOrders: return "3"
         case .other: return "9"
         }
     }
@@ -170,49 +191,103 @@ enum ManagerNotificationCategory: Hashable, Identifiable, Comparable {
         lhs.sortKey < rhs.sortKey
     }
 
-    static func resolve(key: String, typeLabel: String?, icon: String?, title: String) -> ManagerNotificationCategory {
+    static func resolve(
+        key: String,
+        typeLabel: String?,
+        icon: String?,
+        title: String,
+        body: String? = nil
+    ) -> ManagerNotificationCategory {
         let haystack = [
             key,
             typeLabel ?? "",
             icon ?? "",
-            title
+            title,
+            body ?? ""
         ]
             .joined(separator: " ")
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "cs_CZ"))
             .lowercased()
 
-        let prefix = key.split(separator: ":", maxSplits: 1).first.map(String.init)?.lowercased() ?? ""
+        let prefix = key
+            .split(separator: ":", maxSplits: 1)
+            .first
+            .map(String.init)?
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "cs_CZ"))
+            .lowercased() ?? ""
 
-        if prefix == "report" || prefix == "reports" || haystack.contains("report") || haystack.contains("problém") || haystack.contains("problem") {
-            return .reports
-        }
-        if prefix.contains("attend") || prefix.contains("dochaz") || haystack.contains("docház") || haystack.contains("dochaz") || haystack.contains("attendance") {
-            return .attendance
-        }
-        if prefix.contains("perform") || prefix.contains("vykon") || haystack.contains("výkon") || haystack.contains("vykon") || haystack.contains("performance") {
-            return .performance
-        }
-        if prefix.contains("locat") || prefix.contains("lokal") || haystack.contains("lokalit") || haystack.contains("location") || haystack.contains("mappin") {
-            return .locations
-        }
-        if prefix.contains("team") || prefix.contains("tym") || haystack.contains("tým") || haystack.contains("tym") || haystack.contains("člen") {
-            return .team
+        let label = (typeLabel ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "cs_CZ"))
+            .lowercased()
+
+        // 1) Narozeniny
+        if prefix.contains("birthday")
+            || prefix.contains("narozen")
+            || haystack.contains("birthday")
+            || haystack.contains("narozenin")
+            || haystack.contains("cake")
+            || label == "narozeniny"
+            || label == "birthday"
+            || label == "birthdays" {
+            return .birthdays
         }
 
-        let label = (typeLabel ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        switch label {
-        case "report", "reporty", "problém", "problémy", "problem":
-            return .reports
-        case "docházka", "dochazka", "attendance":
-            return .attendance
-        case "výkon", "vykon", "performance":
-            return .performance
-        case "lokality", "lokalita", "location", "locations":
-            return .locations
-        case "tým", "tym", "team":
-            return .team
-        default:
-            return .other
+        // 2) Odložené prodeje (před obecným „problém“)
+        if prefix.contains("deferred")
+            || prefix.contains("odloz")
+            || haystack.contains("deferred_sale")
+            || haystack.contains("deferred sale")
+            || haystack.contains("odlozeny prodej")
+            || haystack.contains("odlozene prodej")
+            || haystack.contains("odlozen")
+            || label == "odlozene"
+            || label == "odlozeny prodej"
+            || label == "odlozene prodeje"
+            || label == "deferred"
+            || label == "deferred sales" {
+            return .deferredSales
         }
+
+        // 3) Nedokončené objednávky
+        if prefix.contains("incomplete")
+            || prefix.contains("nedokonc")
+            || haystack.contains("incomplete_order")
+            || haystack.contains("incomplete order")
+            || haystack.contains("nedokoncena objednav")
+            || haystack.contains("nedokoncene objednav")
+            || haystack.contains("nedokonc")
+            || label == "nedokoncene"
+            || label == "nedokoncene objednavky"
+            || label == "incomplete"
+            || label == "incomplete orders" {
+            return .incompleteOrders
+        }
+
+        // 4) Vývoj problémů / reporty
+        if prefix == "report"
+            || prefix == "reports"
+            || prefix.contains("problem")
+            || prefix.contains("vyvoj")
+            || prefix.contains("update")
+            || prefix.contains("history")
+            || haystack.contains("vyvoj problem")
+            || haystack.contains("vyvoj report")
+            || haystack.contains("problem update")
+            || haystack.contains("report update")
+            || haystack.contains("vyvoj")
+            || haystack.contains("problem")
+            || haystack.contains("report")
+            || label == "report"
+            || label == "reporty"
+            || label == "problem"
+            || label == "problemy"
+            || label == "vyvoj"
+            || label == "vyvoj problemu" {
+            return .problemUpdates
+        }
+
+        return .other
     }
 }
 
