@@ -84,14 +84,60 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
   func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
     let userInfo = notification.request.content.userInfo
     print("[FCM] Notifikace při běhu aplikace: \(userInfo)")
-    completionHandler([.banner, .list, .sound])
+    AppIconBadgeSync.apply(
+      from: userInfo,
+      authToken: authToken ?? UserDefaults.standard.string(forKey: "Provikart.authToken"),
+      userRole: currentUserRole ?? Self.persistedUserRole()
+    )
+    NotificationCenter.default.post(
+      name: Notification.Name("didReceiveRemoteNotification"),
+      object: nil,
+      userInfo: userInfo as? [String: Any]
+    )
+    // .badge = aplikuj číslo z push payloadu i když je appka v popředí
+    completionHandler([.banner, .list, .sound, .badge])
   }
 
   func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
     let userInfo = response.notification.request.content.userInfo
     print("[FCM] Reakce na notifikaci: \(userInfo)")
+    AppIconBadgeSync.apply(
+      from: userInfo,
+      authToken: authToken ?? UserDefaults.standard.string(forKey: "Provikart.authToken"),
+      userRole: currentUserRole ?? Self.persistedUserRole()
+    )
     NotificationCenter.default.post(name: Notification.Name("didReceiveRemoteNotification"), object: nil, userInfo: userInfo as? [String: Any])
     completionHandler()
+  }
+
+  /// Pozadí / content-available – aktualizace badge i když appka není otevřená.
+  func application(
+    _ application: UIApplication,
+    didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+    fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+  ) {
+    print("[FCM] Remote notification (background/fetch): \(userInfo)")
+    NotificationCenter.default.post(
+      name: Notification.Name("didReceiveRemoteNotification"),
+      object: nil,
+      userInfo: userInfo as? [String: Any]
+    )
+    let token = authToken ?? UserDefaults.standard.string(forKey: "Provikart.authToken")
+    let role = currentUserRole ?? Self.persistedUserRole()
+    AppIconBadgeSync.apply(
+      from: userInfo,
+      authToken: token,
+      userRole: role,
+      completion: completionHandler
+    )
+  }
+
+  private static func persistedUserRole() -> String? {
+    guard let data = UserDefaults.standard.data(forKey: "Provikart.currentUser"),
+          let user = try? JSONDecoder().decode(UserInfo.self, from: data) else {
+      return nil
+    }
+    return user.role
   }
 
   func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
@@ -150,6 +196,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     currentUserId = nil
     currentUserRole = nil
     authToken = nil
+    AppIconBadgeSync.setBadge(0)
     print("[FCM] Údaje uživatele v AppDelegate vymazány")
   }
 }

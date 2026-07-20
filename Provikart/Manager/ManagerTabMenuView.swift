@@ -61,6 +61,8 @@ final class ManagerNotificationsBadgeState: ObservableObject {
     private let service = ManagerNotificationsService()
     private var didLoad = false
     private var pollingTask: Task<Void, Never>?
+    private var tokenProvider: (() -> String?)?
+    private var remoteObservers: [NSObjectProtocol] = []
 
     func refreshIfNeeded(token: String?) async {
         guard !didLoad else { return }
@@ -87,6 +89,8 @@ final class ManagerNotificationsBadgeState: ObservableObject {
     }
 
     func startPolling(tokenProvider: @escaping () -> String?) {
+        self.tokenProvider = tokenProvider
+        startObservingRemoteNotifications()
         pollingTask?.cancel()
         pollingTask = Task { @MainActor in
             await refresh(token: tokenProvider())
@@ -101,6 +105,41 @@ final class ManagerNotificationsBadgeState: ObservableObject {
     func stopPolling() {
         pollingTask?.cancel()
         pollingTask = nil
+        stopObservingRemoteNotifications()
+    }
+
+    /// Po příchozí push notifikaci sjednotí zvonek s badge na ploše.
+    private func startObservingRemoteNotifications() {
+        stopObservingRemoteNotifications()
+        let pushObserver = NotificationCenter.default.addObserver(
+            forName: Notification.Name("didReceiveRemoteNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                await self.refresh(token: self.tokenProvider?())
+            }
+        }
+        let unreadObserver = NotificationCenter.default.addObserver(
+            forName: .managerNotificationsUnreadDidUpdate,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let count = notification.userInfo?["unread_count"] as? Int else { return }
+            Task { @MainActor in
+                self?.unreadCount = max(0, count)
+                self?.didLoad = true
+            }
+        }
+        remoteObservers = [pushObserver, unreadObserver]
+    }
+
+    private func stopObservingRemoteNotifications() {
+        for observer in remoteObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        remoteObservers = []
     }
 
     /// Číslo na ikoně aplikace na ploše (stejné jako u zvonku).
