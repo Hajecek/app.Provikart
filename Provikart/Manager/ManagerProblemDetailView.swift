@@ -179,8 +179,6 @@ struct ManagerProblemDetailView: View {
                 VStack(spacing: 0) {
                     ReportDetailHeader(
                         report: currentReport,
-                        authToken: authState.authToken,
-                        profileImageURL: authorProfileImageURL,
                         tint: tint,
                         status: reportStatus,
                         topInset: proxy.safeAreaInsets.top
@@ -292,8 +290,6 @@ struct ManagerProblemDetailView: View {
 
 private struct ReportDetailHeader: View {
     let report: UserReport
-    var authToken: String?
-    let profileImageURL: URL?
     let tint: Color
     let status: ManagerReportAppearance.Status
     var topInset: CGFloat = 0
@@ -322,7 +318,7 @@ private struct ReportDetailHeader: View {
 
             VStack(alignment: .leading, spacing: 18) {
                 HStack(alignment: .center, spacing: 12) {
-                    headerLeadingAvatar
+                    headerTypeIcon
 
                     VStack(alignment: .leading, spacing: 3) {
                         if let badge = report.managerIssueTypeBadge {
@@ -356,15 +352,17 @@ private struct ReportDetailHeader: View {
         .accessibilityLabel("\(report.managerListTitle), stav \(status.label)")
     }
 
-    @ViewBuilder
-    private var headerLeadingAvatar: some View {
-        ReportAuthorAvatarView(
-            url: profileImageURL,
-            token: authToken,
-            size: 44,
-            tint: .white,
-            initials: ManagerReportAppearance.initials(for: report)
-        )
+    private var headerTypeIcon: some View {
+        Image(systemName: ManagerReportAppearance.rowIcon(for: report))
+            .font(.title3.weight(.semibold))
+            .foregroundStyle(.white)
+            .frame(width: 44, height: 44)
+            .background(.white.opacity(0.18), in: Circle())
+            .overlay {
+                Circle()
+                    .stroke(.white.opacity(0.35), lineWidth: 2)
+            }
+            .accessibilityHidden(true)
     }
 }
 
