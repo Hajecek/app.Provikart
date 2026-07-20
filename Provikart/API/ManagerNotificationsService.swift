@@ -99,7 +99,11 @@ struct ManagerNotificationItem: Decodable, Identifiable, Hashable {
         if raw.contains("bell") { return "bell.fill" }
         if raw.contains("flag") { return "flag.fill" }
         if raw.contains("info") { return "info.circle.fill" }
-        return "bell.fill"
+        return category.systemImage
+    }
+
+    var category: ManagerNotificationCategory {
+        ManagerNotificationCategory.resolve(key: key, typeLabel: type_label, icon: icon, title: title)
     }
 
     func withReadState(_ isRead: Bool) -> ManagerNotificationItem {
@@ -115,6 +119,100 @@ struct ManagerNotificationItem: Decodable, Identifiable, Hashable {
             avatar_url: avatar_url,
             is_read: isRead
         )
+    }
+}
+
+/// Kategorie notifikačního inboxu – podle `key` / `type_label`.
+enum ManagerNotificationCategory: Hashable, Identifiable, Comparable {
+    case reports
+    case attendance
+    case performance
+    case locations
+    case team
+    case other
+
+    var id: String { sortKey }
+
+    var title: String {
+        switch self {
+        case .reports: return "Problémy"
+        case .attendance: return "Docházka"
+        case .performance: return "Výkon"
+        case .locations: return "Lokality"
+        case .team: return "Tým"
+        case .other: return "Ostatní"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .reports: return "exclamationmark.bubble.fill"
+        case .attendance: return "person.badge.clock.fill"
+        case .performance: return "chart.bar.fill"
+        case .locations: return "mappin.and.ellipse"
+        case .team: return "person.3.fill"
+        case .other: return "bell.fill"
+        }
+    }
+
+    private var sortKey: String {
+        switch self {
+        case .reports: return "0"
+        case .attendance: return "1"
+        case .performance: return "2"
+        case .locations: return "3"
+        case .team: return "4"
+        case .other: return "9"
+        }
+    }
+
+    static func < (lhs: ManagerNotificationCategory, rhs: ManagerNotificationCategory) -> Bool {
+        lhs.sortKey < rhs.sortKey
+    }
+
+    static func resolve(key: String, typeLabel: String?, icon: String?, title: String) -> ManagerNotificationCategory {
+        let haystack = [
+            key,
+            typeLabel ?? "",
+            icon ?? "",
+            title
+        ]
+            .joined(separator: " ")
+            .lowercased()
+
+        let prefix = key.split(separator: ":", maxSplits: 1).first.map(String.init)?.lowercased() ?? ""
+
+        if prefix == "report" || prefix == "reports" || haystack.contains("report") || haystack.contains("problém") || haystack.contains("problem") {
+            return .reports
+        }
+        if prefix.contains("attend") || prefix.contains("dochaz") || haystack.contains("docház") || haystack.contains("dochaz") || haystack.contains("attendance") {
+            return .attendance
+        }
+        if prefix.contains("perform") || prefix.contains("vykon") || haystack.contains("výkon") || haystack.contains("vykon") || haystack.contains("performance") {
+            return .performance
+        }
+        if prefix.contains("locat") || prefix.contains("lokal") || haystack.contains("lokalit") || haystack.contains("location") || haystack.contains("mappin") {
+            return .locations
+        }
+        if prefix.contains("team") || prefix.contains("tym") || haystack.contains("tým") || haystack.contains("tym") || haystack.contains("člen") {
+            return .team
+        }
+
+        let label = (typeLabel ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch label {
+        case "report", "reporty", "problém", "problémy", "problem":
+            return .reports
+        case "docházka", "dochazka", "attendance":
+            return .attendance
+        case "výkon", "vykon", "performance":
+            return .performance
+        case "lokality", "lokalita", "location", "locations":
+            return .locations
+        case "tým", "tym", "team":
+            return .team
+        default:
+            return .other
+        }
     }
 }
 

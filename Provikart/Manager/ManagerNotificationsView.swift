@@ -2,7 +2,7 @@
 //  ManagerNotificationsView.swift
 //  Provikart
 //
-//  Inbox oznámení manažera (zvonek).
+//  Inbox oznámení manažera (zvonek) – rozdělený do kategorií.
 //
 
 import SwiftUI
@@ -10,12 +10,39 @@ import SwiftUI
 @MainActor
 final class ManagerNotificationsViewModel: ObservableObject {
     @Published var notifications: [ManagerNotificationItem] = []
+    @Published var selectedCategory: ManagerNotificationCategory? = nil
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var isMarkingAll = false
 
     private let service = ManagerNotificationsService()
     private let reportsService = ManagerReportsService()
+
+    var availableCategories: [ManagerNotificationCategory] {
+        let set = Set(notifications.map(\.category))
+        return set.sorted()
+    }
+
+    var filteredNotifications: [ManagerNotificationItem] {
+        guard let selectedCategory else { return notifications }
+        return notifications.filter { $0.category == selectedCategory }
+    }
+
+    var sections: [(category: ManagerNotificationCategory, items: [ManagerNotificationItem])] {
+        let grouped = Dictionary(grouping: filteredNotifications, by: \.category)
+        return grouped.keys.sorted().compactMap { category in
+            guard let items = grouped[category], !items.isEmpty else { return nil }
+            return (category, items)
+        }
+    }
+
+    func count(for category: ManagerNotificationCategory) -> Int {
+        notifications.filter { $0.category == category }.count
+    }
+
+    func unreadCount(for category: ManagerNotificationCategory) -> Int {
+        notifications.filter { $0.category == category && !$0.is_read }.count
+    }
 
     func load(token: String?, badgeState: ManagerNotificationsBadgeState) async {
         guard let token, !token.isEmpty else {
@@ -29,6 +56,9 @@ final class ManagerNotificationsViewModel: ObservableObject {
         do {
             let payload = try await service.fetchNotifications(token: token)
             notifications = payload.notifications
+            if let selectedCategory, !availableCategories.contains(selectedCategory) {
+                self.selectedCategory = nil
+            }
             badgeState.update(unreadCount: payload.unreadCount)
         } catch {
             errorMessage = error.localizedDescription
@@ -166,76 +196,205 @@ struct ManagerNotificationsView: View {
 
     private var listContent: some View {
         List {
-            ForEach(viewModel.notifications) { item in
-                Button {
-                    Task { await open(item) }
-                } label: {
-                    ManagerNotificationRow(item: item, authToken: authState.authToken)
+            if viewModel.availableCategories.count > 1 {
+                Section {
+                    categoryFilters
                 }
-                .buttonStyle(.plain)
-                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                    if item.is_read {
-                        Button {
-                            Task {
-                                await viewModel.setRead(
-                                    token: authState.authToken,
-                                    item: item,
-                                    isRead: false,
-                                    badgeState: notificationsBadge
-                                )
-                            }
-                        } label: {
-                            Label("Nepřečtené", systemImage: "envelope.badge")
-                        }
-                        .tint(.orange)
-                    } else {
-                        Button {
-                            Task {
-                                await viewModel.setRead(
-                                    token: authState.authToken,
-                                    item: item,
-                                    isRead: true,
-                                    badgeState: notificationsBadge
-                                )
-                            }
-                        } label: {
-                            Label("Přečtené", systemImage: "envelope.open")
-                        }
-                        .tint(.blue)
-                    }
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
+
+            if viewModel.filteredNotifications.isEmpty {
+                Section {
+                    ContentUnavailableView(
+                        "Nic v této kategorii",
+                        systemImage: "line.3.horizontal.decrease.circle",
+                        description: Text("Zkus jiný filtr nebo stáhni oznámení znovu.")
+                    )
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 }
-                .contextMenu {
-                    if item.is_read {
-                        Button {
-                            Task {
-                                await viewModel.setRead(
-                                    token: authState.authToken,
-                                    item: item,
-                                    isRead: false,
-                                    badgeState: notificationsBadge
-                                )
-                            }
-                        } label: {
-                            Label("Označit jako nepřečtené", systemImage: "envelope.badge")
+            } else {
+                ForEach(viewModel.sections, id: \.category) { section in
+                    Section {
+                        ForEach(section.items) { item in
+                            notificationRow(item)
                         }
-                    } else {
-                        Button {
-                            Task {
-                                await viewModel.setRead(
-                                    token: authState.authToken,
-                                    item: item,
-                                    isRead: true,
-                                    badgeState: notificationsBadge
-                                )
-                            }
-                        } label: {
-                            Label("Označit jako přečtené", systemImage: "envelope.open")
-                        }
+                    } header: {
+                        categorySectionHeader(
+                            category: section.category,
+                            count: section.items.count,
+                            unread: section.items.filter { !$0.is_read }.count
+                        )
                     }
                 }
             }
         }
         .listStyle(.insetGrouped)
+    }
+
+    private var categoryFilters: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                filterChip(
+                    title: "Vše",
+                    icon: "bell.fill",
+                    count: viewModel.notifications.count,
+                    unread: viewModel.notifications.filter { !$0.is_read }.count,
+                    selected: viewModel.selectedCategory == nil
+                ) {
+                    viewModel.selectedCategory = nil
+                }
+
+                ForEach(viewModel.availableCategories) { category in
+                    filterChip(
+                        title: category.title,
+                        icon: category.systemImage,
+                        count: viewModel.count(for: category),
+                        unread: viewModel.unreadCount(for: category),
+                        selected: viewModel.selectedCategory == category
+                    ) {
+                        viewModel.selectedCategory = category
+                    }
+                }
+            }
+        }
+    }
+
+    private func filterChip(
+        title: String,
+        icon: String,
+        count: Int,
+        unread: Int,
+        selected: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.caption.weight(.semibold))
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+                Text("\(count)")
+                    .font(.caption2.weight(.bold))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        Capsule().fill(selected ? Color.primary.opacity(0.12) : Color(uiColor: .tertiarySystemFill))
+                    )
+                if unread > 0 {
+                    Circle()
+                        .fill(Color.orange)
+                        .frame(width: 7, height: 7)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                Capsule()
+                    .fill(selected ? Color.accentColor.opacity(0.16) : Color(uiColor: .secondarySystemGroupedBackground))
+            )
+            .overlay(
+                Capsule()
+                    .strokeBorder(selected ? Color.accentColor.opacity(0.35) : Color.clear, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(selected ? Color.accentColor : Color.primary)
+    }
+
+    private func categorySectionHeader(
+        category: ManagerNotificationCategory,
+        count: Int,
+        unread: Int
+    ) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: category.systemImage)
+            Text(category.title)
+            Spacer(minLength: 0)
+            if unread > 0 {
+                Text("\(unread) nových")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+            }
+            Text("\(count)")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+        .font(.subheadline.weight(.semibold))
+        .textCase(nil)
+        .foregroundStyle(.primary)
+    }
+
+    @ViewBuilder
+    private func notificationRow(_ item: ManagerNotificationItem) -> some View {
+        Button {
+            Task { await open(item) }
+        } label: {
+            ManagerNotificationRow(item: item, authToken: authState.authToken)
+        }
+        .buttonStyle(.plain)
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            if item.is_read {
+                Button {
+                    Task {
+                        await viewModel.setRead(
+                            token: authState.authToken,
+                            item: item,
+                            isRead: false,
+                            badgeState: notificationsBadge
+                        )
+                    }
+                } label: {
+                    Label("Nepřečtené", systemImage: "envelope.badge")
+                }
+                .tint(.orange)
+            } else {
+                Button {
+                    Task {
+                        await viewModel.setRead(
+                            token: authState.authToken,
+                            item: item,
+                            isRead: true,
+                            badgeState: notificationsBadge
+                        )
+                    }
+                } label: {
+                    Label("Přečtené", systemImage: "envelope.open")
+                }
+                .tint(.blue)
+            }
+        }
+        .contextMenu {
+            if item.is_read {
+                Button {
+                    Task {
+                        await viewModel.setRead(
+                            token: authState.authToken,
+                            item: item,
+                            isRead: false,
+                            badgeState: notificationsBadge
+                        )
+                    }
+                } label: {
+                    Label("Označit jako nepřečtené", systemImage: "envelope.badge")
+                }
+            } else {
+                Button {
+                    Task {
+                        await viewModel.setRead(
+                            token: authState.authToken,
+                            item: item,
+                            isRead: true,
+                            badgeState: notificationsBadge
+                        )
+                    }
+                } label: {
+                    Label("Označit jako přečtené", systemImage: "envelope.open")
+                }
+            }
+        }
     }
 
     private func open(_ item: ManagerNotificationItem) async {
@@ -289,8 +448,8 @@ private struct ManagerNotificationRow: View {
                         .multilineTextAlignment(.leading)
                 }
 
-                if let type = item.type_label?.trimmingCharacters(in: .whitespacesAndNewlines), !type.isEmpty {
-                    Text(type)
+                if let name = item.user_name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+                    Text(name)
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(.tertiary)
                 }
