@@ -360,7 +360,7 @@ struct ManagerAttendanceView: View {
                     mainContent
                 }
             }
-            .background(Color(uiColor: .systemGroupedBackground))
+            .background { ManagerScreenBackground() }
             .navigationTitle("Docházka")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

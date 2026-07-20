@@ -386,7 +386,7 @@ struct ManagerTeamPerformanceView: View {
                     mainContent
                 }
             }
-            .background(Color(uiColor: .systemGroupedBackground))
+            .background { ManagerScreenBackground() }
             .navigationTitle("Výkon týmu")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

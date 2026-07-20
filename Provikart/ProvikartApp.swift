@@ -207,6 +207,7 @@ struct ProvikartApp: App {
     @StateObject private var authState = AuthState()
     @StateObject private var appLoginApprovalState = AppLoginApprovalState()
     @StateObject private var networkMonitor = NetworkMonitor()
+    @StateObject private var sessionUnlock = SessionUnlockState()
     @AppStorage(onboardingCompletedKey) private var hasCompletedOnboarding = false
     @AppStorage(appearanceModeKey) private var appearanceModeRaw: String = "system"
     @State private var showLaunchScreen = true
@@ -263,6 +264,7 @@ struct ProvikartApp: App {
                         withAnimation(.easeInOut(duration: 0.35)) {
                             showBiometricVerification = false
                             hasVerifiedBiometricThisSession = true
+                            sessionUnlock.unlock()
                         }
                     })
                     .ignoresSafeArea()
@@ -275,11 +277,15 @@ struct ProvikartApp: App {
             .environmentObject(appDelegate)
             .environmentObject(appLoginApprovalState)
             .environmentObject(networkMonitor)
+            .environmentObject(sessionUnlock)
+            .environment(\.sessionUnlocked, sessionUnlock.isUnlocked)
             .onChange(of: authState.isLoggedIn) { _, isLoggedIn in
               if isLoggedIn, let user = authState.currentUser {
                 appDelegate.updateUserInfo(userId: user.id ?? 0, role: user.role ?? "", authToken: authState.authToken)
               } else {
                 appDelegate.clearUserInfo()
+                sessionUnlock.lock()
+                hasVerifiedBiometricThisSession = false
                 CommissionLiveActivityManager.endAll()
                 ManagerTeamLiveActivityManager.endAll()
                 WidgetDataStore.clearCommission()
@@ -311,10 +317,12 @@ struct ProvikartApp: App {
                     // neproblikl hlavní obsah ještě před zobrazením biometrie.
                     if authState.isLoggedIn, let at = backgroundedAt, Date().timeIntervalSince(at) >= 5 {
                         showBiometricVerification = true
+                        sessionUnlock.lock()
                     }
                 case .active:
                     if authState.isLoggedIn, let at = backgroundedAt, Date().timeIntervalSince(at) >= 5 {
                         showBiometricVerification = true
+                        sessionUnlock.lock()
                     }
                     backgroundedAt = nil
                     if authState.isLoggedIn {

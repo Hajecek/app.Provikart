@@ -110,7 +110,7 @@ struct ManagerTeamProfilesView: View {
                     mainContent
                 }
             }
-            .background(Color(uiColor: .systemGroupedBackground))
+            .background { ManagerScreenBackground() }
             .navigationTitle("Tým")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
