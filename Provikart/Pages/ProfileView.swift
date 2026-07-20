@@ -9,65 +9,53 @@ import SwiftUI
 
 struct ProfileView: View {
     @EnvironmentObject private var authState: AuthState
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     @State private var isShowingSettings = false
     @State private var isShowingEdit = false
     @State private var showLogoutConfirm = false
+    @State private var appeared = false
+
+    private let brandDeep = Color(red: 0.62, green: 0.22, blue: 0.03)
+    private let brandOrange = Color(red: 0.88, green: 0.42, blue: 0.07)
+    private let brandGold = Color(red: 0.96, green: 0.68, blue: 0.22)
+    private let userSlate = Color(red: 0.14, green: 0.18, blue: 0.24)
+    private let userTeal = Color(red: 0.12, green: 0.42, blue: 0.48)
+
+    private let avatarSize: CGFloat = 108
+    private let avatarOverlap: CGFloat = 54
 
     var body: some View {
-        NavigationStack {
-            Form {
-                accountSection
-                contactSection
-                settingsLogoutSection
-            }
-            .navigationTitle("Profil")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItemGroup(placement: .topBarLeading) {
-                    Button {
-                        isShowingEdit = true
-                    } label: {
-                        avatarInToolbar
-                    }
-                    .accessibilityLabel("Upravit profil")
-                }
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button {
-                        isShowingSettings = true
-                    } label: {
-                        Label("Nastavení", systemImage: "gearshape")
-                    }
-                    .accessibilityLabel("Nastavení")
-                }
-                ToolbarItemGroup(placement: .bottomBar) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Label("Domů", systemImage: "house.fill")
-                    }
-                    .accessibilityLabel("Zpět na Domů")
-                    Spacer()
-                    Button {
-                        isShowingSettings = true
-                    } label: {
-                        Label("Nastavení", systemImage: "gearshape")
-                    }
-                }
-            }
-            .toolbar(.hidden, for: .tabBar)
-            .background {
-                NavigationLink(isActive: $isShowingSettings) {
-                    SettingsView()
-                        .navigationTitle("Nastavení")
-                        .navigationBarTitleDisplayMode(.inline)
-                } label: {
-                    EmptyView()
-                }
-                .hidden()
+        ScrollView {
+            VStack(spacing: 0) {
+                heroBand
+                contentSheet
             }
         }
-        // Sheets
+        .background(pageBackground)
+        .ignoresSafeArea(edges: .top)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                EmptyView()
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    isShowingSettings = true
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.body.weight(.medium))
+                }
+                .accessibilityLabel("Nastavení")
+            }
+        }
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar(.hidden, for: .tabBar)
+        .navigationDestination(isPresented: $isShowingSettings) {
+            SettingsView()
+                .navigationTitle("Nastavení")
+                .navigationBarTitleDisplayMode(.inline)
+        }
         .sheet(isPresented: $isShowingEdit) {
             NavigationStack {
                 EditProfilePlaceholderView(user: authState.currentUser)
@@ -80,7 +68,6 @@ struct ProfileView: View {
                     }
             }
         }
-        // Logout alert
         .alert("Opravdu se chcete odhlásit?", isPresented: $showLogoutConfirm) {
             Button("Zrušit", role: .cancel) { }
             Button("Odhlásit", role: .destructive) {
@@ -89,132 +76,358 @@ struct ProfileView: View {
         } message: {
             Text("Budete odhlášeni z vašeho účtu.")
         }
+        .onAppear {
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.86)) {
+                appeared = true
+            }
+        }
     }
 
-    // MARK: - Sections
+    // MARK: - Hero
 
-    private var accountSection: some View {
-        Section {
-            HStack(spacing: 12) {
-                smallAvatar
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(displayName)
-                        .font(.headline)
-                    if let username = authState.currentUser?.username, !username.isEmpty {
-                        Text("@\(username)")
-                            .foregroundStyle(.secondary)
-                            .font(.subheadline)
-                    } else if let email = authState.currentUser?.email, !email.isEmpty {
-                        Text(email)
-                            .foregroundStyle(.secondary)
-                            .font(.subheadline)
+    private var heroBand: some View {
+        ZStack(alignment: .bottom) {
+            heroGradient
+                .frame(height: 248)
+                .overlay(alignment: .topTrailing) {
+                    Circle()
+                        .fill(.white.opacity(0.08))
+                        .frame(width: 180, height: 180)
+                        .blur(radius: 2)
+                        .offset(x: 50, y: -30)
+                }
+                .overlay(alignment: .topLeading) {
+                    Circle()
+                        .fill(brandGold.opacity(0.18))
+                        .frame(width: 120, height: 120)
+                        .blur(radius: 18)
+                        .offset(x: -40, y: 40)
+                }
+
+            VStack(spacing: 10) {
+                Text(roleLabel.uppercased())
+                    .font(.caption.weight(.bold))
+                    .tracking(1.4)
+                    .foregroundStyle(.white.opacity(0.78))
+
+                Text(displayName)
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+                    .padding(.horizontal, 28)
+
+                if let subtitle = accountSubtitle {
+                    Text(subtitle)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.78))
+                }
+
+                Spacer(minLength: avatarOverlap + 8)
+            }
+            .padding(.top, 88)
+            .frame(maxWidth: .infinity)
+            .opacity(appeared ? 1 : 0)
+            .offset(y: appeared ? 0 : 18)
+        }
+        .overlay(alignment: .bottom) {
+            avatarView(size: avatarSize)
+                .overlay {
+                    Circle()
+                        .stroke(Color(uiColor: .systemBackground), lineWidth: 5)
+                }
+                .shadow(color: .black.opacity(0.18), radius: 18, x: 0, y: 8)
+                .scaleEffect(appeared ? 1 : 0.82)
+                .opacity(appeared ? 1 : 0)
+                .offset(y: avatarOverlap)
+                .accessibilityHidden(true)
+                .contextMenu {
+                    Button {
+                        isShowingEdit = true
+                    } label: {
+                        Label("Upravit profil", systemImage: "pencil")
                     }
                 }
-                Spacer()
-                Button("Upravit") { isShowingEdit = true }
-                    .buttonStyle(.bordered)
-            }
-            .padding(.vertical, 4)
-            .contextMenu {
-                Button {
-                    isShowingEdit = true
-                } label: {
-                    Label("Upravit profil", systemImage: "pencil")
-                }
-            }
-            .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                Button {
-                    isShowingEdit = true
-                } label: {
-                    Label("Upravit", systemImage: "pencil")
-                }
-            }
-        } header: {
-            Text("Účet")
         }
+        .zIndex(1)
     }
 
-    private var contactSection: some View {
-        Section("Kontakt") {
-            HStack {
-                Label("E‑mail", systemImage: "envelope")
-                    .labelStyle(.titleAndIcon)
-                Spacer()
-                Text(authState.currentUser?.email?.isEmpty == false ? (authState.currentUser?.email ?? "") : "Neznámý")
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-            }
-            HStack {
-                Label("Osobní číslo", systemImage: "person.text.rectangle")
-                    .labelStyle(.titleAndIcon)
-                Spacer()
-                Text(personalNumberDisplay)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-            }
-        }
+    private var heroGradient: some View {
+        LinearGradient(
+            colors: isManagerRole
+                ? [brandDeep, brandOrange, brandGold]
+                : [userSlate, userTeal.opacity(0.92), Color(red: 0.28, green: 0.58, blue: 0.55)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
     }
 
-    private var settingsLogoutSection: some View {
-        Section {
+    // MARK: - Content sheet
+
+    private var contentSheet: some View {
+        VStack(alignment: .leading, spacing: 28) {
+            identityMeta
+                .padding(.top, avatarOverlap + 18)
+
+            factsBlock
+
+            actionsBlock
+
+            logoutBlock
+        }
+        .padding(.horizontal, 22)
+        .padding(.bottom, 36)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            UnevenRoundedRectangle(
+                topLeadingRadius: 28,
+                bottomLeadingRadius: 0,
+                bottomTrailingRadius: 0,
+                topTrailingRadius: 28,
+                style: .continuous
+            )
+            .fill(Color(uiColor: .systemBackground))
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0.35 : 0.08), radius: 20, y: -4)
+            .ignoresSafeArea(edges: .bottom)
+        }
+        .opacity(appeared ? 1 : 0)
+        .offset(y: appeared ? 0 : 28)
+    }
+
+    private var identityMeta: some View {
+        HStack(spacing: 12) {
+            if let planLabel {
+                metaChip(planLabel)
+            }
             Button {
-                isShowingSettings = true
+                isShowingEdit = true
             } label: {
-                Label("Nastavení", systemImage: "gearshape")
-                    .labelStyle(.titleAndIcon)
+                Text("Upravit")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(accent)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(accent.opacity(0.12), in: Capsule())
             }
+            .buttonStyle(.plain)
 
-            Button(role: .destructive) {
-                showLogoutConfirm = true
-            } label: {
-                Label("Odhlásit se", systemImage: "rectangle.portrait.and.arrow.right")
-                    .labelStyle(.titleAndIcon)
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var factsBlock: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            sectionLabel("Údaje")
+
+            VStack(spacing: 0) {
+                factRow(title: "E‑mail", value: emailDisplay)
+                thinRule
+                factRow(title: "Osobní číslo", value: personalNumberDisplay)
+                if let username = authState.currentUser?.username, !username.isEmpty {
+                    thinRule
+                    factRow(title: "Uživatelské jméno", value: "@\(username)")
+                }
             }
         }
     }
 
-    // MARK: - Helpers
+    private var actionsBlock: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            sectionLabel("Možnosti")
 
-    private let toolbarLeadingAvatarSize: CGFloat = 30
+            VStack(spacing: 10) {
+                optionButton(
+                    title: "Nastavení",
+                    detail: "Vzhled, oznámení, soukromí",
+                    symbol: "slider.horizontal.3"
+                ) {
+                    isShowingSettings = true
+                }
 
-    private var avatarInToolbar: some View {
+                optionButton(
+                    title: "Upravit profil",
+                    detail: "Jméno, kontakt a foto",
+                    symbol: "person.text.rectangle"
+                ) {
+                    isShowingEdit = true
+                }
+            }
+        }
+    }
+
+    private var logoutBlock: some View {
+        Button {
+            showLogoutConfirm = true
+        } label: {
+            Text("Odhlásit se")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.red)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 4)
+    }
+
+    // MARK: - Pieces
+
+    private var pageBackground: some View {
+        ZStack {
+            heroGradient.ignoresSafeArea()
+            Color(uiColor: .systemBackground)
+                .ignoresSafeArea(edges: .bottom)
+                .padding(.top, 200)
+        }
+    }
+
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.caption.weight(.bold))
+            .tracking(0.8)
+            .foregroundStyle(.secondary)
+            .textCase(.uppercase)
+    }
+
+    private func metaChip(_ text: String) -> some View {
+        Text(text)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color(uiColor: .secondarySystemBackground), in: Capsule())
+    }
+
+    private func factRow(title: String, value: String) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .frame(width: 128, alignment: .leading)
+
+            Text(value)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.trailing)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .textSelection(.enabled)
+        }
+        .padding(.vertical, 12)
+    }
+
+    private var thinRule: some View {
+        Rectangle()
+            .fill(Color.primary.opacity(0.06))
+            .frame(height: 1)
+    }
+
+    private func optionButton(
+        title: String,
+        detail: String,
+        symbol: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: symbol)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(accent)
+                    .frame(width: 28)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 14)
+            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func avatarView(size: CGFloat) -> some View {
         Group {
             if let url = authState.currentUser?.profileImageURL {
                 AuthenticatedProfileImageView(
                     url: url,
                     token: authState.authToken,
-                    size: toolbarLeadingAvatarSize
+                    size: size
                 )
             } else {
-                Image(systemName: "person.circle.fill")
-                    .resizable()
-                    .scaledToFit()
-                    .foregroundStyle(.secondary)
-                    .frame(width: toolbarLeadingAvatarSize, height: toolbarLeadingAvatarSize)
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [accent.opacity(0.25), accent.opacity(0.1)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: size, height: size)
+                    .overlay {
+                        Text(initials)
+                            .font(.system(size: size * 0.34, weight: .bold, design: .rounded))
+                            .foregroundStyle(accent)
+                    }
             }
         }
-        .frame(width: 44, height: 44, alignment: .center)
-        .contentShape(Circle())
-        .accessibilityHidden(true)
     }
 
-    private var smallAvatar: some View {
-        Group {
-            if let url = authState.currentUser?.profileImageURL {
-                AuthenticatedProfileImageView(
-                    url: url,
-                    token: authState.authToken,
-                    size: 44
-                )
-            } else {
-                Image(systemName: "person.crop.circle.fill")
-                    .resizable()
-                    .scaledToFit()
-                    .foregroundStyle(.secondary)
-                    .frame(width: 44, height: 44)
-            }
+    // MARK: - Data
+
+    private var isManagerRole: Bool {
+        switch authState.currentRole {
+        case .manager: return true
+        case .user, .unknown:
+            let raw = authState.currentUser?.role?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            return raw == "manager" || raw == "admin"
         }
-        .accessibilityHidden(true)
+    }
+
+    private var accent: Color {
+        isManagerRole ? brandOrange : userTeal
+    }
+
+    private var roleLabel: String {
+        let raw = authState.currentUser?.role?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        switch raw {
+        case "manager": return "Manažer"
+        case "admin": return "Administrátor"
+        case "user", "employee": return "Uživatel"
+        default:
+            return isManagerRole ? "Manažer" : "Uživatel"
+        }
+    }
+
+    private var planLabel: String? {
+        guard let plan = authState.currentUser?.plan?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(),
+            !plan.isEmpty
+        else { return nil }
+
+        switch plan {
+        case "paid", "premium", "pro":
+            return "Placený plán"
+        case "free":
+            return "Free plán"
+        default:
+            return plan.capitalized
+        }
     }
 
     private var displayName: String {
@@ -229,6 +442,32 @@ struct ProfileView: View {
             return "@\(username)"
         }
         return "Uživatel"
+    }
+
+    private var accountSubtitle: String? {
+        if let username = authState.currentUser?.username, !username.isEmpty,
+           displayName != "@\(username)" {
+            return "@\(username)"
+        }
+        return nil
+    }
+
+    private var initials: String {
+        let parts = displayName
+            .replacingOccurrences(of: "@", with: "")
+            .split(separator: " ")
+            .prefix(2)
+        let letters = parts.compactMap { $0.first.map(String.init) }.joined()
+        if !letters.isEmpty {
+            return letters.uppercased()
+        }
+        return String(displayName.prefix(1)).uppercased()
+    }
+
+    private var emailDisplay: String {
+        let email = authState.currentUser?.email?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return email.isEmpty ? "Neuvedeno" : email
     }
 
     private var personalNumberDisplay: String {
@@ -257,7 +496,8 @@ private struct EditProfilePlaceholderView: View {
 }
 
 #Preview {
-    ProfileView()
-        .environmentObject(AuthState())
+    NavigationStack {
+        ProfileView()
+            .environmentObject(AuthState())
+    }
 }
-
