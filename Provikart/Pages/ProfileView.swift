@@ -192,23 +192,13 @@ struct ProfileView: View {
     }
 
     private var identityMeta: some View {
-        HStack(spacing: 12) {
+        Group {
             if let planLabel {
-                metaChip(planLabel)
+                HStack(spacing: 12) {
+                    metaChip(planLabel)
+                    Spacer(minLength: 0)
+                }
             }
-            Button {
-                isShowingEdit = true
-            } label: {
-                Text("Upravit")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(accent)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(accent.opacity(0.12), in: Capsule())
-            }
-            .buttonStyle(.plain)
-
-            Spacer(minLength: 0)
         }
     }
 
