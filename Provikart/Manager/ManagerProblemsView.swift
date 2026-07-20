@@ -869,6 +869,7 @@ private struct ManagerProblemsNavigationModifier: ViewModifier {
                         Image(systemName: "mappin.and.ellipse")
                     }
                     .accessibilityLabel("Lokality týmu")
+                    ManagerNotificationsBellButton()
                     ProfileBarButton()
                 }
             }

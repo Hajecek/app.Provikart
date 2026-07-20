@@ -53,11 +53,61 @@ final class ManagerPerformanceBadgeState: ObservableObject {
     }()
 }
 
+@MainActor
+final class ManagerNotificationsBadgeState: ObservableObject {
+    @Published var unreadCount: Int = 0
+
+    private let service = ManagerNotificationsService()
+    private var didLoad = false
+    private var pollingTask: Task<Void, Never>?
+
+    func refreshIfNeeded(token: String?) async {
+        guard !didLoad else { return }
+        await refresh(token: token)
+    }
+
+    func refresh(token: String?) async {
+        guard let token, !token.isEmpty else { return }
+        do {
+            // unread_count z API je celkový; limit 1 stačí pro badge.
+            let payload = try await service.fetchNotifications(token: token, limit: 1)
+            unreadCount = payload.unreadCount
+            didLoad = true
+        } catch {
+            // Badge necháme beze změny – detailní chyba se řeší v inboxu.
+        }
+    }
+
+    func update(unreadCount: Int) {
+        self.unreadCount = max(0, unreadCount)
+        didLoad = true
+    }
+
+    func startPolling(tokenProvider: @escaping () -> String?) {
+        pollingTask?.cancel()
+        pollingTask = Task { @MainActor in
+            await refresh(token: tokenProvider())
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                if Task.isCancelled { break }
+                await refresh(token: tokenProvider())
+            }
+        }
+    }
+
+    func stopPolling() {
+        pollingTask?.cancel()
+        pollingTask = nil
+    }
+}
+
 struct ManagerTabMenuView: View {
     @EnvironmentObject private var authState: AuthState
     @EnvironmentObject private var appLoginApprovalState: AppLoginApprovalState
     @StateObject private var reportIssueSheet = ManagerReportIssueSheetState()
+    @StateObject private var notificationsSheet = ManagerNotificationsSheetState()
     @StateObject private var performanceBadge = ManagerPerformanceBadgeState()
+    @StateObject private var notificationsBadge = ManagerNotificationsBadgeState()
     @State private var selectedTab: ManagerTabs = .problems
     @State private var problemsRefreshToken = UUID()
 
@@ -67,12 +117,16 @@ struct ManagerTabMenuView: View {
                 ManagerProblemsView(refreshToken: problemsRefreshToken)
                     .environmentObject(authState)
                     .environmentObject(reportIssueSheet)
+                    .environmentObject(notificationsSheet)
+                    .environmentObject(notificationsBadge)
             }
 
             Tab("Docházka", systemImage: "person.badge.clock", value: .attendance) {
                 ManagerAttendanceView()
                     .environmentObject(authState)
                     .environmentObject(reportIssueSheet)
+                    .environmentObject(notificationsSheet)
+                    .environmentObject(notificationsBadge)
             }
 
             Tab("Výkon", systemImage: "chart.bar", value: .performance) {
@@ -80,6 +134,8 @@ struct ManagerTabMenuView: View {
                     .environmentObject(authState)
                     .environmentObject(reportIssueSheet)
                     .environmentObject(performanceBadge)
+                    .environmentObject(notificationsSheet)
+                    .environmentObject(notificationsBadge)
             }
             .badge(performanceBadge.todayServicesCount > 0 ? performanceBadge.todayServicesCount : 0)
 
@@ -87,6 +143,8 @@ struct ManagerTabMenuView: View {
                 ManagerTeamProfilesView()
                     .environmentObject(authState)
                     .environmentObject(reportIssueSheet)
+                    .environmentObject(notificationsSheet)
+                    .environmentObject(notificationsBadge)
             }
 
             Tab("Nastavení", systemImage: "gearshape", value: .settings) {
@@ -109,9 +167,25 @@ struct ManagerTabMenuView: View {
             )
             .environmentObject(authState)
         }
+        .sheet(isPresented: $notificationsSheet.isPresented) {
+            ManagerNotificationsView()
+                .environmentObject(authState)
+                .environmentObject(notificationsBadge)
+        }
+        .onChange(of: notificationsSheet.isPresented) { _, isPresented in
+            if !isPresented {
+                Task {
+                    await notificationsBadge.refresh(token: authState.authToken)
+                }
+            }
+        }
         .modifier(LoginApprovalBottomAccessoryModifier(approvalState: appLoginApprovalState))
         .task {
             await performanceBadge.refreshIfNeeded(token: authState.authToken)
+            notificationsBadge.startPolling { [authState] in authState.authToken }
+        }
+        .onDisappear {
+            notificationsBadge.stopPolling()
         }
     }
 }

@@ -122,6 +122,7 @@ struct ManagerTeamProfilesView: View {
                         Image(systemName: "mappin.and.ellipse")
                     }
                     .accessibilityLabel("Lokality týmu")
+                    ManagerNotificationsBellButton()
                     ProfileBarButton()
                 }
             }
