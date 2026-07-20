@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UserNotifications
 
 enum ManagerTabs: Hashable {
     case problems
@@ -73,6 +74,7 @@ final class ManagerNotificationsBadgeState: ObservableObject {
             let payload = try await service.fetchNotifications(token: token, limit: 1)
             unreadCount = payload.unreadCount
             didLoad = true
+            await syncAppIconBadge()
         } catch {
             // Badge necháme beze změny – detailní chyba se řeší v inboxu.
         }
@@ -81,6 +83,7 @@ final class ManagerNotificationsBadgeState: ObservableObject {
     func update(unreadCount: Int) {
         self.unreadCount = max(0, unreadCount)
         didLoad = true
+        Task { await syncAppIconBadge() }
     }
 
     func startPolling(tokenProvider: @escaping () -> String?) {
@@ -98,6 +101,22 @@ final class ManagerNotificationsBadgeState: ObservableObject {
     func stopPolling() {
         pollingTask?.cancel()
         pollingTask = nil
+    }
+
+    /// Číslo na ikoně aplikace na ploše (stejné jako u zvonku).
+    private func syncAppIconBadge() async {
+        do {
+            try await UNUserNotificationCenter.current().setBadgeCount(max(0, unreadCount))
+        } catch {
+            // Bez oprávnění badge / systémová chyba – zvonek v appce dál funguje.
+        }
+    }
+
+    func clearAppIconBadge() {
+        unreadCount = 0
+        Task {
+            try? await UNUserNotificationCenter.current().setBadgeCount(0)
+        }
     }
 }
 
@@ -183,6 +202,11 @@ struct ManagerTabMenuView: View {
         .task {
             await performanceBadge.refreshIfNeeded(token: authState.authToken)
             notificationsBadge.startPolling { [authState] in authState.authToken }
+        }
+        .onChange(of: authState.isLoggedIn) { _, isLoggedIn in
+            if !isLoggedIn {
+                notificationsBadge.clearAppIconBadge()
+            }
         }
         .onDisappear {
             notificationsBadge.stopPolling()
