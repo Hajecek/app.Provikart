@@ -13,7 +13,6 @@ enum ManagerTabs: Hashable {
     case attendance
     case performance
     case team
-    case settings
 }
 
 @MainActor
@@ -203,13 +202,6 @@ struct ManagerTabMenuView: View {
                     .environmentObject(reportIssueSheet)
                     .environmentObject(notificationsSheet)
                     .environmentObject(notificationsBadge)
-            }
-
-            Tab("Nastavení", systemImage: "gearshape", value: .settings) {
-                NavigationStack {
-                    SettingsView()
-                        .environmentObject(authState)
-                }
             }
 
         }
