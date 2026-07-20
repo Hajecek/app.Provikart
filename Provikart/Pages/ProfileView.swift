@@ -10,7 +10,6 @@ import SwiftUI
 struct ProfileView: View {
     @EnvironmentObject private var authState: AuthState
     @Environment(\.colorScheme) private var colorScheme
-    @State private var isShowingSettings = false
     @State private var isShowingEdit = false
     @State private var showLogoutConfirm = false
     @State private var appeared = false
@@ -39,8 +38,10 @@ struct ProfileView: View {
                 EmptyView()
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    isShowingSettings = true
+                NavigationLink {
+                    SettingsView()
+                        .navigationTitle("Nastavení")
+                        .navigationBarTitleDisplayMode(.inline)
                 } label: {
                     Image(systemName: "gearshape")
                         .font(.body.weight(.medium))
@@ -51,11 +52,6 @@ struct ProfileView: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
-        .navigationDestination(isPresented: $isShowingSettings) {
-            SettingsView()
-                .navigationTitle("Nastavení")
-                .navigationBarTitleDisplayMode(.inline)
-        }
         .sheet(isPresented: $isShowingEdit) {
             NavigationStack {
                 EditProfilePlaceholderView(user: authState.currentUser)
@@ -237,21 +233,29 @@ struct ProfileView: View {
             sectionLabel("Možnosti")
 
             VStack(spacing: 10) {
-                optionButton(
-                    title: "Nastavení",
-                    detail: "Vzhled, oznámení, soukromí",
-                    symbol: "slider.horizontal.3"
-                ) {
-                    isShowingSettings = true
+                NavigationLink {
+                    SettingsView()
+                        .navigationTitle("Nastavení")
+                        .navigationBarTitleDisplayMode(.inline)
+                } label: {
+                    optionLabel(
+                        title: "Nastavení",
+                        detail: "Vzhled, oznámení, soukromí",
+                        symbol: "slider.horizontal.3"
+                    )
                 }
+                .buttonStyle(.plain)
 
-                optionButton(
-                    title: "Upravit profil",
-                    detail: "Jméno, kontakt a foto",
-                    symbol: "person.text.rectangle"
-                ) {
+                Button {
                     isShowingEdit = true
+                } label: {
+                    optionLabel(
+                        title: "Upravit profil",
+                        detail: "Jméno, kontakt a foto",
+                        symbol: "person.text.rectangle"
+                    )
                 }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -321,39 +325,35 @@ struct ProfileView: View {
             .frame(height: 1)
     }
 
-    private func optionButton(
+    private func optionLabel(
         title: String,
         detail: String,
-        symbol: String,
-        action: @escaping () -> Void
+        symbol: String
     ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 14) {
-                Image(systemName: symbol)
+        HStack(spacing: 14) {
+            Image(systemName: symbol)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(accent)
+                .frame(width: 28)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(accent)
-                    .frame(width: 28)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.primary)
-                    Text(detail)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer(minLength: 0)
-
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.primary)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 14)
-            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.tertiary)
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+        .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private func avatarView(size: CGFloat) -> some View {
