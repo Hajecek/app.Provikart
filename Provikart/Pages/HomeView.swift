@@ -122,6 +122,14 @@ struct HomeView: View {
                         Image(systemName: "chart.bar")
                     }
                     NavigationLink {
+                        CalendarView()
+                            .environmentObject(authState)
+                            .environment(\.openAddSheet, openAddSheet)
+                    } label: {
+                        Image(systemName: "calendar")
+                    }
+                    .accessibilityLabel("Kalendář")
+                    NavigationLink {
                         UserLocationUpdateView()
                             .environmentObject(authState)
                     } label: {

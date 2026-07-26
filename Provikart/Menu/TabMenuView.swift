@@ -9,7 +9,7 @@ import SwiftUI
 
 enum Tabs: Hashable {
     case home
-    case calendar
+    case localities
     case add
     case orders
     case problems
@@ -59,9 +59,12 @@ struct EmployeeTabMenuView: View {
                     .environment(\.openAddSheet, { showAddSheet = true })
             }
 
-            Tab("Kalendář", systemImage: "calendar", value: .calendar) {
-                CalendarView()
-                    .environment(\.openAddSheet, { showAddSheet = true })
+            Tab("Lokality", systemImage: "building.2", value: .localities) {
+                NavigationStack {
+                    UserSalesLocalitiesView()
+                        .environmentObject(authState)
+                        .environment(\.openAddSheet, { showAddSheet = true })
+                }
             }
 
             Tab("Přidat", systemImage: "plus", value: .add, role: .search) {
