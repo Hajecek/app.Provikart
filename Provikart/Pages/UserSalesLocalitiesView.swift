@@ -127,24 +127,17 @@ final class UserSalesLocalitiesViewModel: ObservableObject {
         token: String?,
         id: Int,
         fields: SalesLocalityUpdateFields
-    ) async -> SalesLocalityItem? {
+    ) async throws -> SalesLocalityItem {
         guard let token, !token.isEmpty else {
-            errorMessage = "Nejste přihlášeni."
-            return nil
+            throw UserSalesLocalitiesError.notAuthenticated
         }
-        do {
-            let result = try await service.updateLocality(token: token, id: id, fields: fields)
-            if !result.editableFields.isEmpty {
-                editableFields = result.editableFields
-            }
-            replaceItem(result.item)
-            infoMessage = "Uloženo."
-            return result.item
-        } catch {
-            if Self.isCancellation(error) { return nil }
-            errorMessage = error.localizedDescription
-            return nil
+        let result = try await service.updateLocality(token: token, id: id, fields: fields)
+        if !result.editableFields.isEmpty {
+            editableFields = result.editableFields
         }
+        replaceItem(result.item)
+        infoMessage = "Uloženo."
+        return result.item
     }
 
     private static func isCancellation(_ error: Error) -> Bool {
@@ -774,14 +767,43 @@ private struct SalesLocalityRow: View {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
+    private var houseNumberSuffix: String? {
+        if let popisne = item.cisloPopisne?.trimmingCharacters(in: .whitespacesAndNewlines), !popisne.isEmpty {
+            if let orientacni = item.cisloOrientacni?.trimmingCharacters(in: .whitespacesAndNewlines), !orientacni.isEmpty {
+                return "č.p. \(popisne)/\(orientacni)"
+            }
+            return "č.p. \(popisne)"
+        }
+        if let orientacni = item.cisloOrientacni?.trimmingCharacters(in: .whitespacesAndNewlines), !orientacni.isEmpty {
+            return "č.o. \(orientacni)"
+        }
+        if let house = item.houseNumberLabel {
+            return "č.p. \(house)"
+        }
+        return nil
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(streetLine)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(streetLine)
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(.primary)
+
+                        if let houseNumberSuffix {
+                            Text("|")
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+
+                            Text(houseNumberSuffix)
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
 
                     if let cityLine {
                         Text(cityLine)
@@ -795,32 +817,22 @@ private struct SalesLocalityRow: View {
                 statusBadge
             }
 
-            if item.cisloPopisne != nil || item.cisloOrientacni != nil || item.houseNumberLabel != nil {
-                HStack(spacing: 8) {
-                    if let popisne = item.cisloPopisne, !popisne.isEmpty {
-                        numberChip(title: "č.p.", value: popisne, tint: .orange)
-                    }
-                    if let orientacni = item.cisloOrientacni, !orientacni.isEmpty {
-                        numberChip(title: "č.o.", value: orientacni, tint: .blue)
-                    }
-                    if item.cisloPopisne == nil && item.cisloOrientacni == nil,
-                       let house = item.houseNumberLabel {
-                        numberChip(title: "č.", value: house, tint: .secondary)
-                    }
-                    Spacer(minLength: 0)
-                }
-            }
-
-            VStack(spacing: 10) {
-                balanceMetric(
-                    eyebrow: "Otevřené dveře · HP",
+            VStack(spacing: 6) {
+                metricProgressRow(
+                    title: "Dveře",
                     value: item.openedCount,
-                    detail: "\(item.openedCount) z \(item.hp) · \(String(format: "%.0f %%", item.computedOpenedPct))"
+                    total: item.hp,
+                    percent: item.computedOpenedPct,
+                    progress: item.openedProgress,
+                    tint: Color(red: 0.97, green: 0.58, blue: 0.12)
                 )
-                balanceMetric(
-                    eyebrow: "Penetrace · fiber",
+                metricProgressRow(
+                    title: "Penetrace",
                     value: item.fiberKs,
-                    detail: "\(item.fiberKs) z \(item.hp) · \(String(format: "%.0f %%", item.computedPenetrationPct))"
+                    total: item.hp,
+                    percent: item.computedPenetrationPct,
+                    progress: item.fiberProgress,
+                    tint: Color(red: 0.12, green: 0.62, blue: 0.72)
                 )
             }
         }
@@ -839,58 +851,43 @@ private struct SalesLocalityRow: View {
             )
     }
 
-    private func numberChip(title: String, value: String, tint: Color) -> some View {
-        HStack(spacing: 4) {
-            Text(title)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(tint)
-                .monospacedDigit()
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(tint.opacity(0.12), in: Capsule())
-    }
-
-    private func balanceMetric(
-        eyebrow: String,
+    private func metricProgressRow(
+        title: String,
         value: Int,
-        detail: String
+        total: Int,
+        percent: Double,
+        progress: Double,
+        tint: Color
     ) -> some View {
-        VStack(spacing: 8) {
-            Text(eyebrow)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
 
-            Text("\(value)")
-                .font(.system(size: 40, weight: .semibold, design: .rounded))
-                .monospacedDigit()
-                .foregroundStyle(.primary)
-                .contentTransition(.numericText())
-                .minimumScaleFactor(0.7)
-                .lineLimit(1)
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(tint.opacity(0.12))
+                        Capsule()
+                            .fill(tint.opacity(0.85))
+                            .frame(width: max(3, geo.size.width * progress))
+                    }
+                }
+                .frame(height: 4)
 
-            Text(detail)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
+                Text("\(value)/\(total)")
+                    .font(.caption2.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+
+                Text(String(format: "%.0f%%", percent))
+                    .font(.caption2.weight(.bold))
+                    .monospacedDigit()
+                    .foregroundStyle(tint)
+                    .frame(minWidth: 28, alignment: .trailing)
+            }
         }
-        .frame(maxWidth: .infinity, minHeight: 108)
-        .padding(.vertical, 14)
-        .padding(.horizontal, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.primary.opacity(0.04))
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.05), lineWidth: 1)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(eyebrow): \(detail)")
     }
 }
 
@@ -906,16 +903,17 @@ struct UserSalesLocalityDetailView: View {
     @State private var isDone: Bool
     @State private var noteText: String
     @State private var syncStatus: SyncStatus = .idle
-    @State private var saveError: String?
-    @State private var saveTask: Task<Void, Never>?
+    @State private var debounceTask: Task<Void, Never>?
+    @State private var savedResetTask: Task<Void, Never>?
     @State private var hasAppeared = false
+    @State private var isApplyingRemote = false
+    @State private var isSaveInFlight = false
+    @State private var saveAgainWhenDone = false
 
     private enum SyncStatus: Equatable {
         case idle
-        case pending
         case saving
         case saved
-        case error
     }
 
     init(item: SalesLocalityItem, viewModel: UserSalesLocalitiesViewModel) {
@@ -972,7 +970,7 @@ struct UserSalesLocalityDetailView: View {
                     LabeledContent("Penetrace", value: "\(item.fiberKs)")
                 }
             } footer: {
-                Text("Změny se ukládají automaticky.")
+                Text("Změny se ukládají automaticky po chvíli nečinnosti.")
             }
 
             Section {
@@ -1037,26 +1035,13 @@ struct UserSalesLocalityDetailView: View {
             }
         }
         .onAppear { hasAppeared = true }
-        .onChange(of: fiberValue) { _, _ in scheduleAutosave(delayMs: 350) }
-        .onChange(of: openedValue) { _, _ in scheduleAutosave(delayMs: 350) }
-        .onChange(of: isDone) { _, _ in scheduleAutosave(delayMs: 200) }
-        .onChange(of: noteText) { _, _ in scheduleAutosave(delayMs: 700) }
+        .onChange(of: fiberValue) { _, _ in markDirtyAndDebounce(ms: 650) }
+        .onChange(of: openedValue) { _, _ in markDirtyAndDebounce(ms: 650) }
+        .onChange(of: isDone) { _, _ in markDirtyAndDebounce(ms: 300) }
+        .onChange(of: noteText) { _, _ in markDirtyAndDebounce(ms: 900) }
         .onDisappear {
-            saveTask?.cancel()
-            // Dojede poslední neuložená změna bez debounce.
-            Task { await flushAutosave() }
-        }
-        .alert("Uložení selhalo", isPresented: Binding(
-            get: { saveError != nil },
-            set: { if !$0 { saveError = nil } }
-        )) {
-            Button("Zkusit znovu") {
-                saveError = nil
-                scheduleAutosave(delayMs: 0)
-            }
-            Button("OK", role: .cancel) { saveError = nil }
-        } message: {
-            Text(saveError ?? "")
+            debounceTask?.cancel()
+            Task { await saveNow() }
         }
     }
 
@@ -1065,94 +1050,166 @@ struct UserSalesLocalityDetailView: View {
         switch syncStatus {
         case .idle:
             EmptyView()
-        case .pending:
-            Image(systemName: "clock")
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("Čeká na uložení")
         case .saving:
             ProgressView()
                 .accessibilityLabel("Ukládám")
         case .saved:
-            Label("Uloženo", systemImage: "checkmark.circle.fill")
-                .labelStyle(.iconOnly)
+            Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(.green)
                 .accessibilityLabel("Uloženo")
-        case .error:
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-                .accessibilityLabel("Chyba ukládání")
         }
     }
 
-    private func scheduleAutosave(delayMs: UInt64) {
-        guard hasAppeared else { return }
-        guard pendingFields().hasChanges else {
-            if syncStatus == .pending { syncStatus = .idle }
-            return
-        }
+    private func markDirtyAndDebounce(ms: UInt64) {
+        guard hasAppeared, !isApplyingRemote else { return }
+        guard hasPendingChanges else { return }
 
-        syncStatus = .pending
-        saveTask?.cancel()
-        saveTask = Task {
-            if delayMs > 0 {
-                try? await Task.sleep(nanoseconds: delayMs * 1_000_000)
-            }
+        debounceTask?.cancel()
+        savedResetTask?.cancel()
+        debounceTask = Task {
+            try? await Task.sleep(nanoseconds: ms * 1_000_000)
             guard !Task.isCancelled else { return }
-            await flushAutosave()
+            await saveNow()
         }
     }
 
-    private func flushAutosave() async {
-        let fields = pendingFields()
-        guard fields.hasChanges else {
-            if syncStatus == .pending || syncStatus == .saving {
-                syncStatus = .idle
-            }
+    private var hasPendingChanges: Bool {
+        pendingFields().hasChanges
+    }
+
+    private func saveNow() async {
+        guard hasPendingChanges else {
+            if syncStatus == .saving { syncStatus = .idle }
             return
         }
 
-        syncStatus = .saving
-        saveError = nil
+        // Už běží request – po něm uložíme aktuální stav ještě jednou.
+        if isSaveInFlight {
+            saveAgainWhenDone = true
+            return
+        }
 
+        isSaveInFlight = true
+        defer { isSaveInFlight = false }
+
+        var shouldSaveAgain = false
+        syncStatus = .saving
+
+        let fields = pendingFields()
         let fiberSnapshot = fiberValue
         let openedSnapshot = openedValue
         let doneSnapshot = isDone
         let noteSnapshot = noteText
 
-        if let updated = await viewModel.updateLocality(
-            token: authState.authToken,
-            id: item.id,
-            fields: fields
-        ) {
-            // Nepřepisuj lokální stav, pokud uživatel mezitím znovu klikal.
-            item = updated
-            if fiberValue == fiberSnapshot { fiberValue = updated.fiberKs }
-            if openedValue == openedSnapshot { openedValue = updated.openedCount }
-            if isDone == doneSnapshot { isDone = updated.isDone }
-            if noteText == noteSnapshot { noteText = updated.note ?? "" }
-
-            if pendingFields().hasChanges {
-                syncStatus = .pending
-                scheduleAutosave(delayMs: 250)
-            } else {
-                syncStatus = .saved
-                UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        do {
+            let updated = try await viewModel.updateLocality(
+                token: authState.authToken,
+                id: item.id,
+                fields: fields
+            )
+            applyRemote(
+                updated,
+                fiberSnapshot: fiberSnapshot,
+                openedSnapshot: openedSnapshot,
+                doneSnapshot: doneSnapshot,
+                noteSnapshot: noteSnapshot
+            )
+            shouldSaveAgain = saveAgainWhenDone || hasPendingChanges
+            saveAgainWhenDone = false
+            if shouldSaveAgain {
+                // Jedno follow-up uložení finálního stavu po rychlém klikání.
+                let followUp = pendingFields()
+                if followUp.hasChanges {
+                    let followUpdated = try await viewModel.updateLocality(
+                        token: authState.authToken,
+                        id: item.id,
+                        fields: followUp
+                    )
+                    applyRemote(
+                        followUpdated,
+                        fiberSnapshot: fiberValue,
+                        openedSnapshot: openedValue,
+                        doneSnapshot: isDone,
+                        noteSnapshot: noteText
+                    )
+                }
             }
-        } else {
-            syncStatus = .error
-            saveError = viewModel.errorMessage ?? "Uložení selhalo."
-            viewModel.errorMessage = nil
+            showSavedThenIdle()
+        } catch is CancellationError {
+            syncStatus = .idle
+        } catch let error as URLError where error.code == .cancelled {
+            syncStatus = .idle
+        } catch {
+            // Jeden tichý retry, pak loading ukonči.
+            do {
+                try? await Task.sleep(nanoseconds: 450_000_000)
+                let retryFields = pendingFields()
+                guard retryFields.hasChanges else {
+                    syncStatus = .idle
+                    return
+                }
+                let updated = try await viewModel.updateLocality(
+                    token: authState.authToken,
+                    id: item.id,
+                    fields: retryFields
+                )
+                applyRemote(
+                    updated,
+                    fiberSnapshot: fiberValue,
+                    openedSnapshot: openedValue,
+                    doneSnapshot: isDone,
+                    noteSnapshot: noteText
+                )
+                showSavedThenIdle()
+            } catch {
+                syncStatus = .idle
+            }
+        }
+    }
+
+    private func applyRemote(
+        _ updated: SalesLocalityItem,
+        fiberSnapshot: Int,
+        openedSnapshot: Int,
+        doneSnapshot: Bool,
+        noteSnapshot: String
+    ) {
+        isApplyingRemote = true
+        defer { isApplyingRemote = false }
+
+        item = updated
+
+        // Přepiš lokál jen pokud uživatel mezitím neklikal dál.
+        if fiberValue == fiberSnapshot { fiberValue = updated.fiberKs }
+        if openedValue == openedSnapshot { openedValue = updated.openedCount }
+        if isDone == doneSnapshot { isDone = updated.isDone }
+        if noteText == noteSnapshot { noteText = updated.note ?? "" }
+    }
+
+    private func showSavedThenIdle() {
+        syncStatus = .saved
+        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        savedResetTask?.cancel()
+        savedResetTask = Task {
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            guard !Task.isCancelled else { return }
+            if syncStatus == .saved {
+                syncStatus = .idle
+            }
         }
     }
 
     private func pendingFields() -> SalesLocalityUpdateFields {
         var fields = SalesLocalityUpdateFields()
-        if viewModel.canEditFiber, fiberValue != item.fiberKs {
-            fields.fiberKs = max(0, fiberValue)
+
+        // Počítadla posílej vždy spolu – stabilnější vůči race na serveru.
+        let fiberChanged = viewModel.canEditFiber && fiberValue != item.fiberKs
+        let openedChanged = viewModel.canEditOpened && openedValue != item.openedCount
+        if fiberChanged || openedChanged {
+            if viewModel.canEditFiber { fields.fiberKs = max(0, fiberValue) }
+            if viewModel.canEditOpened { fields.openedCount = max(0, openedValue) }
         }
-        if viewModel.canEditOpened, openedValue != item.openedCount {
-            fields.openedCount = max(0, openedValue)
-        }
+
         if viewModel.canEditDone, isDone != item.isDone {
             fields.isDone = isDone
         }
