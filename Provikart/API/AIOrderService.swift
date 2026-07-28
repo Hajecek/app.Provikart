@@ -121,7 +121,7 @@ final class AIOrderService {
         body += "&token_api=\(token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
         request.httpBody = body.data(using: .utf8)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.authAwareData(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw AIOrderError.serverError(-1, "Neplatná odpověď")
         }
@@ -199,7 +199,7 @@ final class AIOrderService {
             print("[ProviKart AI] create_order_direct – body (náhled): \(short)")
         }
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.authAwareData(for: request)
 
         if let raw = String(data: data, encoding: .utf8) {
             print("[ProviKart AI] create_order_direct – odpověď serveru (HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)): \(raw.prefix(600))\(raw.count > 600 ? "…" : "")")

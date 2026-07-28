@@ -41,6 +41,32 @@ struct LoginView: View {
                         Text("Přihlášení")
                             .font(.largeTitle.bold())
 
+                        if let notice = authState.sessionExpiredNotice {
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: "lock.shield.fill")
+                                    .font(.body)
+                                    .foregroundStyle(Color.accentColor)
+                                    .padding(.top, 1)
+                                Text(notice)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.primary)
+                                    .multilineTextAlignment(.leading)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .padding(14)
+                            .frame(maxWidth: 320, alignment: .leading)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(Color.accentColor.opacity(0.12))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .strokeBorder(Color.accentColor.opacity(0.25), lineWidth: 1)
+                            )
+                            .padding(.horizontal, 8)
+                            .accessibilityLabel(notice)
+                        }
+
                         // Form
                         VStack(spacing: 14) {
                             TextField("E-mail nebo uživatelské jméno", text: $email)

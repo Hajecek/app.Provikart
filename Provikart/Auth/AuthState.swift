@@ -53,6 +53,12 @@ final class AuthState: ObservableObject {
         }
     }
 
+    /// Zpráva na LoginView po vynuceném odhlášení kvůli vypršení relace (ne při ručním odhlášení).
+    @Published private(set) var sessionExpiredNotice: String?
+
+    static let sessionExpiredNoticeText =
+        "Z bezpečnostních důvodů je potřeba se jednou za čas znovu přihlásit. Vaše relace vypršela."
+
     init() {
         self.isLoggedIn = UserDefaults.standard.bool(forKey: key)
         if let data = UserDefaults.standard.data(forKey: userKey),
@@ -65,9 +71,17 @@ final class AuthState: ObservableObject {
         if let user = currentUser {
             WidgetDataStore.saveUserRole(UserRole(apiValue: user.role))
         }
+        // Rozbitá session (přihlášen bez tokenu) → rovnou login, ne FreeEntry.
+        if isLoggedIn, authToken?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true {
+            isLoggedIn = false
+            sessionExpiredNotice = Self.sessionExpiredNoticeText
+        }
     }
 
     func setLoggedIn(_ value: Bool, user: UserInfo? = nil, token: String? = nil) {
+        if value {
+            sessionExpiredNotice = nil
+        }
         isLoggedIn = value
         if let user = user {
             currentUser = user
@@ -83,7 +97,20 @@ final class AuthState: ObservableObject {
     }
 
     func logOut() {
+        sessionExpiredNotice = nil
         setLoggedIn(false)
+    }
+
+    /// Odhlásí jen při potvrzené neplatné session (401 / Forbidden), ne při výpadku sítě.
+    func invalidateSessionDueToAuthFailure() {
+        guard isLoggedIn || !(authToken?.isEmpty ?? true) else { return }
+        print("[AuthState] Session neplatná – přesměrování na přihlášení")
+        sessionExpiredNotice = Self.sessionExpiredNoticeText
+        setLoggedIn(false)
+    }
+
+    func clearSessionExpiredNotice() {
+        sessionExpiredNotice = nil
     }
 
     /// Aktualizuje uloženého uživatele (např. po načtení profilu/plánu ze serveru).

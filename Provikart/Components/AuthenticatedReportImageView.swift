@@ -31,7 +31,7 @@ enum ReportAttachmentImageLoader {
         }
 
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await URLSession.shared.authAwareData(for: request)
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
                 return nil
             }

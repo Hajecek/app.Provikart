@@ -42,7 +42,7 @@ final class AppLoginRequestService {
         }
         request.httpBody = try JSONEncoder().encode(["username": username])
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.authAwareData(for: request)
 
         guard let http = response as? HTTPURLResponse else {
             return []
@@ -84,7 +84,7 @@ final class AppLoginRequestService {
             "token": cleanToken
         ])
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.authAwareData(for: request)
 
         guard let http = response as? HTTPURLResponse else {
             throw AppLoginError.serverError("Neplatná odpověď")

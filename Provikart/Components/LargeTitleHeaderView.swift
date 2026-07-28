@@ -75,7 +75,7 @@ struct AuthenticatedProfileImageView: View {
             }
             print("[Avatar] Načítám: \(requestURL.absoluteString.prefix(80))…, token: \(token != nil ? "ano" : "ne")")
             do {
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await URLSession.shared.authAwareData(for: request)
                 let http = response as? HTTPURLResponse
                 let code = http?.statusCode ?? -1
                 if (200...299).contains(code), let img = UIImage(data: data) {

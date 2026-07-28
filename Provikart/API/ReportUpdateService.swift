@@ -99,7 +99,7 @@ final class ReportUpdateService {
         request.httpBody = bodyData
         request.timeoutInterval = 90
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.authAwareData(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw ReportUpdateError.serverError(-1, "Neplatná odpověď")
         }
@@ -142,7 +142,7 @@ final class ReportUpdateService {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.authAwareData(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw ReportUpdateError.serverError(-1, "Neplatná odpověď")
         }
@@ -186,7 +186,7 @@ final class ReportUpdateService {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.authAwareData(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw ReportUpdateError.serverError(-1, "Neplatná odpověď")
         }

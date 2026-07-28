@@ -20,37 +20,26 @@ struct ContentView: View {
         Group {
             if networkMonitor.isOffline {
                 OfflineView()
-            } else if authState.authToken == nil {
-                FreeEntryView()
             } else {
                 TabMenuView()
+            }
+        }
+        .onAppear {
+            enforceValidSessionOrLogout()
+            if let username = authState.currentUser?.username {
+                appLoginApprovalState.startPolling(username: username, token: authState.authToken, interval: 2)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .provikartAuthSessionInvalidated)) { _ in
+            Task { @MainActor in
+                authState.invalidateSessionDueToAuthFailure()
             }
         }
         .task(priority: .background) {
             guard authState.isLoggedIn else { return }
             while !Task.isCancelled {
-                let token = await MainActor.run { authState.authToken ?? "" }
-                if token.isEmpty {
-                    print("[Profil] Kontrola (každých 5 s): žádný token, přihlaste se")
-                } else {
-                    do {
-                        if let user = try await authService.fetchCurrentUser(token: token) {
-                            await MainActor.run {
-                                authState.refreshCurrentUser(user)
-                            }
-                        } else {
-                            print("[Profil] Kontrola (každých 5 s): server nevrátil uživatele (401 nebo prázdná odpověď)")
-                        }
-                    } catch {
-                        print("[Profil] Kontrola (každých 5 s): chyba – \(error.localizedDescription)")
-                    }
-                }
+                await validateSessionQuietly()
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
-            }
-        }
-        .onAppear {
-            if let username = authState.currentUser?.username {
-                appLoginApprovalState.startPolling(username: username, token: authState.authToken, interval: 2)
             }
         }
         .onDisappear {
@@ -73,6 +62,38 @@ struct ContentView: View {
             if newPhase == .active, authState.isLoggedIn, let token = authState.authToken, !token.isEmpty {
                 Task { await refreshWidgetsAndLiveActivity(token: token) }
             }
+        }
+        .onChange(of: authState.authToken) { _, token in
+            if authState.isLoggedIn, token?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true {
+                authState.invalidateSessionDueToAuthFailure()
+            }
+        }
+    }
+
+    private func enforceValidSessionOrLogout() {
+        let token = authState.authToken?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if authState.isLoggedIn, token.isEmpty {
+            authState.invalidateSessionDueToAuthFailure()
+        }
+    }
+
+    /// Periodická kontrola tokenu. Odhlásí jen při 401/Forbidden, ne při výpadku sítě.
+    private func validateSessionQuietly() async {
+        let token = await MainActor.run { authState.authToken ?? "" }
+        if token.isEmpty {
+            await MainActor.run { authState.invalidateSessionDueToAuthFailure() }
+            return
+        }
+        do {
+            if let user = try await authService.fetchCurrentUser(token: token) {
+                await MainActor.run {
+                    authState.refreshCurrentUser(user)
+                }
+            }
+            // nil bez throw = AuthService už mohl invalidovat přes AuthSession; případně tiše přeskoč.
+        } catch {
+            // Síťová chyba – neodhlašovat.
+            print("[Profil] Kontrola session: \(error.localizedDescription)")
         }
     }
 

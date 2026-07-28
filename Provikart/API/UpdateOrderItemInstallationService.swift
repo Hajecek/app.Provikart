@@ -57,7 +57,7 @@ final class UpdateOrderItemInstallationService {
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.authAwareData(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw UpdateOrderItemInstallationError.serverError(-1, "Neplatná odpověď")
         }

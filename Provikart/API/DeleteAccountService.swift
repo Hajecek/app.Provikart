@@ -49,7 +49,7 @@ final class DeleteAccountService {
         let body: [String: String] = ["token_api": token]
         request.httpBody = try JSONEncoder().encode(body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.authAwareData(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw DeleteAccountError.serverError(-1, "Neplatná odpověď")
         }

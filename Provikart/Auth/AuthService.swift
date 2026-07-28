@@ -265,7 +265,7 @@ final class AuthService {
         request.httpBody = "token=\(token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")".data(using: .utf8)
 
         print("[AuthService] /auth/me – POST token=***")
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.authAwareData(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw AuthError.serverError("Neplatná odpověď serveru")
         }
@@ -289,6 +289,7 @@ final class AuthService {
             }
             return nil
         case 401:
+            // authAwareData už poslalo invalidaci session → LoginView
             print("[AuthService] /auth/me – HTTP 401 (neplatný/vypršený token). Tělo: \(bodyPreview)")
             return nil
         default:
