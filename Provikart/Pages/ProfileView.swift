@@ -223,6 +223,20 @@ struct ProfileView: View {
             sectionLabel("Možnosti")
 
             VStack(spacing: 10) {
+                if isManagerRole {
+                    NavigationLink {
+                        ManagerTeamProfilesView()
+                            .environmentObject(authState)
+                    } label: {
+                        optionLabel(
+                            title: "Tým",
+                            detail: "Profily členů týmu",
+                            symbol: "person.3"
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+
                 NavigationLink {
                     SettingsView()
                         .navigationTitle("Nastavení")

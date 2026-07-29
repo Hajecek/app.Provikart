@@ -14,8 +14,14 @@ struct LoginView: View {
     @State private var password: String = ""
     @State private var isLoading: Bool = false
     @State private var errorMessage: String?
+    @State private var showUnsupportedRoleAlert = false
 
     private let authService = AuthService()
+
+    private var showSessionExpiredBanner: Bool {
+        guard let notice = authState.sessionExpiredNotice else { return false }
+        return notice != AuthState.unsupportedRoleNoticeText
+    }
 
     var body: some View {
         NavigationStack {
@@ -30,7 +36,6 @@ struct LoginView: View {
                         .frame(maxHeight: .infinity)
 
                     VStack(spacing: 20) {
-                        // Logo / Branding
                         Image(colorScheme == .dark ? "logo" : "logo")
                             .resizable()
                             .scaledToFit()
@@ -41,7 +46,7 @@ struct LoginView: View {
                         Text("Přihlášení")
                             .font(.largeTitle.bold())
 
-                        if let notice = authState.sessionExpiredNotice {
+                        if showSessionExpiredBanner, let notice = authState.sessionExpiredNotice {
                             HStack(alignment: .top, spacing: 10) {
                                 Image(systemName: "lock.shield.fill")
                                     .font(.body)
@@ -67,7 +72,6 @@ struct LoginView: View {
                             .accessibilityLabel(notice)
                         }
 
-                        // Form
                         VStack(spacing: 14) {
                             TextField("E-mail nebo uživatelské jméno", text: $email)
                                 .textContentType(.username)
@@ -142,7 +146,25 @@ struct LoginView: View {
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
+            .alert("Chybí oprávnění", isPresented: $showUnsupportedRoleAlert) {
+                Button("OK", role: .cancel) {
+                    authState.clearSessionExpiredNotice()
+                }
+            } message: {
+                Text("Tomuto uživateli nebyla přidána oprávnění pro mobilní aplikaci.\n\nPokud si myslíte, že jde o chybu, kontaktujte administrátora.")
+            }
+            .onAppear {
+                presentUnsupportedRoleAlertIfNeeded()
+            }
+            .onChange(of: authState.sessionExpiredNotice) { _, _ in
+                presentUnsupportedRoleAlertIfNeeded()
+            }
         }
+    }
+
+    private func presentUnsupportedRoleAlertIfNeeded() {
+        guard authState.sessionExpiredNotice == AuthState.unsupportedRoleNoticeText else { return }
+        showUnsupportedRoleAlert = true
     }
 
     private func performLogin() {
@@ -165,6 +187,17 @@ struct LoginView: View {
                     print("[Login] Token: \(response.token ?? "—")")
                     if response.user == nil {
                         print("[Login] Uživatel: (API nevrátilo objekt user)")
+                    }
+                }
+            } catch let error as AuthError {
+                await MainActor.run {
+                    isLoading = false
+                    if case .unsupportedRole = error {
+                        showUnsupportedRoleAlert = true
+                        print("[Login] Nepodporovaná role")
+                    } else {
+                        errorMessage = error.localizedDescription
+                        print("[Login] Chyba: \(error.localizedDescription)")
                     }
                 }
             } catch {

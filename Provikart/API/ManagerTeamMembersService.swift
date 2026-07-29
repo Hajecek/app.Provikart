@@ -159,3 +159,34 @@ final class ManagerTeamMembersService {
         }
     }
 }
+
+extension ManagerTeamMember {
+    var profileImageURL: URL? {
+        guard let name = profile_image?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
+            return nil
+        }
+        let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name
+        return URL(string: "https://provikart.cz/auth/serve_image?file=\(encoded)")
+    }
+
+    var displayName: String {
+        if let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            return name
+        }
+        let parts = [firstname, lastname]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        if !parts.isEmpty { return parts.joined(separator: " ") }
+        if let username = username?.trimmingCharacters(in: .whitespacesAndNewlines), !username.isEmpty {
+            return username
+        }
+        return "Uživatel #\(id)"
+    }
+
+    var initials: String {
+        let parts = displayName.split(separator: " ").prefix(2)
+        let letters = parts.compactMap { $0.first.map(String.init) }.joined()
+        if !letters.isEmpty { return letters.uppercased() }
+        return String(displayName.prefix(1)).uppercased()
+    }
+}

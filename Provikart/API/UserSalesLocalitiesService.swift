@@ -237,12 +237,16 @@ struct SalesLocalityStats: Decodable, Equatable {
     let openedPct: Double
     let done: Int
     let open: Int
+    let assignedSales: Int
+    let unassignedSales: Int
 
     enum CodingKeys: String, CodingKey {
         case total, hp, opened, done, open
         case fiberKs = "fiber_ks"
         case penetrationPct = "penetration_pct"
         case openedPct = "opened_pct"
+        case assignedSales = "assigned_sales"
+        case unassignedSales = "unassigned_sales"
     }
 
     init(from decoder: Decoder) throws {
@@ -255,14 +259,28 @@ struct SalesLocalityStats: Decodable, Equatable {
         open = c.decodeFlexibleInt(forKey: .open) ?? 0
         penetrationPct = c.decodeFlexibleDouble(forKey: .penetrationPct) ?? 0
         openedPct = c.decodeFlexibleDouble(forKey: .openedPct) ?? 0
+        assignedSales = c.decodeFlexibleInt(forKey: .assignedSales) ?? 0
+        unassignedSales = c.decodeFlexibleInt(forKey: .unassignedSales) ?? 0
     }
 
     static let empty = SalesLocalityStats(
         total: 0, hp: 0, fiberKs: 0, opened: 0,
-        penetrationPct: 0, openedPct: 0, done: 0, open: 0
+        penetrationPct: 0, openedPct: 0, done: 0, open: 0,
+        assignedSales: 0, unassignedSales: 0
     )
 
-    init(total: Int, hp: Int, fiberKs: Int, opened: Int, penetrationPct: Double, openedPct: Double, done: Int, open: Int) {
+    init(
+        total: Int,
+        hp: Int,
+        fiberKs: Int,
+        opened: Int,
+        penetrationPct: Double,
+        openedPct: Double,
+        done: Int,
+        open: Int,
+        assignedSales: Int = 0,
+        unassignedSales: Int = 0
+    ) {
         self.total = total
         self.hp = hp
         self.fiberKs = fiberKs
@@ -271,6 +289,8 @@ struct SalesLocalityStats: Decodable, Equatable {
         self.openedPct = openedPct
         self.done = done
         self.open = open
+        self.assignedSales = assignedSales
+        self.unassignedSales = unassignedSales
     }
 }
 
@@ -319,6 +339,9 @@ struct SalesLocalityUpdateFields {
     var email: String?
     var telefon: String?
     var d2d: Bool?
+    var hp: Int?
+    /// `nil` = neposílat; `0` = odebrat obchodníka; `>0` = přiřadit.
+    var salesUserId: Int?
 
     var asDictionary: [String: Any] {
         var body: [String: Any] = [:]
@@ -330,6 +353,10 @@ struct SalesLocalityUpdateFields {
         if let email { body["email"] = email }
         if let telefon { body["telefon"] = telefon }
         if let d2d { body["d2d"] = d2d ? 1 : 0 }
+        if let hp { body["hp"] = hp }
+        if let salesUserId {
+            body["sales_user_id"] = salesUserId > 0 ? salesUserId : NSNull()
+        }
         return body
     }
 

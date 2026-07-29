@@ -22,4 +22,14 @@ enum UserRole: String {
             self = .unknown
         }
     }
+
+    /// Role, které mobilní aplikace umí obsloužit.
+    var isSupportedInApp: Bool {
+        switch self {
+        case .manager, .user:
+            return true
+        case .unknown:
+            return false
+        }
+    }
 }

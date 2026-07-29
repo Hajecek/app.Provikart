@@ -11,7 +11,7 @@ enum ManagerTabs: Hashable {
     case problems
     case attendance
     case performance
-    case team
+    case localities
 }
 
 @MainActor
@@ -169,8 +169,8 @@ struct ManagerTabMenuView: View {
             }
             .badge(performanceBadge.todayServicesCount > 0 ? performanceBadge.todayServicesCount : 0)
 
-            Tab("Tým", systemImage: "person.3", value: .team) {
-                ManagerTeamProfilesView()
+            Tab("Lokality", systemImage: "building.2", value: .localities) {
+                ManagerSalesLocalitiesView()
                     .environmentObject(authState)
                     .environmentObject(reportIssueSheet)
                     .environmentObject(notificationsSheet)

@@ -1225,7 +1225,7 @@ struct UserSalesLocalityDetailView: View {
 
 // MARK: - Počítadlo penetrace / dveří
 
-private enum PenetrationCounterTheme {
+enum PenetrationCounterTheme {
     case doors
     case fiber
 
@@ -1257,7 +1257,7 @@ private enum PenetrationCounterTheme {
     }
 }
 
-private struct PenetrationCounterCard: View {
+struct PenetrationCounterCard: View {
     let title: String
     let unitLabel: String
     let icon: String

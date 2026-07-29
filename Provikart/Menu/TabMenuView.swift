@@ -36,10 +36,14 @@ struct TabMenuView: View {
             ManagerTabMenuView()
                 .environmentObject(authState)
                 .environmentObject(appLoginApprovalState)
-        case .user, .unknown:
+        case .user:
             EmployeeTabMenuView()
                 .environmentObject(authState)
                 .environmentObject(appLoginApprovalState)
+        case .unknown:
+            // Nemělo by nastat – nepodporované role se odmítají při přihlášení.
+            UnsupportedRoleView()
+                .environmentObject(authState)
         }
     }
 }
@@ -119,4 +123,21 @@ struct EmployeeTabMenuView: View {
     TabMenuView()
         .environmentObject(AuthState())
         .environmentObject(AppLoginApprovalState())
+}
+
+private struct UnsupportedRoleView: View {
+    @EnvironmentObject private var authState: AuthState
+
+    var body: some View {
+        ContentUnavailableView {
+            Label("Chybí oprávnění", systemImage: "lock.shield")
+        } description: {
+            Text(AuthState.unsupportedRoleNoticeText)
+        } actions: {
+            Button("Odhlásit se") {
+                authState.logOut()
+            }
+            .buttonStyle(.borderedProminent)
+        }
+    }
 }

@@ -59,6 +59,9 @@ final class AuthState: ObservableObject {
     static let sessionExpiredNoticeText =
         "Z bezpečnostních důvodů je potřeba se jednou za čas znovu přihlásit. Vaše relace vypršela."
 
+    static let unsupportedRoleNoticeText =
+        "Tomuto uživateli nebyla přidána oprávnění pro mobilní aplikaci."
+
     init() {
         self.isLoggedIn = UserDefaults.standard.bool(forKey: key)
         if let data = UserDefaults.standard.data(forKey: userKey),
@@ -75,11 +78,23 @@ final class AuthState: ObservableObject {
         if isLoggedIn, authToken?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true {
             isLoggedIn = false
             sessionExpiredNotice = Self.sessionExpiredNoticeText
+        } else if isLoggedIn, !UserRole(apiValue: currentUser?.role).isSupportedInApp {
+            // Uložená role, kterou appka neumí (např. national_manager).
+            isLoggedIn = false
+            sessionExpiredNotice = Self.unsupportedRoleNoticeText
         }
     }
 
     func setLoggedIn(_ value: Bool, user: UserInfo? = nil, token: String? = nil) {
         if value {
+            if let user, !UserRole(apiValue: user.role).isSupportedInApp {
+                sessionExpiredNotice = Self.unsupportedRoleNoticeText
+                isLoggedIn = false
+                currentUser = nil
+                authToken = nil
+                print("[AuthState] Odmítnuto přihlášení – nepodporovaná role: \(user.role ?? "nil")")
+                return
+            }
             sessionExpiredNotice = nil
         }
         isLoggedIn = value
@@ -122,5 +137,11 @@ final class AuthState: ObservableObject {
             currentUser = user
         }
         currentUser?.logToConsole()
+
+        if !UserRole(apiValue: currentUser?.role).isSupportedInApp {
+            print("[AuthState] Role po obnovení profilu není podporovaná: \(currentUser?.role ?? "nil")")
+            sessionExpiredNotice = Self.unsupportedRoleNoticeText
+            setLoggedIn(false)
+        }
     }
 }

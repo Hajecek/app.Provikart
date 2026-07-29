@@ -92,6 +92,7 @@ private struct APIErrorResponse: Decodable {
 enum AuthError: LocalizedError {
     case invalidURL
     case invalidCredentials
+    case unsupportedRole(String?)
     case serverError(String)
     case decodingError
 
@@ -99,6 +100,8 @@ enum AuthError: LocalizedError {
         switch self {
         case .invalidURL: return "Neplatná URL adresa"
         case .invalidCredentials: return "Nesprávný e-mail nebo heslo"
+        case .unsupportedRole:
+            return "Tomuto uživateli nebyla přidána oprávnění pro mobilní aplikaci."
         case .serverError(let message): return message
         case .decodingError: return "Chyba při zpracování odpovědi"
         }
@@ -134,7 +137,11 @@ final class AuthService {
         switch httpResponse.statusCode {
         case 200...299:
             do {
-                return try JSONDecoder().decode(LoginResponse.self, from: data)
+                let response = try JSONDecoder().decode(LoginResponse.self, from: data)
+                try Self.validateSupportedRole(response.user?.role)
+                return response
+            } catch let error as AuthError {
+                throw error
             } catch {
                 throw AuthError.decodingError
             }
@@ -177,7 +184,11 @@ final class AuthService {
         switch httpResponse.statusCode {
         case 200...299:
             do {
-                return try JSONDecoder().decode(LoginResponse.self, from: data)
+                let response = try JSONDecoder().decode(LoginResponse.self, from: data)
+                try Self.validateSupportedRole(response.user?.role)
+                return response
+            } catch let error as AuthError {
+                throw error
             } catch {
                 throw AuthError.decodingError
             }
@@ -195,6 +206,16 @@ final class AuthService {
                 throw AuthError.serverError("Chyba serveru (\(httpResponse.statusCode)). Zkuste to později nebo kontaktujte podporu.")
             }
             throw AuthError.serverError("Chyba serveru (\(httpResponse.statusCode)). Zkuste to později.")
+        }
+    }
+
+    /// Mobilní appka podporuje jen role manager / user (obchodník).
+    private static func validateSupportedRole(_ rawRole: String?) throws {
+        let role = UserRole(apiValue: rawRole)
+        guard role.isSupportedInApp else {
+            let trimmed = rawRole?.trimmingCharacters(in: .whitespacesAndNewlines)
+            print("[AuthService] Nepodporovaná role pro appku: \(trimmed ?? "nil")")
+            throw AuthError.unsupportedRole(trimmed)
         }
     }
 

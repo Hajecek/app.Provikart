@@ -125,16 +125,6 @@ private enum ManagerLocationFilter: String, CaseIterable, Identifiable {
     }
 }
 
-private extension ManagerTeamMember {
-    var profileImageURL: URL? {
-        guard let name = profile_image?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
-            return nil
-        }
-        let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name
-        return URL(string: "https://provikart.cz/auth/serve_image?file=\(encoded)")
-    }
-}
-
 @MainActor
 final class ManagerLocationsViewModel: ObservableObject {
     @Published var selectedDate: Date = Date()

@@ -98,49 +98,44 @@ struct ManagerTeamProfilesView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if viewModel.isLoading && viewModel.profiles.isEmpty {
-                    loadingView
-                } else if let message = viewModel.errorMessage, viewModel.profiles.isEmpty {
-                    errorView(message)
-                } else if viewModel.profiles.isEmpty {
-                    emptyTeamView
-                } else {
-                    mainContent
+        Group {
+            if viewModel.isLoading && viewModel.profiles.isEmpty {
+                loadingView
+            } else if let message = viewModel.errorMessage, viewModel.profiles.isEmpty {
+                errorView(message)
+            } else if viewModel.profiles.isEmpty {
+                emptyTeamView
+            } else {
+                mainContent
+            }
+        }
+        .background { ManagerScreenBackground() }
+        .navigationTitle("Tým")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    isLocationsSheetPresented = true
+                } label: {
+                    Image(systemName: "mappin.and.ellipse")
                 }
+                .accessibilityLabel("Lokality týmu")
             }
-            .background { ManagerScreenBackground() }
-            .navigationTitle("Tým")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    ManagerAddReportToolbarButton()
-                    Button {
-                        isLocationsSheetPresented = true
-                    } label: {
-                        Image(systemName: "mappin.and.ellipse")
-                    }
-                    .accessibilityLabel("Lokality týmu")
-                    ManagerNotificationsBellButton()
-                    ProfileBarButton()
-                }
-            }
-            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Hledat člena týmu")
-            .navigationDestination(item: $selectedProfile) { profile in
-                ManagerTeamProfileDetailView(profileID: profile.id, preview: profile)
-                    .environmentObject(authState)
-            }
-            .sheet(isPresented: $isLocationsSheetPresented) {
-                ManagerLocationsSheetView()
-                    .environmentObject(authState)
-            }
-            .refreshable {
-                await viewModel.loadProfiles(token: authState.authToken, currentUserId: authState.currentUser?.id)
-            }
-            .task {
-                await viewModel.loadProfiles(token: authState.authToken, currentUserId: authState.currentUser?.id)
-            }
+        }
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Hledat člena týmu")
+        .navigationDestination(item: $selectedProfile) { profile in
+            ManagerTeamProfileDetailView(profileID: profile.id, preview: profile)
+                .environmentObject(authState)
+        }
+        .sheet(isPresented: $isLocationsSheetPresented) {
+            ManagerLocationsSheetView()
+                .environmentObject(authState)
+        }
+        .refreshable {
+            await viewModel.loadProfiles(token: authState.authToken, currentUserId: authState.currentUser?.id)
+        }
+        .task {
+            await viewModel.loadProfiles(token: authState.authToken, currentUserId: authState.currentUser?.id)
         }
     }
 
