@@ -20,6 +20,8 @@ final class ManagerPerformanceBadgeState: ObservableObject {
 
     private let service = ManagerTeamPerformanceService()
     private var didLoad = false
+    private var pollingTask: Task<Void, Never>?
+    private var tokenProvider: (() -> String?)?
 
     func refreshIfNeeded(token: String?) async {
         guard !didLoad else { return }
@@ -41,6 +43,29 @@ final class ManagerPerformanceBadgeState: ObservableObject {
     func update(todayServicesCount: Int) {
         self.todayServicesCount = todayServicesCount
         didLoad = true
+    }
+
+    func startPolling(tokenProvider: @escaping () -> String?) {
+        self.tokenProvider = tokenProvider
+        pollingTask?.cancel()
+        pollingTask = Task { @MainActor in
+            await refresh(token: tokenProvider())
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                if Task.isCancelled { break }
+                await refresh(token: tokenProvider())
+            }
+        }
+    }
+
+    func stopPolling() {
+        pollingTask?.cancel()
+        pollingTask = nil
+    }
+
+    func reset() {
+        todayServicesCount = 0
+        didLoad = false
     }
 
     private static let monthFormatter: DateFormatter = {
@@ -204,15 +229,17 @@ struct ManagerTabMenuView: View {
         }
         .modifier(LoginApprovalBottomAccessoryModifier(approvalState: appLoginApprovalState))
         .task {
-            await performanceBadge.refreshIfNeeded(token: authState.authToken)
+            performanceBadge.startPolling { [authState] in authState.authToken }
             notificationsBadge.startPolling { [authState] in authState.authToken }
         }
         .onChange(of: authState.isLoggedIn) { _, isLoggedIn in
             if !isLoggedIn {
+                performanceBadge.reset()
                 notificationsBadge.reset()
             }
         }
         .onDisappear {
+            performanceBadge.stopPolling()
             notificationsBadge.stopPolling()
         }
     }
