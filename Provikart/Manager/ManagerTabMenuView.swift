@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import UserNotifications
 
 enum ManagerTabs: Hashable {
     case problems
@@ -61,7 +60,7 @@ final class ManagerNotificationsBadgeState: ObservableObject {
     private var didLoad = false
     private var pollingTask: Task<Void, Never>?
     private var tokenProvider: (() -> String?)?
-    private var remoteObservers: [NSObjectProtocol] = []
+    private var remoteObserver: NSObjectProtocol?
 
     func refreshIfNeeded(token: String?) async {
         guard !didLoad else { return }
@@ -71,20 +70,18 @@ final class ManagerNotificationsBadgeState: ObservableObject {
     func refresh(token: String?) async {
         guard let token, !token.isEmpty else { return }
         do {
-            // unread_count z API je celkový; limit 1 stačí pro badge.
+            // unread_count z API je celkový; limit 1 stačí pro zvonek v appce.
             let payload = try await service.fetchNotifications(token: token, limit: 1)
             unreadCount = payload.unreadCount
             didLoad = true
-            await syncAppIconBadge()
         } catch {
-            // Badge necháme beze změny – detailní chyba se řeší v inboxu.
+            // Zvonek necháme beze změny – detailní chyba se řeší v inboxu.
         }
     }
 
     func update(unreadCount: Int) {
         self.unreadCount = max(0, unreadCount)
         didLoad = true
-        Task { await syncAppIconBadge() }
     }
 
     func startPolling(tokenProvider: @escaping () -> String?) {
@@ -107,10 +104,10 @@ final class ManagerNotificationsBadgeState: ObservableObject {
         stopObservingRemoteNotifications()
     }
 
-    /// Po příchozí push notifikaci sjednotí zvonek s badge na ploše.
+    /// Po příchozí push aktualizuje počet u zvonku (ne badge na ikoně).
     private func startObservingRemoteNotifications() {
         stopObservingRemoteNotifications()
-        let pushObserver = NotificationCenter.default.addObserver(
+        remoteObserver = NotificationCenter.default.addObserver(
             forName: Notification.Name("didReceiveRemoteNotification"),
             object: nil,
             queue: .main
@@ -120,41 +117,17 @@ final class ManagerNotificationsBadgeState: ObservableObject {
                 await self.refresh(token: self.tokenProvider?())
             }
         }
-        let unreadObserver = NotificationCenter.default.addObserver(
-            forName: .managerNotificationsUnreadDidUpdate,
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            guard let count = notification.userInfo?["unread_count"] as? Int else { return }
-            Task { @MainActor in
-                self?.unreadCount = max(0, count)
-                self?.didLoad = true
-            }
-        }
-        remoteObservers = [pushObserver, unreadObserver]
     }
 
     private func stopObservingRemoteNotifications() {
-        for observer in remoteObservers {
-            NotificationCenter.default.removeObserver(observer)
+        if let remoteObserver {
+            NotificationCenter.default.removeObserver(remoteObserver)
         }
-        remoteObservers = []
+        remoteObserver = nil
     }
 
-    /// Číslo na ikoně aplikace na ploše (stejné jako u zvonku).
-    private func syncAppIconBadge() async {
-        do {
-            try await UNUserNotificationCenter.current().setBadgeCount(max(0, unreadCount))
-        } catch {
-            // Bez oprávnění badge / systémová chyba – zvonek v appce dál funguje.
-        }
-    }
-
-    func clearAppIconBadge() {
+    func reset() {
         unreadCount = 0
-        Task {
-            try? await UNUserNotificationCenter.current().setBadgeCount(0)
-        }
     }
 }
 
@@ -236,7 +209,7 @@ struct ManagerTabMenuView: View {
         }
         .onChange(of: authState.isLoggedIn) { _, isLoggedIn in
             if !isLoggedIn {
-                notificationsBadge.clearAppIconBadge()
+                notificationsBadge.reset()
             }
         }
         .onDisappear {
