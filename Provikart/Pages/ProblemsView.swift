@@ -253,13 +253,6 @@ struct ProblemsView: View {
                 ToolbarItemGroup(placement: .topBarLeading) {
                     if authState.currentRole != .manager {
                         NavigationLink {
-                            StatisticsView()
-                                .environmentObject(authState)
-                                .environment(\.openAddSheet, openAddSheet)
-                        } label: {
-                            Image(systemName: "chart.bar")
-                        }
-                        NavigationLink {
                             UserAttendanceView()
                                 .environmentObject(authState)
                         } label: {
@@ -268,10 +261,15 @@ struct ProblemsView: View {
                     }
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    NavigationLink {
-                        DealwarsView()
-                    } label: {
-                        Image(systemName: "trophy")
+                    if authState.currentRole != .manager {
+                        NavigationLink {
+                            StatisticsView()
+                                .environmentObject(authState)
+                                .environment(\.openAddSheet, openAddSheet)
+                        } label: {
+                            Image(systemName: "chart.bar")
+                        }
+                        .accessibilityLabel("Statistiky")
                     }
                     ProfileBarButton()
                 }

@@ -145,15 +145,99 @@ struct DealwarsTeamPlayer: Decodable, Identifiable {
     }
 }
 
+struct DealwarsLevelInfo: Codable, Equatable {
+    let level: Int
+    let totalPoints: Int
+    let pointsIntoLevel: Int
+    let pointsForNextLevel: Int
+    let pointsToNextLevel: Int
+    let levelProgressPct: Double
+
+    var progressFraction: Double {
+        min(1, max(0, levelProgressPct / 100))
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case level
+        case totalPoints = "total_points"
+        case pointsIntoLevel = "points_into_level"
+        case pointsForNextLevel = "points_for_next_level"
+        case pointsToNextLevel = "points_to_next_level"
+        case levelProgressPct = "level_progress_pct"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: FlexibleKeys.self)
+        level = c.decodeIntIfPresent(forKeys: [.level]) ?? 0
+        totalPoints = c.decodeIntIfPresent(forKeys: [.total_points, .totalPoints]) ?? 0
+        pointsIntoLevel = c.decodeIntIfPresent(forKeys: [.points_into_level, .pointsIntoLevel]) ?? 0
+        pointsForNextLevel = c.decodeIntIfPresent(forKeys: [.points_for_next_level, .pointsForNextLevel]) ?? 0
+        pointsToNextLevel = c.decodeIntIfPresent(forKeys: [.points_to_next_level, .pointsToNextLevel]) ?? 0
+        levelProgressPct = c.decodeDoubleIfPresent(forKeys: [.level_progress_pct, .levelProgressPct]) ?? 0
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(level, forKey: .level)
+        try c.encode(totalPoints, forKey: .totalPoints)
+        try c.encode(pointsIntoLevel, forKey: .pointsIntoLevel)
+        try c.encode(pointsForNextLevel, forKey: .pointsForNextLevel)
+        try c.encode(pointsToNextLevel, forKey: .pointsToNextLevel)
+        try c.encode(levelProgressPct, forKey: .levelProgressPct)
+    }
+
+    init(
+        level: Int,
+        totalPoints: Int,
+        pointsIntoLevel: Int,
+        pointsForNextLevel: Int,
+        pointsToNextLevel: Int,
+        levelProgressPct: Double
+    ) {
+        self.level = level
+        self.totalPoints = totalPoints
+        self.pointsIntoLevel = pointsIntoLevel
+        self.pointsForNextLevel = pointsForNextLevel
+        self.pointsToNextLevel = pointsToNextLevel
+        self.levelProgressPct = levelProgressPct
+    }
+
+    private enum FlexibleKeys: String, CodingKey {
+        case level
+        case total_points, totalPoints
+        case points_into_level, pointsIntoLevel
+        case points_for_next_level, pointsForNextLevel
+        case points_to_next_level, pointsToNextLevel
+        case level_progress_pct, levelProgressPct
+    }
+
+    private static let cacheKey = "dealwars_my_level_cache"
+
+    static func loadCached() -> DealwarsLevelInfo? {
+        guard let data = UserDefaults.standard.data(forKey: cacheKey) else { return nil }
+        return try? JSONDecoder().decode(DealwarsLevelInfo.self, from: data)
+    }
+
+    static func saveCached(_ level: DealwarsLevelInfo) {
+        guard let data = try? JSONEncoder().encode(level) else { return }
+        UserDefaults.standard.set(data, forKey: cacheKey)
+    }
+
+    static func clearCached() {
+        UserDefaults.standard.removeObject(forKey: cacheKey)
+    }
+}
+
 struct DealwarsSeasonData: Decodable {
     let season: String
     let scope: String
     let leaderboard: [DealwarsPlayer]
     let playersCount: Int
     let teamPlayers: [DealwarsTeamPlayer]
+    let myLevel: DealwarsLevelInfo?
 
     enum CodingKeys: String, CodingKey {
-        case season, scope, leaderboard, ranking, players, items, players_count, team_players
+        case season, scope, leaderboard, ranking, players, items, players_count, team_players, my_level
     }
 
     init(from decoder: Decoder) throws {
@@ -168,6 +252,7 @@ struct DealwarsSeasonData: Decodable {
             []
         playersCount = c.decodeIntIfPresent(forKeys: [.players_count]) ?? leaderboard.count
         teamPlayers = c.decodeArrayIfPresent([DealwarsTeamPlayer].self, forKeys: [.team_players]) ?? []
+        myLevel = try? c.decodeIfPresent(DealwarsLevelInfo.self, forKey: .my_level)
     }
 }
 

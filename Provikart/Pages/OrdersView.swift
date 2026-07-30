@@ -180,13 +180,6 @@ struct OrdersView: View {
             .toolbar {
                 ToolbarItemGroup(placement: .topBarLeading) {
                     NavigationLink {
-                        StatisticsView()
-                            .environmentObject(authState)
-                            .environment(\.openAddSheet, openAddSheet)
-                    } label: {
-                        Image(systemName: "chart.bar")
-                    }
-                    NavigationLink {
                         UserAttendanceView()
                             .environmentObject(authState)
                     } label: {
@@ -195,10 +188,13 @@ struct OrdersView: View {
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     NavigationLink {
-                        DealwarsView()
+                        StatisticsView()
+                            .environmentObject(authState)
+                            .environment(\.openAddSheet, openAddSheet)
                     } label: {
-                        Image(systemName: "trophy")
+                        Image(systemName: "chart.bar")
                     }
+                    .accessibilityLabel("Statistiky")
                     ProfileBarButton()
                 }
             }

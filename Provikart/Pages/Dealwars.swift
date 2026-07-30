@@ -377,6 +377,276 @@ struct DealwarsView: View {
     DealwarsView()
 }
 
+// MARK: - Level detail
+
+struct DealwarsLevelDetailView: View {
+    @EnvironmentObject private var authState: AuthState
+
+    let initialLevel: DealwarsLevelInfo?
+
+    @State private var level: DealwarsLevelInfo?
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+
+    private let service = DealwarsSeasonService()
+
+    private let gold = Color(red: 1.0, green: 0.86, blue: 0.42)
+    private let orange = Color(red: 0.97, green: 0.58, blue: 0.12)
+
+    var body: some View {
+        Group {
+            if isLoading && level == nil {
+                ProgressView("Načítám level…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let errorMessage, level == nil {
+                ContentUnavailableView {
+                    Label("Nepodařilo se načíst level", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(errorMessage)
+                } actions: {
+                    Button("Zkusit znovu") {
+                        Task { await loadLevel() }
+                    }
+                }
+            } else if let level {
+                ScrollView {
+                    VStack(spacing: 28) {
+                        heroSection(level)
+                        progressSection(level)
+                        statsSection(level)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 32)
+                }
+                .scrollIndicators(.hidden)
+            } else {
+                ContentUnavailableView {
+                    Label("Level", systemImage: "star.circle")
+                } description: {
+                    Text("Zatím nemáme data o tvém levelu.")
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background {
+            ZStack(alignment: .top) {
+                Color(uiColor: .systemGroupedBackground)
+                DealwarsLevelTopGlow()
+                    .ignoresSafeArea(edges: .top)
+                    .allowsHitTesting(false)
+            }
+        }
+        .navigationTitle("Tvůj level")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .task {
+            if level == nil {
+                level = initialLevel
+            }
+            await loadLevel()
+        }
+        .refreshable { await loadLevel() }
+    }
+
+    private func heroSection(_ level: DealwarsLevelInfo) -> some View {
+        VStack(spacing: 10) {
+            Text("LEVEL")
+                .font(.caption.weight(.bold))
+                .tracking(3)
+                .foregroundStyle(gold.opacity(0.9))
+
+            Text("\(level.level)")
+                .font(.system(size: 96, weight: .heavy, design: .rounded))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [gold, orange],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .monospacedDigit()
+                .shadow(color: orange.opacity(0.45), radius: 18, y: 6)
+                .minimumScaleFactor(0.6)
+                .lineLimit(1)
+
+            Text("\(level.totalPoints) bodů celkem")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 20)
+    }
+
+    private func progressSection(_ level: DealwarsLevelInfo) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Postup k levelu \(level.level + 1)")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Spacer()
+                Text("\(Int(level.levelProgressPct.rounded())) %")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(orange)
+                    .monospacedDigit()
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.primary.opacity(0.08))
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [gold, orange],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: max(10, geo.size.width * level.progressFraction))
+                        .shadow(color: orange.opacity(0.35), radius: 6, y: 1)
+                }
+            }
+            .frame(height: 14)
+
+            HStack {
+                Text("\(level.pointsIntoLevel) / \(level.pointsForNextLevel)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                Spacer()
+                Text("ještě \(level.pointsToNextLevel)")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(orange)
+                    .monospacedDigit()
+            }
+        }
+        .padding(18)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(gold.opacity(0.18), lineWidth: 1)
+                )
+        )
+    }
+
+    private func statsSection(_ level: DealwarsLevelInfo) -> some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                statTile(title: "Celkem", value: "\(level.totalPoints)", subtitle: "bodů")
+                statTile(title: "V levelu", value: "\(level.pointsIntoLevel)", subtitle: "bodů")
+            }
+            HStack(spacing: 12) {
+                statTile(title: "Na další", value: "\(level.pointsForNextLevel)", subtitle: "bodů")
+                statTile(title: "Zbývá", value: "\(level.pointsToNextLevel)", subtitle: "bodů")
+            }
+        }
+    }
+
+    private func statTile(title: String, value: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(size: 28, weight: .bold, design: .rounded))
+                .foregroundStyle(.primary)
+                .monospacedDigit()
+                .minimumScaleFactor(0.7)
+                .lineLimit(1)
+            Text(subtitle)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+        )
+    }
+
+    private func loadLevel() async {
+        await MainActor.run {
+            if level == nil {
+                isLoading = true
+            }
+            errorMessage = nil
+        }
+        do {
+            let payload = try await service.fetchSeason(
+                token: authState.authToken,
+                season: nil,
+                scope: "team"
+            )
+            await MainActor.run {
+                level = payload.myLevel ?? level
+                isLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                isLoading = false
+                if level == nil {
+                    errorMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+}
+
+private struct DealwarsLevelTopGlow: View {
+    private let logoOrange = Color(red: 0.97, green: 0.58, blue: 0.12)
+    private let logoGold = Color(red: 0.98, green: 0.69, blue: 0.23)
+    private let logoPurple = Color(red: 0.30, green: 0.05, blue: 0.22)
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+
+            ZStack(alignment: .top) {
+                LinearGradient(
+                    stops: [
+                        .init(color: logoOrange.opacity(0.34), location: 0),
+                        .init(color: logoGold.opacity(0.22), location: 0.28),
+                        .init(color: logoGold.opacity(0.08), location: 0.55),
+                        .init(color: .clear, location: 1)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 360)
+
+                Ellipse()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                logoGold.opacity(0.45),
+                                logoOrange.opacity(0.18),
+                                .clear
+                            ],
+                            center: .center,
+                            startRadius: 10,
+                            endRadius: width * 0.55
+                        )
+                    )
+                    .frame(width: width * 1.1, height: 220)
+                    .offset(y: -40)
+
+                Ellipse()
+                    .fill(logoPurple.opacity(0.18))
+                    .frame(width: width * 0.7, height: 160)
+                    .blur(radius: 40)
+                    .offset(x: width * 0.18, y: 20)
+            }
+            .frame(width: width, alignment: .top)
+        }
+        .frame(height: 360)
+    }
+}
+
 private struct WeekOption: Identifiable {
     let seasonCode: String
     let startDate: Date

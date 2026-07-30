@@ -126,10 +126,13 @@ struct CalendarView: View {
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     NavigationLink {
-                        DealwarsView()
+                        StatisticsView()
+                            .environmentObject(authState)
+                            .environment(\.openAddSheet, openAddSheet)
                     } label: {
-                        Image(systemName: "trophy")
+                        Image(systemName: "chart.bar")
                     }
+                    .accessibilityLabel("Statistiky")
                     ProfileBarButton()
                 }
             }

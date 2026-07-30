@@ -24,10 +24,16 @@ struct HomeView: View {
     @State private var servicesCount: Int?
     /// Počet záznamů z Karty vchodu za aktuální měsíc. nil = nenačteno.
     @State private var entryCardsCount: Int?
-    /// Dealwars: moje pořadí v aktuální sezoně.
-    @State private var dealwarsRank: Int?
-    /// Dealwars: moje XP v aktuální sezoně.
-    @State private var dealwarsXP: Double?
+    /// Dealwars: celkový level hráče (hned z cache, pak API).
+    @State private var dealwarsLevel: DealwarsLevelInfo? = DealwarsLevelInfo.loadCached()
+    @State private var dealwarsRank: Int? = {
+        guard UserDefaults.standard.object(forKey: "dealwars_rank_cache") != nil else { return nil }
+        return UserDefaults.standard.integer(forKey: "dealwars_rank_cache")
+    }()
+    @State private var dealwarsXP: Double? = {
+        guard let number = UserDefaults.standard.object(forKey: "dealwars_xp_cache") as? NSNumber else { return nil }
+        return number.doubleValue
+    }()
 
     private let commissionService = CommissionService()
     private let userGoalsService = UserGoalsService()
@@ -74,6 +80,19 @@ struct HomeView: View {
                 // Přehledové karty
                 Section {
                     NavigationLink {
+                        DealwarsLevelDetailView(initialLevel: dealwarsLevel)
+                            .environmentObject(authState)
+                    } label: {
+                        dealwarsLevelRow(dealwarsLevel)
+                    }
+                    .buttonStyle(.plain)
+                    .navigationLinkIndicatorVisibility(.hidden)
+                    .listRowBackground(dealwarsLevelBackground)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                }
+
+                Section {
+                    NavigationLink {
                         DealwarsView()
                             .environmentObject(authState)
                     } label: {
@@ -115,13 +134,6 @@ struct HomeView: View {
             .toolbar {
                 ToolbarItemGroup(placement: .topBarLeading) {
                     NavigationLink {
-                        StatisticsView()
-                            .environmentObject(authState)
-                            .environment(\.openAddSheet, openAddSheet)
-                    } label: {
-                        Image(systemName: "chart.bar")
-                    }
-                    NavigationLink {
                         CalendarView()
                             .environmentObject(authState)
                             .environment(\.openAddSheet, openAddSheet)
@@ -144,10 +156,13 @@ struct HomeView: View {
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     NavigationLink {
-                        DealwarsView()
+                        StatisticsView()
+                            .environmentObject(authState)
+                            .environment(\.openAddSheet, openAddSheet)
                     } label: {
-                        Image(systemName: "trophy")
+                        Image(systemName: "chart.bar")
                     }
+                    .accessibilityLabel("Statistiky")
                     ProfileBarButton()
                 }
             }
@@ -158,22 +173,26 @@ struct HomeView: View {
             if let saved = WidgetDataStore.loadCommissionGoal() {
                 commissionGoal = saved
             }
-            await loadGoals()
-            await loadCommission()
-            await loadPendingCompletion()
-            await loadServicesCount()
-            await loadEntryCardsCount()
-            await loadDealwarsSummary()
-            // Periodické obnovení provize a nedokončených na pozadí (každých 5 s)
+            // Dealwars + level hned paralelně s ostatním (ne až nakonec).
+            async let dealwars: Void = loadDealwarsSummary()
+            async let goals: Void = loadGoals()
+            async let commission: Void = loadCommission()
+            async let pending: Void = loadPendingCompletion()
+            async let services: Void = loadServicesCount()
+            async let entries: Void = loadEntryCardsCount()
+            _ = await (dealwars, goals, commission, pending, services, entries)
+
+            // Periodické obnovení na pozadí (každých 5 s)
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
                 if Task.isCancelled { break }
-                await loadGoals()
-                await loadCommission(silent: true)
-                await loadPendingCompletion()
-                await loadServicesCount()
-                await loadEntryCardsCount()
-                await loadDealwarsSummary()
+                async let d: Void = loadDealwarsSummary()
+                async let g: Void = loadGoals()
+                async let c: Void = loadCommission(silent: true)
+                async let p: Void = loadPendingCompletion()
+                async let s: Void = loadServicesCount()
+                async let e: Void = loadEntryCardsCount()
+                _ = await (d, g, c, p, s, e)
             }
         }
         .refreshable {
@@ -187,6 +206,81 @@ struct HomeView: View {
     }
 
     // MARK: - Commission Row (iOS List style)
+
+    private func dealwarsLevelRow(_ level: DealwarsLevelInfo?) -> some View {
+        let gold = Color(red: 1.0, green: 0.86, blue: 0.42)
+        let orange = Color(red: 0.97, green: 0.58, blue: 0.12)
+        let progress = level?.progressFraction ?? 0
+        let pct = level.map { Int($0.levelProgressPct.rounded()) }
+
+        return HStack(spacing: 12) {
+            Text(level.map { "\($0.level)" } ?? "—")
+                .font(.system(size: 28, weight: .heavy, design: .rounded))
+                .foregroundStyle(gold)
+                .monospacedDigit()
+                .frame(minWidth: 36, alignment: .center)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Level")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(Color.white.opacity(0.16))
+                        Capsule()
+                            .fill(
+                                LinearGradient(
+                                    colors: [gold, orange],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(width: max(4, geo.size.width * progress))
+                    }
+                }
+                .frame(height: 5)
+            }
+
+            Text(pct.map { "\($0) %" } ?? "—")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(gold.opacity(0.9))
+                .monospacedDigit()
+
+            Image(systemName: "chevron.right")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.white.opacity(0.4))
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            level.map {
+                "Level \($0.level), \(Int($0.levelProgressPct.rounded())) procent, \($0.pointsToNextLevel) do dalšího levelu"
+            } ?? "Level se načítá"
+        )
+    }
+
+    private var dealwarsLevelBackground: some View {
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        let gold = Color(red: 1.0, green: 0.86, blue: 0.42)
+        let orange = Color(red: 0.97, green: 0.58, blue: 0.12)
+        return ZStack {
+            shape
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.42, green: 0.18, blue: 0.28),
+                            Color(red: 0.28, green: 0.10, blue: 0.22)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+            shape
+                .stroke(gold.opacity(0.35), lineWidth: 1)
+        }
+        .shadow(color: orange.opacity(0.12), radius: 4, y: 2)
+    }
 
     private var dealwarsRow: some View {
         HStack(alignment: .center, spacing: 14) {
@@ -812,7 +906,7 @@ struct HomeView: View {
         }
     }
 
-    /// Načte moje pořadí a XP z Dealwars sezóny.
+    /// Načte moje pořadí, XP a level z Dealwars sezóny.
     private func loadDealwarsSummary() async {
         let token = await MainActor.run { authState.authToken }
         let currentUserId = await MainActor.run { authState.currentUser?.id }
@@ -820,6 +914,10 @@ struct HomeView: View {
             await MainActor.run {
                 dealwarsRank = nil
                 dealwarsXP = nil
+                dealwarsLevel = nil
+                DealwarsLevelInfo.clearCached()
+                UserDefaults.standard.removeObject(forKey: "dealwars_rank_cache")
+                UserDefaults.standard.removeObject(forKey: "dealwars_xp_cache")
             }
             return
         }
@@ -830,12 +928,19 @@ struct HomeView: View {
             await MainActor.run {
                 dealwarsRank = mine?.rank
                 dealwarsXP = mine?.points
+                if let myLevel = payload.myLevel {
+                    dealwarsLevel = myLevel
+                    DealwarsLevelInfo.saveCached(myLevel)
+                }
+                if let rank = mine?.rank {
+                    UserDefaults.standard.set(rank, forKey: "dealwars_rank_cache")
+                }
+                if let xp = mine?.points {
+                    UserDefaults.standard.set(xp, forKey: "dealwars_xp_cache")
+                }
             }
         } catch {
-            await MainActor.run {
-                dealwarsRank = nil
-                dealwarsXP = nil
-            }
+            // Necháme poslední známé hodnoty (cache) – banner zůstane viditelný.
         }
     }
 }
