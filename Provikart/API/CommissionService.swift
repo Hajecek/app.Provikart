@@ -8,7 +8,7 @@
 import Foundation
 
 /// Odpověď API provize za aktuální měsíc.
-struct CommissionResponse: Codable {
+struct CommissionResponse: Codable, Equatable {
     let success: Bool
     let month: String
     let month_label: String?
@@ -20,6 +20,22 @@ struct CommissionResponse: Codable {
     /// Počet dokončených internetů započítaných do KPI za aktuální měsíc.
     let completed_internet_count: Int?
     let currency: String
+
+    private static let cacheKey = "home_commission_response_cache"
+
+    static func loadCached() -> CommissionResponse? {
+        guard let data = UserDefaults.standard.data(forKey: cacheKey) else { return nil }
+        return try? JSONDecoder().decode(CommissionResponse.self, from: data)
+    }
+
+    static func saveCached(_ response: CommissionResponse) {
+        guard let data = try? JSONEncoder().encode(response) else { return }
+        UserDefaults.standard.set(data, forKey: cacheKey)
+    }
+
+    static func clearCached() {
+        UserDefaults.standard.removeObject(forKey: cacheKey)
+    }
 }
 
 enum CommissionError: LocalizedError {

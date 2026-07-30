@@ -10,12 +10,12 @@ import SwiftUI
 struct HomeView: View {
     @EnvironmentObject private var authState: AuthState
     @Environment(\.openAddSheet) private var openAddSheet
-    @State private var commission: CommissionResponse?
+    @State private var commission: CommissionResponse? = CommissionResponse.loadCached()
     @State private var commissionError: String?
     @State private var isLoadingCommission = false
     @State private var isCommissionHidden = WidgetDataStore.isCommissionHidden
     /// Cíl provize z API (null = použije se výchozí 100k).
-    @State private var commissionGoal: Double?
+    @State private var commissionGoal: Double? = WidgetDataStore.loadCommissionGoal()
     /// Cíl počtu služeb z API (null = výchozí 100).
     @State private var servicesGoal: Int?
     /// Počet položek po termínu instalace čekajících na dokončení. nil = nenačteno, 0 = žádné, >0 = zobrazit container.
@@ -170,19 +170,19 @@ struct HomeView: View {
         }
         .task {
             // Obnov uložený cíl hned (z předchozího načtení), než stáhneme z API
-            if let saved = WidgetDataStore.loadCommissionGoal() {
+            if commissionGoal == nil, let saved = WidgetDataStore.loadCommissionGoal() {
                 commissionGoal = saved
             }
-            // Dealwars + level hned paralelně s ostatním (ne až nakonec).
+            // Dealwars + level + provize hned paralelně s ostatním.
             async let dealwars: Void = loadDealwarsSummary()
             async let goals: Void = loadGoals()
-            async let commission: Void = loadCommission()
+            async let commission: Void = loadCommission(silent: commission != nil)
             async let pending: Void = loadPendingCompletion()
             async let services: Void = loadServicesCount()
             async let entries: Void = loadEntryCardsCount()
             _ = await (dealwars, goals, commission, pending, services, entries)
 
-            // Periodické obnovení na pozadí (každých 5 s)
+            // Periodické obnovení na pozadí (každých 5 s) – silent, bez blikání.
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
                 if Task.isCancelled { break }
@@ -197,7 +197,7 @@ struct HomeView: View {
         }
         .refreshable {
             await loadGoals()
-            await loadCommission()
+            await loadCommission(silent: true)
             await loadPendingCompletion()
             await loadServicesCount()
             await loadEntryCardsCount()
@@ -426,51 +426,81 @@ struct HomeView: View {
                         .foregroundStyle(Color.accentColor)
                         .frame(width: 28, alignment: .center)
 
-                    Text(monthTitle)
-                        .font(.body.weight(.medium))
-                        .foregroundStyle(.primary)
-                    Spacer(minLength: 0)
-                    Button {
-                        let newHidden = !isCommissionHidden
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            isCommissionHidden = newHidden
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 8) {
+                            Text("Provize")
+                                .font(.body.weight(.medium))
+                                .foregroundStyle(.primary)
+                            Button {
+                                let newHidden = !isCommissionHidden
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    isCommissionHidden = newHidden
+                                }
+                                WidgetDataStore.setCommissionHidden(newHidden)
+                                if let c = commission {
+                                    CommissionLiveActivityManager.update(
+                                        commission: c.commission,
+                                        currency: c.currency,
+                                        monthLabel: c.month_label,
+                                        goal: commissionGoal,
+                                        isHidden: newHidden
+                                    )
+                                }
+                            } label: {
+                                Image(systemName: isCommissionHidden ? "eye.slash" : "eye")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
                         }
-                        WidgetDataStore.setCommissionHidden(newHidden)
-                        if let c = commission {
-                            CommissionLiveActivityManager.update(
-                                commission: c.commission,
-                                currency: c.currency,
-                                monthLabel: c.month_label,
-                                goal: commissionGoal,
-                                isHidden: newHidden
-                            )
-                        }
-                    } label: {
-                        Image(systemName: isCommissionHidden ? "eye.slash" : "eye")
-                            .font(.body)
-                            .foregroundStyle(Color(uiColor: .tertiaryLabel))
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color(uiColor: .tertiaryLabel))
-                }
 
-                Group {
-                    if isLoadingCommission {
-                        loadingSkeleton
-                    } else if let err = commissionError {
-                        errorRow(message: err)
-                    } else if let c = commission {
-                        valueRow(commission: c)
-                    } else {
-                        Text("Přihlaste se pro zobrazení provize.")
-                            .font(.subheadline)
+                        Text(monthTitle)
+                            .font(.caption)
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
+
+                        if let c = commission,
+                           !isCommissionHidden,
+                           let breakdownText = commissionBreakdownText(for: c) {
+                            Text(breakdownText)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        } else if let err = commissionError, commission == nil {
+                            Text(err)
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                                .lineLimit(2)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    Group {
+                        if let c = commission {
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text(isCommissionHidden ? "– – – –" : formatCommission(c.commission))
+                                    .font(.system(.title, design: .rounded).weight(.bold))
+                                    .foregroundStyle(.primary)
+                                    .minimumScaleFactor(0.6)
+                                    .lineLimit(1)
+                                    .contentTransition(.numericText())
+                                    .animation(.snappy(duration: 0.35), value: c.commission)
+                                if !isCommissionHidden {
+                                    Text(c.currency)
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        } else if isLoadingCommission {
+                            ProgressView()
+                        } else {
+                            Text("—")
+                                .font(.system(.title, design: .rounded).weight(.bold))
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
 
                 if let c = commission, !isCommissionHidden {
                     CommissionProgressBarView(
@@ -480,7 +510,6 @@ struct HomeView: View {
                         scaleFontSize: 10
                     )
                 }
-
             }
             .padding(.vertical, 4)
         }
@@ -661,85 +690,14 @@ struct HomeView: View {
     }
 
     private var accessibilityBannerLabel: String {
-        if isLoadingCommission {
+        if let c = commission {
+            return "Provize za aktuální měsíc \(formatCommission(c.commission)) \(c.currency)"
+        } else if isLoadingCommission {
             return "Provize za aktuální měsíc, načítám"
         } else if let err = commissionError {
             return "Provize za aktuální měsíc, chyba: \(err)"
-        } else if let c = commission {
-            return "Provize za aktuální měsíc \(formatCommission(c.commission)) \(c.currency)"
         } else {
             return "Provize za aktuální měsíc"
-        }
-    }
-
-    @ViewBuilder
-    private var loadingSkeleton: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            RoundedRectangle(cornerRadius: 6)
-                .fill(LinearGradient(
-                    gradient: Gradient(colors: [
-                        Color.primary.opacity(0.08),
-                        Color.primary.opacity(0.16),
-                        Color.primary.opacity(0.08)
-                    ]),
-                    startPoint: .leading,
-                    endPoint: .trailing
-                ))
-                .frame(width: 140, height: 18)
-                .redacted(reason: .placeholder)
-                .shimmer()
-
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color.primary.opacity(0.08))
-                .frame(width: 100, height: 12)
-                .redacted(reason: .placeholder)
-        }
-        .accessibilityHidden(true)
-    }
-
-    @ViewBuilder
-    private func errorRow(message: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                Text(message)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(3)
-            }
-            Button {
-                Task { await loadCommission() }
-            } label: {
-                Text("Zkusit znovu")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-        }
-    }
-
-    @ViewBuilder
-    private func valueRow(commission c: CommissionResponse) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(isCommissionHidden ? "– – – –" : formatCommission(c.commission))
-                    .font(.system(.largeTitle, design: .rounded).weight(.semibold))
-                    .minimumScaleFactor(0.7)
-                    .lineLimit(1)
-                    .contentTransition(.numericText())
-
-                if !isCommissionHidden {
-                    Text(c.currency)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            if !isCommissionHidden, let breakdownText = commissionBreakdownText(for: c) {
-                Text(breakdownText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
         }
     }
 
@@ -779,54 +737,64 @@ struct HomeView: View {
         }
     }
 
-    /// Načte provizi z API. Při `silent: true` se nespouští loading stav – vhodné pro periodické obnovení na pozadí.
+    /// Načte provizi z API. Při `silent: true` (nebo když už máme cache) se nespouští skeleton.
     private func loadCommission(silent: Bool = false) async {
         let token = await MainActor.run { authState.authToken }
         guard let token else {
             await MainActor.run {
                 commission = nil
                 commissionError = "Pro zobrazení provize se přihlaste."
+                CommissionResponse.clearCached()
             }
             return
         }
-        if !silent {
+
+        let hasExisting = await MainActor.run { commission != nil }
+        if !silent && !hasExisting {
             await MainActor.run {
                 isLoadingCommission = true
                 commissionError = nil
-                commission = nil
             }
+        } else if !silent {
+            await MainActor.run { commissionError = nil }
         }
 
         do {
             let response = try await commissionService.fetchCommission(token: token)
-            // Načteme cíle společně s provizí (stejný token) – zaručí správný cíl pro graf
-            let (goal, servicesGoal) = (try? await userGoalsService.fetchGoals(token: token)) ?? (nil, nil)
             await MainActor.run {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    commission = response
-                    if let goal { commissionGoal = goal }
-                    if let servicesGoal { self.servicesGoal = servicesGoal }
-                }
+                let previous = commission
+                let didChange = previous != response
                 isLoadingCommission = false
-                WidgetDataStore.saveCommission(response.commission, currency: response.currency, monthLabel: response.month_label)
-                if let goal { WidgetDataStore.saveCommissionGoal(goal) }
+
+                guard didChange else { return }
+
+                withAnimation(.snappy(duration: 0.35)) {
+                    commission = response
+                }
+                CommissionResponse.saveCached(response)
+                WidgetDataStore.saveCommission(
+                    response.commission,
+                    currency: response.currency,
+                    monthLabel: response.month_label
+                )
                 CommissionLiveActivityManager.update(
                     commission: response.commission,
                     currency: response.currency,
                     monthLabel: response.month_label,
-                    goal: goal ?? commissionGoal,
+                    goal: commissionGoal,
                     isHidden: isCommissionHidden
                 )
                 PhoneSessionManager.shared.sendCommissionUpdate(
                     commission: response.commission,
                     currency: response.currency,
                     monthLabel: response.month_label,
-                    commissionGoal: goal ?? commissionGoal
+                    commissionGoal: commissionGoal
                 )
             }
         } catch {
             await MainActor.run {
-                if !silent {
+                // Při chybě necháme poslední známou částku (cache) – bez blikání.
+                if !silent && commission == nil {
                     commissionError = error.localizedDescription
                 }
                 isLoadingCommission = false
@@ -1019,43 +987,12 @@ private struct HomeTopArchShape: Shape {
     }
 }
 
-// Jednoduchý shimmer efekt pro skeleton (iOS 15+ fallback bez animace)
+// Jednoduchý helper pro list spacing
 private extension View {
     @ViewBuilder
     func homeListSectionSpacing() -> some View {
         if #available(iOS 17.0, *) {
             self.listSectionSpacing(8)
-        } else {
-            self
-        }
-    }
-
-    @ViewBuilder
-    func shimmer(active: Bool = true, duration: Double = 1.2) -> some View {
-        if #available(iOS 15.0, *), active {
-            self
-                .overlay {
-                    GeometryReader { proxy in
-                        let size = proxy.size
-                        Rectangle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        .clear,
-                                        .white.opacity(0.6),
-                                        .clear
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            )
-                            .rotationEffect(.degrees(20))
-                            .offset(x: -size.width)
-                            .frame(width: size.width * 1.5)
-                            .mask(self)
-                            .animation(.linear(duration: duration).repeatForever(autoreverses: false), value: UUID())
-                    }
-                }
         } else {
             self
         }

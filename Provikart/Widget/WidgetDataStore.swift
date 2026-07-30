@@ -165,6 +165,7 @@ enum WidgetDataStore {
         suite?.removeObject(forKey: Keys.monthLabel)
         suite?.removeObject(forKey: Keys.lastUpdated)
         suite?.removeObject(forKey: Keys.commissionGoal)
+        CommissionResponse.clearCached()
         WidgetCenter.shared.reloadTimelines(ofKind: widgetKindCommission)
     }
 
