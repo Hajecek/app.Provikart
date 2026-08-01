@@ -6,6 +6,8 @@
 //
 
 import SwiftUI
+import Photos
+import UIKit
 
 // MARK: - Model
 
@@ -219,6 +221,9 @@ struct LuckyBoxView: View {
     @State private var hitAnimationTask: Task<Void, Never>?
     @State private var pendingHitShakes: [Bool] = []
     @State private var shakeParticles: [LuckyShakeParticle] = []
+    @State private var rewardCardScale: CGFloat = 0.72
+    @State private var rewardCardOpacity: Double = 0
+    @State private var shareReward: LuckyBoxReward?
 
     private let gold = Color(red: 1.0, green: 0.86, blue: 0.42)
     private let orange = Color(red: 0.97, green: 0.58, blue: 0.12)
@@ -237,14 +242,17 @@ struct LuckyBoxView: View {
                 .allowsHitTesting(false)
 
             VStack(spacing: 0) {
-                starsRow
-                    .padding(.top, 8)
-                    .padding(.bottom, 8)
+                if phase != .revealed {
+                    starsRow
+                        .padding(.top, 8)
+                        .padding(.bottom, 8)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
 
                 Spacer(minLength: 8)
 
                 chestView
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, phase == .revealed ? 8 : 24)
 
                 Spacer(minLength: 16)
 
@@ -253,6 +261,7 @@ struct LuckyBoxView: View {
                     .padding(.bottom, 36)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(.easeInOut(duration: 0.35), value: phase)
 
             // flash musí být navrchu – zakryje bednu i UI
             Color.white
@@ -262,12 +271,20 @@ struct LuckyBoxView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
+            guard phase != .revealed else { return }
             Task { await handleTap() }
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                if phase == .revealed, let reward {
+                    Button("Sdílet", systemImage: "square.and.arrow.up") {
+                        shareReward = reward
+                    }
+                    .accessibilityLabel("Sdílet kartu kamarádům")
+                }
+
                 Button("Reset", systemImage: "arrow.counterclockwise") {
                     resetForTesting()
                 }
@@ -276,6 +293,9 @@ struct LuckyBoxView: View {
         }
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
+        .sheet(item: $shareReward) { reward in
+            LuckyShareStudioView(reward: reward, gold: gold)
+        }
         .onAppear {
             glowPulse = true
             hintPulse = true
@@ -286,6 +306,8 @@ struct LuckyBoxView: View {
                 phase = .revealed
                 revealOpacity = 1
                 lidOpen = 1
+                rewardCardOpacity = 1
+                rewardCardScale = 1
             }
         }
         .task {
@@ -412,62 +434,60 @@ struct LuckyBoxView: View {
 
     private var chestView: some View {
         ZStack {
-            Ellipse()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Color.black.opacity(0.65),
-                            Color.black.opacity(0.15),
-                            .clear
-                        ],
-                        center: .center,
-                        startRadius: 4,
-                        endRadius: 120
+            // zavřená bedna (mizí při otevření)
+            ZStack {
+                Ellipse()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                Color.black.opacity(0.65),
+                                Color.black.opacity(0.15),
+                                .clear
+                            ],
+                            center: .center,
+                            startRadius: 4,
+                            endRadius: 120
+                        )
                     )
-                )
-                .frame(width: 240, height: 44)
-                .offset(y: 120)
+                    .frame(width: 240, height: 44)
+                    .offset(y: 120)
 
-            LuckyOpenBurst(progress: lidOpen, gold: gold, tint: currentRarity.tint)
-                .offset(y: -20)
-                .allowsHitTesting(false)
+                LuckyOpenBurst(progress: lidOpen, gold: gold, tint: currentRarity.tint)
+                    .offset(y: -20)
+                    .allowsHitTesting(false)
 
-            LuckyChestRig(lidOpen: lidOpen, rarityTint: currentRarity.tint, gold: gold)
-                .frame(width: 290, height: 290)
-                .scaleEffect(boxScale)
-                .rotationEffect(.degrees(boxRotation))
-                .offset(y: boxBounce)
-                .shadow(color: currentRarity.tint.opacity(0.35 + 0.25 * lidOpen), radius: 26, y: 12)
+                LuckyChestRig(lidOpen: lidOpen, rarityTint: currentRarity.tint, gold: gold)
+                    .frame(width: 290, height: 290)
+                    .scaleEffect(boxScale)
+                    .rotationEffect(.degrees(boxRotation))
+                    .offset(y: boxBounce)
+                    .shadow(color: currentRarity.tint.opacity(0.35 + 0.25 * lidOpen), radius: 26, y: 12)
 
-            // partikly NAVRCHU bedny, jinak je truhla překryje
-            LuckyShakeParticleLayer(particles: shakeParticles)
-                .frame(width: 380, height: 380)
-                .allowsHitTesting(false)
+                LuckyShakeParticleLayer(particles: shakeParticles)
+                    .frame(width: 380, height: 380)
+                    .allowsHitTesting(false)
+            }
+            .opacity(Double(1 - lidOpen))
+            .scaleEffect(1 - lidOpen * 0.12)
+            .allowsHitTesting(lidOpen < 0.5)
+
+            // Mythic karta (test5) – 3D, otáčení tahem
+            LuckyRewardCardView(
+                reward: reward,
+                gold: gold,
+                isInteractive: rewardCardOpacity > 0.5
+            )
+            .opacity(rewardCardOpacity)
+            .scaleEffect(rewardCardScale)
+            .allowsHitTesting(rewardCardOpacity > 0.5)
         }
-        .frame(height: 360)
+        .frame(height: phase == .revealed || rewardCardOpacity > 0.5 ? 520 : 420)
     }
 
     @ViewBuilder
     private var bottomSection: some View {
-        VStack(spacing: 18) {
-            if phase == .revealed, let reward {
-                Text(reward.rarity.title.uppercased())
-                    .font(.caption.weight(.bold))
-                    .tracking(2)
-                    .foregroundStyle(reward.rarity.tint)
-
-                Text(reward.title)
-                    .font(.system(size: 38, weight: .heavy, design: .rounded))
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
-                    .opacity(revealOpacity)
-
-                Text(reward.subtitle)
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(.white.opacity(0.78))
-                    .multilineTextAlignment(.center)
-                    .opacity(revealOpacity)
-
+        VStack(spacing: 14) {
+            if phase == .revealed {
                 Text("Další za \(LuckyBoxLocalStore.countdownText(reference: countdownTick))")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(gold.opacity(0.9))
@@ -492,7 +512,7 @@ struct LuckyBoxView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .frame(minHeight: 130, alignment: .top)
+        .frame(minHeight: 100, alignment: .top)
     }
 
     private var hintText: String {
@@ -561,6 +581,8 @@ struct LuckyBoxView: View {
         boxRotation = 0
         boxBounce = 0
         flashOpacity = 0
+        rewardCardOpacity = 0
+        rewardCardScale = 0.72
         isBusy = false
         pendingHitShakes.removeAll()
         shakeParticles.removeAll()
@@ -721,6 +743,8 @@ struct LuckyBoxView: View {
         isBusy = true
         phase = .opening
         revealOpacity = 0
+        rewardCardOpacity = 0
+        rewardCardScale = 0.55
         pendingHitShakes.removeAll()
         shakeParticles.removeAll()
         hitAnimationTask?.cancel()
@@ -745,46 +769,374 @@ struct LuckyBoxView: View {
 
         particleBoost = true
 
-        // full-screen flash – zakryje obrazovku ještě před otevřením
+        // připrav odměnu ještě za flashem
+        let rarity = LuckyBoxRarity.from(stars: stars)
+        let picked = LuckyBoxMockPool.pickReward(for: rarity)
+        reward = picked
+
+        // full-screen flash
         withAnimation(.easeIn(duration: 0.12)) {
             flashOpacity = 1
         }
-        try? await Task.sleep(nanoseconds: 130_000_000)
+        try? await Task.sleep(nanoseconds: 140_000_000)
 
-        // za bílým flashem už je bedna otevřená
+        // za flashem: bedna pryč, karta připravená
         lidOpen = 1
-        boxScale = 1.12
-        boxBounce = -8
+        boxScale = 1
+        boxBounce = 0
+        rewardCardScale = 0.82
+        rewardCardOpacity = 0.01
         UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
 
-        // krátký „hold“ na plném flashi
-        try? await Task.sleep(nanoseconds: 160_000_000)
+        try? await Task.sleep(nanoseconds: 120_000_000)
 
-        // flash mizí → odhalí otevřenou bednu
-        withAnimation(.easeOut(duration: 0.55)) {
+        // flash mizí → Mythic karta vyjede
+        withAnimation(.easeOut(duration: 0.45)) {
             flashOpacity = 0
-            boxScale = 1.04
-            boxBounce = -4
         }
-        try? await Task.sleep(nanoseconds: 480_000_000)
+        withAnimation(.spring(response: 0.62, dampingFraction: 0.72)) {
+            rewardCardScale = 1.06
+            rewardCardOpacity = 1
+        }
+        try? await Task.sleep(nanoseconds: 380_000_000)
 
-        let rarity = LuckyBoxRarity.from(stars: stars)
-        let picked = LuckyBoxMockPool.pickReward(for: rarity)
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+            rewardCardScale = 1
+        }
+
         LuckyBoxLocalStore.saveOpen(reward: picked)
-        reward = picked
         hasOpenedToday = true
         phase = .revealed
 
         UINotificationFeedbackGenerator().notificationOccurred(.success)
-        withAnimation(.spring(response: 0.55, dampingFraction: 0.78)) {
-            boxScale = 1
-            boxBounce = 0
+        withAnimation(.easeOut(duration: 0.35)) {
             revealOpacity = 1
         }
-        try? await Task.sleep(nanoseconds: 350_000_000)
+        try? await Task.sleep(nanoseconds: 300_000_000)
         particleBoost = false
         isBusy = false
     }
+}
+
+// MARK: - Share studio
+
+private enum LuckyShareFormat: String, CaseIterable, Identifiable {
+    case story
+    case square
+    case card
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .story: return "Stories"
+        case .square: return "Feed"
+        case .card: return "Karta"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .story: return "9∶16 příběh"
+        case .square: return "1∶1 příspěvek"
+        case .card: return "jen rámeček"
+        }
+    }
+
+    var size: CGSize {
+        switch self {
+        case .story: return CGSize(width: 1080, height: 1920)
+        case .square: return CGSize(width: 1080, height: 1080)
+        case .card: return CGSize(width: 1080, height: 1440)
+        }
+    }
+}
+
+private struct LuckyShareStudioView: View {
+    let reward: LuckyBoxReward
+    let gold: Color
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var selected: Set<LuckyShareFormat> = [.story, .square, .card]
+    @State private var previews: [LuckyShareFormat: UIImage] = [:]
+    @State private var activityPayload: LuckySharePayload?
+    @State private var statusMessage: String?
+    @State private var isBusy = false
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text("Vyber varianty ke sdílení nebo uložení")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    ForEach(LuckyShareFormat.allCases) { format in
+                        formatRow(format)
+                    }
+
+                    if let statusMessage {
+                        Text(statusMessage)
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(gold)
+                    }
+                }
+                .padding(20)
+            }
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle("Sdílet kartu")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Zavřít") { dismiss() }
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: 10) {
+                    Button {
+                        Task { await shareSelected() }
+                    } label: {
+                        Label("Sdílet vybrané", systemImage: "square.and.arrow.up")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(selected.isEmpty || isBusy)
+
+                    Button {
+                        Task { await saveSelectedToPhotos() }
+                    } label: {
+                        Label("Uložit do fotek", systemImage: "square.and.arrow.down")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(selected.isEmpty || isBusy)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .background(.ultraThinMaterial)
+            }
+            .sheet(item: $activityPayload) { payload in
+                LuckyShareSheet(items: payload.items)
+            }
+            .task {
+                await renderAllPreviews()
+            }
+        }
+    }
+
+    private func formatRow(_ format: LuckyShareFormat) -> some View {
+        let isOn = selected.contains(format)
+        return Button {
+            if isOn {
+                selected.remove(format)
+            } else {
+                selected.insert(format)
+            }
+        } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color.black.opacity(0.85))
+                        .frame(width: 72, height: 96)
+
+                    if let image = previews[format] {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 72, height: 96)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    } else {
+                        ProgressView()
+                    }
+                }
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(isOn ? gold : Color.white.opacity(0.12), lineWidth: isOn ? 2 : 1)
+                )
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(format.title)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    Text(format.subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
+                    .font(.title2)
+                    .foregroundStyle(isOn ? gold : .secondary)
+            }
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color(.secondarySystemGroupedBackground))
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    @MainActor
+    private func renderAllPreviews() async {
+        for format in LuckyShareFormat.allCases {
+            if let image = render(format: format) {
+                previews[format] = image
+            }
+            await Task.yield()
+        }
+    }
+
+    @MainActor
+    private func render(format: LuckyShareFormat) -> UIImage? {
+        let size = format.size
+        let content = LuckySharePosterView(
+            reward: reward,
+            gold: gold,
+            format: format
+        )
+        .frame(width: size.width, height: size.height)
+
+        let renderer = ImageRenderer(content: content)
+        renderer.scale = 1
+        return renderer.uiImage
+    }
+
+    @MainActor
+    private func selectedImages() -> [UIImage] {
+        LuckyShareFormat.allCases.compactMap { format in
+            guard selected.contains(format) else { return nil }
+            return previews[format] ?? render(format: format)
+        }
+    }
+
+    @MainActor
+    private func shareSelected() async {
+        isBusy = true
+        defer { isBusy = false }
+        let images = selectedImages()
+        guard !images.isEmpty else { return }
+        let text = "Právě jsem v Provikart otevřel Lucky Box a získal \(reward.title) (\(reward.rarity.title))! 🎁"
+        activityPayload = LuckySharePayload(items: images + [text])
+    }
+
+    @MainActor
+    private func saveSelectedToPhotos() async {
+        isBusy = true
+        defer { isBusy = false }
+        let images = selectedImages()
+        guard !images.isEmpty else { return }
+
+        var status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
+        if status == .notDetermined {
+            status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+        }
+        guard status == .authorized || status == .limited else {
+            statusMessage = "Povol přístup k fotkám v Nastavení."
+            return
+        }
+
+        do {
+            try await PHPhotoLibrary.shared().performChanges {
+                for image in images {
+                    PHAssetChangeRequest.creationRequestForAsset(from: image)
+                }
+            }
+            statusMessage = images.count == 1
+                ? "Uloženo do Fotky."
+                : "Uloženo \(images.count) variant do Fotky."
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        } catch {
+            statusMessage = "Uložení se nepovedlo."
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        }
+    }
+}
+
+private struct LuckySharePosterView: View {
+    let reward: LuckyBoxReward
+    let gold: Color
+    let format: LuckyShareFormat
+
+    private var colors: [Color] { reward.rarity.backgroundColors }
+
+    var body: some View {
+        ZStack {
+            LinearGradient(colors: colors + [.black], startPoint: .top, endPoint: .bottom)
+
+            RadialGradient(
+                colors: [reward.rarity.tint.opacity(0.45), .clear],
+                center: .center,
+                startRadius: 40,
+                endRadius: format == .story ? 700 : 480
+            )
+
+            VStack(spacing: format == .square ? 28 : 36) {
+                VStack(spacing: 8) {
+                    Text("PROVIKART")
+                        .font(.system(size: format == .card ? 28 : 34, weight: .black, design: .rounded))
+                        .tracking(4)
+                        .foregroundStyle(.white.opacity(0.9))
+
+                    Text("LUCKY BOX")
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .tracking(3)
+                        .foregroundStyle(gold)
+                }
+                .padding(.top, format == .story ? 120 : 48)
+
+                LuckyRewardCardView(reward: reward, gold: gold, isInteractive: false)
+                    .scaleEffect(format == .card ? 2.05 : 1.8)
+                    .frame(width: format == .card ? 820 : 720)
+                    .frame(height: format == .card ? 1090 : 960)
+                    .shadow(color: .black.opacity(0.45), radius: 40, y: 20)
+
+                if format != .card {
+                    VStack(spacing: 10) {
+                        Text(reward.rarity.title.uppercased())
+                            .font(.system(size: 20, weight: .bold))
+                            .tracking(2)
+                            .foregroundStyle(reward.rarity.tint)
+
+                        Text("Dnes jsem vytáhl \(reward.title)")
+                            .font(.system(size: 34, weight: .heavy, design: .rounded))
+                            .foregroundStyle(.white)
+                            .multilineTextAlignment(.center)
+
+                        Text(reward.subtitle)
+                            .font(.system(size: 22, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.75))
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(.horizontal, 64)
+                }
+
+                Spacer(minLength: 0)
+
+                Text("Otevři svůj Lucky Box v Provikart")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .padding(.bottom, format == .story ? 100 : 48)
+            }
+            .padding(.horizontal, 40)
+        }
+    }
+}
+
+private struct LuckySharePayload: Identifiable {
+    let id = UUID()
+    let items: [Any]
+}
+
+private struct LuckyShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 // MARK: - AI particle sprites around chest
@@ -845,7 +1197,7 @@ private struct LuckyShakeParticleSprite: View {
     }
 }
 
-// MARK: - Chest (closed → open crossfade)
+// MARK: - Chest (closed → fade out)
 
 private struct LuckyChestRig: View {
     let lidOpen: CGFloat
@@ -854,14 +1206,13 @@ private struct LuckyChestRig: View {
 
     var body: some View {
         ZStack {
-            // vnitřní glow při otevření
             Circle()
                 .fill(
                     RadialGradient(
                         colors: [
-                            Color.white.opacity(0.7 * lidOpen),
-                            gold.opacity(0.55 * lidOpen),
-                            rarityTint.opacity(0.2 * lidOpen),
+                            Color.white.opacity(0.55 * lidOpen),
+                            gold.opacity(0.4 * lidOpen),
+                            rarityTint.opacity(0.15 * lidOpen),
                             .clear
                         ],
                         center: .center,
@@ -870,7 +1221,6 @@ private struct LuckyChestRig: View {
                     )
                 )
                 .frame(width: 200, height: 200)
-                .offset(y: -10)
                 .blur(radius: 4)
                 .blendMode(.plusLighter)
 
@@ -878,16 +1228,129 @@ private struct LuckyChestRig: View {
                 .resizable()
                 .interpolation(.high)
                 .scaledToFit()
-                .opacity(Double(1 - lidOpen))
-                .scaleEffect(1 - lidOpen * 0.04)
+        }
+    }
+}
 
-            Image("LuckyChestOpen")
+private struct LuckyRewardCardView: View {
+    let reward: LuckyBoxReward?
+    let gold: Color
+    let isInteractive: Bool
+
+    @State private var dragRotX: Double = 0
+    @State private var dragRotY: Double = 0
+    @State private var idlePulse = false
+
+    private var idleRotX: Double { idlePulse ? 7 : -5 }
+    private var idleRotY: Double { idlePulse ? -9 : 8 }
+    private var idleScale: CGFloat { idlePulse ? 1.02 : 0.985 }
+
+    var body: some View {
+        let tilted = cardContent
+            .scaleEffect(isInteractive ? idleScale : 1)
+            .rotation3DEffect(
+                .degrees(idleRotX + dragRotX),
+                axis: (x: 1, y: 0, z: 0),
+                perspective: 0.55
+            )
+            .rotation3DEffect(
+                .degrees(idleRotY + dragRotY),
+                axis: (x: 0, y: 1, z: 0),
+                perspective: 0.55
+            )
+            .shadow(
+                color: Color.red.opacity(0.4),
+                radius: 24,
+                x: dragRotY * 0.35,
+                y: 12 + dragRotX * 0.2
+            )
+
+        Group {
+            if isInteractive {
+                tilted.gesture(dragGesture)
+            } else {
+                tilted
+            }
+        }
+        .onAppear {
+            guard isInteractive else { return }
+            withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
+                idlePulse = true
+            }
+        }
+        .onChange(of: isInteractive) { _, active in
+            if active {
+                withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
+                    idlePulse = true
+                }
+            } else {
+                idlePulse = false
+                dragRotX = 0
+                dragRotY = 0
+            }
+        }
+    }
+
+    private var cardContent: some View {
+        ZStack {
+            Image("LuckyRewardFrame")
                 .resizable()
                 .interpolation(.high)
                 .scaledToFit()
-                .opacity(Double(lidOpen))
-                .scaleEffect(0.92 + lidOpen * 0.08)
+
+            if let reward {
+                VStack(spacing: 10) {
+                    Text(reward.rarity.title.uppercased())
+                        .font(.caption.weight(.bold))
+                        .tracking(1.5)
+                        .foregroundStyle(reward.rarity.tint)
+
+                    Image(systemName: reward.iconName)
+                        .font(.system(size: 52, weight: .bold))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [.white, gold],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .shadow(color: gold.opacity(0.6), radius: 10, y: 2)
+
+                    Text(reward.title)
+                        .font(.system(size: 32, weight: .heavy, design: .rounded))
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .minimumScaleFactor(0.7)
+                        .lineLimit(2)
+
+                    Text(reward.subtitle)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.8))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(3)
+                }
+                .padding(.horizontal, 64)
+                .offset(y: -22)
+            }
         }
+        .frame(maxWidth: 390)
+        .frame(height: 520)
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 2)
+            .onChanged { value in
+                let nextY = min(28, max(-28, value.translation.width / 7))
+                let nextX = min(22, max(-22, -value.translation.height / 8))
+                dragRotY = nextY
+                dragRotX = nextX
+            }
+            .onEnded { _ in
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
+                    dragRotX = 0
+                    dragRotY = 0
+                }
+            }
     }
 }
 

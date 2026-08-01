@@ -21,6 +21,8 @@
 			<string>Editor</string>
 		</dict>
 	</array>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Provikart ukládá obrázek Lucky Box karty do tvé galerie, abys ho mohl sdílet s kamarády.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Aplikace potřebuje přístup k mikrofonu pro hlasové vyhledávání a nahrávání.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
