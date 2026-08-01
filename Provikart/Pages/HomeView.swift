@@ -34,6 +34,8 @@ struct HomeView: View {
         guard let number = UserDefaults.standard.object(forKey: "dealwars_xp_cache") as? NSNumber else { return nil }
         return number.doubleValue
     }()
+    @State private var luckyBoxStatus: LuckyBoxHomeStatus = .current()
+    @State private var luckyBoxTick = Date()
 
     private let commissionService = CommissionService()
     private let userGoalsService = UserGoalsService()
@@ -89,6 +91,18 @@ struct HomeView: View {
                     .navigationLinkIndicatorVisibility(.hidden)
                     .listRowBackground(dealwarsLevelBackground)
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                }
+
+                Section {
+                    NavigationLink {
+                        LuckyBoxView()
+                    } label: {
+                        luckyBoxRow
+                    }
+                    .buttonStyle(.plain)
+                    .navigationLinkIndicatorVisibility(.hidden)
+                    .listRowBackground(luckyBoxBackground)
+                    .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
                 }
 
                 Section {
@@ -167,12 +181,16 @@ struct HomeView: View {
                 }
             }
             .toolbarBackground(.visible, for: .navigationBar)
+            .onAppear {
+                refreshLuckyBoxStatus()
+            }
         }
         .task {
             // Obnov uložený cíl hned (z předchozího načtení), než stáhneme z API
             if commissionGoal == nil, let saved = WidgetDataStore.loadCommissionGoal() {
                 commissionGoal = saved
             }
+            refreshLuckyBoxStatus()
             // Dealwars + level + provize hned paralelně s ostatním.
             async let dealwars: Void = loadDealwarsSummary()
             async let goals: Void = loadGoals()
@@ -186,6 +204,7 @@ struct HomeView: View {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
                 if Task.isCancelled { break }
+                refreshLuckyBoxStatus()
                 async let d: Void = loadDealwarsSummary()
                 async let g: Void = loadGoals()
                 async let c: Void = loadCommission(silent: true)
@@ -206,6 +225,117 @@ struct HomeView: View {
     }
 
     // MARK: - Commission Row (iOS List style)
+
+    private var luckyBoxRow: some View {
+        let gold = Color(red: 1.0, green: 0.86, blue: 0.42)
+        let orange = Color(red: 0.97, green: 0.58, blue: 0.12)
+        let ready: Bool = {
+            if case .ready = luckyBoxStatus { return true }
+            return false
+        }()
+
+        return HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [gold.opacity(0.95), orange],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 44, height: 44)
+                    .shadow(color: orange.opacity(0.35), radius: 6, y: 2)
+                Image(systemName: "gift.fill")
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(.white)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Lucky Box")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+
+                switch luckyBoxStatus {
+                case .ready:
+                    Text("Připraveno k otevření")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(gold)
+                case .opened(let countdown):
+                    Text("Další zítra · \(countdown)")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.72))
+                        .monospacedDigit()
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            if ready {
+                Text("OTEVŘÍT")
+                    .font(.caption2.weight(.heavy))
+                    .tracking(0.6)
+                    .foregroundStyle(Color(red: 0.22, green: 0.08, blue: 0.16))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule()
+                            .fill(
+                                LinearGradient(
+                                    colors: [gold, orange],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    )
+            }
+
+            Image(systemName: "chevron.right")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.white.opacity(0.4))
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            ready
+                ? "Lucky Box, připraveno k otevření"
+                : "Lucky Box, dnes už otevřeno"
+        )
+    }
+
+    private var luckyBoxBackground: some View {
+        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+        let gold = Color(red: 1.0, green: 0.86, blue: 0.42)
+        let orange = Color(red: 0.97, green: 0.58, blue: 0.12)
+        return ZStack {
+            shape
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.18, green: 0.28, blue: 0.38),
+                            Color(red: 0.12, green: 0.18, blue: 0.28),
+                            Color(red: 0.10, green: 0.12, blue: 0.20)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            shape
+                .stroke(
+                    LinearGradient(
+                        colors: [gold.opacity(0.45), orange.opacity(0.25)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
+        }
+        .shadow(color: orange.opacity(0.12), radius: 6, y: 2)
+    }
+
+    private func refreshLuckyBoxStatus() {
+        luckyBoxTick = Date()
+        luckyBoxStatus = .current(now: luckyBoxTick)
+    }
 
     private func dealwarsLevelRow(_ level: DealwarsLevelInfo?) -> some View {
         let gold = Color(red: 1.0, green: 0.86, blue: 0.42)
