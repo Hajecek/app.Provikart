@@ -96,6 +96,7 @@ struct HomeView: View {
                 Section {
                     NavigationLink {
                         LuckyBoxView()
+                            .environmentObject(authState)
                     } label: {
                         luckyBoxRow
                     }
@@ -169,6 +170,13 @@ struct HomeView: View {
                     }
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
+                    NavigationLink {
+                        CollectiblesCollectionView()
+                            .environmentObject(authState)
+                    } label: {
+                        Image(systemName: "square.grid.2x2.fill")
+                    }
+                    .accessibilityLabel("Sbírka")
                     NavigationLink {
                         StatisticsView()
                             .environmentObject(authState)
