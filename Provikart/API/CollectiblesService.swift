@@ -195,7 +195,10 @@ final class CollectiblesService {
     private let baseURL = "https://provikart.cz/api"
 
     /// POST /api/collectibles_chest.php – otevře denní sběratelskou bednu.
-    func openChest(token: String?) async throws -> CollectiblesChestOpenResult {
+    /// - Parameters:
+    ///   - luckStars: nabité hvězdy (1…5) = cílová rarita dropu
+    ///   - rarity: API hodnota rarity (`common`…`legendary`) odpovídající hvězdám
+    func openChest(token: String?, luckStars: Int? = nil, rarity: String? = nil) async throws -> CollectiblesChestOpenResult {
         guard let token, !token.isEmpty else { throw CollectiblesError.notAuthenticated }
 
         var comp = URLComponents(string: "\(baseURL)/collectibles_chest.php")
@@ -210,7 +213,19 @@ final class CollectiblesService {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue(token, forHTTPHeaderField: "X-Auth-Token")
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["token": token])
+
+        var body: [String: Any] = ["token": token]
+        if let luckStars {
+            let clamped = min(5, max(1, luckStars))
+            body["stars"] = clamped
+            body["luck"] = clamped
+            body["rarity_stars"] = clamped
+        }
+        if let rarity, !rarity.isEmpty {
+            body["rarity"] = rarity
+            body["target_rarity"] = rarity
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await URLSession.shared.authAwareData(for: request)
         guard let http = response as? HTTPURLResponse else {

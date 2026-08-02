@@ -1164,8 +1164,13 @@ struct LuckyBoxView: View {
 
         let picked: LuckyBoxReward
         do {
-            // Shake + API paralelně (API má vlastní timeout 12 s)
-            async let apiResult = CollectiblesService().openChest(token: token)
+            // Shake + API paralelně (API má vlastní timeout 12 s).
+            // Nabité hvězdy = cílová rarita dropu (3★ → rare položka z DB).
+            async let apiResult = CollectiblesService().openChest(
+                token: token,
+                luckStars: chargedStars,
+                rarity: chargedRarity.rawValue
+            )
 
             for i in 0..<8 {
                 guard stillCurrent() else {
@@ -1193,7 +1198,7 @@ struct LuckyBoxView: View {
                 return
             }
 
-            // Hvězdy jsou finální z nabíjení – po „otevření“ už nikdy +★
+            // Rarita z nabití hvězd; obsah karty (jméno/foto) z API položky dané rarity.
             picked = LuckyBoxReward(from: result, rarity: chargedRarity)
         } catch is CancellationError {
             abortOpen(message: nil, generation: generation)
