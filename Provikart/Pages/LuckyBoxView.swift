@@ -850,12 +850,21 @@ struct LuckyBoxView: View {
                 )
             } else {
                 clickTokensRow
+                    .frame(maxWidth: .infinity)
 
-                Text(hintText)
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(.white.opacity(hintPulse ? 1 : 0.55))
-                    .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: hintPulse)
-                    .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
+                ZStack {
+                    Text(hintText)
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(.white)
+                        .opacity(hintPulse ? 1 : 0.55)
+                        .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
+                        .multilineTextAlignment(.center)
+                        .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: hintPulse)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 28)
+                .animation(nil, value: hintText)
+                .animation(nil, value: clicksLeft)
             }
         }
         .frame(maxWidth: .infinity)
