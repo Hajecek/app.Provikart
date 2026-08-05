@@ -72,6 +72,8 @@ struct CollectiblesCollectionView: View {
     @State private var ownershipFilter: CollectiblesOwnershipFilter = .all
     @State private var rarityFilter: CollectiblesRarityFilter = .all
     @State private var showProgressDetail = false
+    /// Po refreshi vynutí znovunačtení thumbnailů (stejná URL ≠ stejný obsah).
+    @State private var imageEpoch = 0
 
     private let gold = Color(red: 1.0, green: 0.86, blue: 0.42)
     private let orange = Color(red: 0.97, green: 0.58, blue: 0.12)
@@ -114,7 +116,7 @@ struct CollectiblesCollectionView: View {
                     Text(errorMessage)
                 } actions: {
                     Button("Zkusit znovu") {
-                        Task { await loadInventory() }
+                        Task { await loadInventory(forceImageRefresh: true) }
                     }
                 }
             } else {
@@ -159,7 +161,7 @@ struct CollectiblesCollectionView: View {
             await loadInventory()
         }
         .refreshable {
-            await loadInventory()
+            await loadInventory(forceImageRefresh: true)
         }
         .sheet(item: $selectedItem) { item in
             CollectibleDetailSheet(
@@ -193,7 +195,7 @@ struct CollectiblesCollectionView: View {
                             Button {
                                 selectedItem = item
                             } label: {
-                                CollectibleGridCell(item: item)
+                                CollectibleGridCell(item: item, imageEpoch: imageEpoch)
                                     .equatable()
                             }
                             .buttonStyle(.plain)
@@ -278,13 +280,18 @@ struct CollectiblesCollectionView: View {
     }
 
     @MainActor
-    private func loadInventory() async {
+    private func loadInventory(forceImageRefresh: Bool = false) async {
         if inventory == nil { isLoading = true }
         errorMessage = nil
         defer { isLoading = false }
 
         do {
-            inventory = try await CollectiblesService().fetchInventory(token: authState.authToken)
+            let fresh = try await CollectiblesService().fetchInventory(token: authState.authToken)
+            inventory = fresh
+            if forceImageRefresh {
+                CollectibleImageCache.shared.clearMemory()
+                imageEpoch &+= 1
+            }
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
@@ -555,9 +562,10 @@ private struct CollectiblesProgressDetailView: View {
 
 private struct CollectibleGridCell: View, Equatable {
     let item: CollectibleItem
+    var imageEpoch: Int = 0
 
     static func == (lhs: CollectibleGridCell, rhs: CollectibleGridCell) -> Bool {
-        lhs.item == rhs.item
+        lhs.item == rhs.item && lhs.imageEpoch == rhs.imageEpoch
     }
 
     private var rarity: LuckyBoxRarity {
@@ -619,7 +627,8 @@ private struct CollectibleGridCell: View, Equatable {
 
             CollectibleCachedThumbnail(
                 url: item.resolvedImageURL,
-                owned: item.owned
+                owned: item.owned,
+                epoch: imageEpoch
             )
             .padding(14)
 
@@ -662,6 +671,7 @@ private struct CollectibleGridCell: View, Equatable {
 private struct CollectibleCachedThumbnail: View {
     let url: URL?
     var owned: Bool = true
+    var epoch: Int = 0
 
     @State private var image: UIImage?
     @State private var didFail = false
@@ -685,7 +695,7 @@ private struct CollectibleCachedThumbnail: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task(id: url?.absoluteString) {
+        .task(id: "\(url?.absoluteString ?? "")#\(epoch)") {
             await load()
         }
     }
@@ -709,8 +719,14 @@ private struct CollectibleCachedThumbnail: View {
         }
         if let cached = CollectibleImageCache.shared.imageIfCached(for: url, maxPixelSize: maxPixelSize) {
             image = cached
+            didFail = false
             return
         }
+        // Po invalidaci cache nech starý bitmap nezůstávat na obrazovce.
+        if image != nil {
+            image = nil
+        }
+        didFail = false
         let loaded = await CollectibleImageCache.shared.image(for: url, maxPixelSize: maxPixelSize)
         guard !Task.isCancelled else { return }
         if let loaded {

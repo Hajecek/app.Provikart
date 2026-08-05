@@ -237,6 +237,7 @@ struct SettingsView: View {
 
     private func clearAppCache() {
         URLCache.shared.removeAllCachedResponses()
+        CollectibleImageCache.shared.clearAll()
     }
 
     private func openExternal(_ url: URL?) {
