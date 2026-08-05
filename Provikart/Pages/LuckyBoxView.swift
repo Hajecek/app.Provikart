@@ -420,6 +420,10 @@ struct LuckyBoxView: View {
     @State private var boxScale: CGFloat = 1
     @State private var boxRotation: Double = 0
     @State private var boxBounce: CGFloat = 0
+    /// 0…1 – expandující aura kolem bedny při klepnutí.
+    @State private var hitAuraProgress: CGFloat = 0
+    /// true = silnější aura (upgrade hvězdy).
+    @State private var hitAuraIntense = false
     @State private var lidOpen: CGFloat
     @State private var glowPulse = false
     @State private var hintPulse = false
@@ -804,15 +808,34 @@ struct LuckyBoxView: View {
                     .offset(y: -20)
                     .allowsHitTesting(false)
 
+                LuckyHitAura(
+                    progress: hitAuraProgress,
+                    intense: hitAuraIntense,
+                    tint: currentRarity.tint,
+                    gold: gold
+                )
+                .frame(width: 420, height: 420)
+                .allowsHitTesting(false)
+
                 LuckyChestRig(lidOpen: lidOpen, rarityTint: currentRarity.tint, gold: gold)
                     .frame(width: 290, height: 290)
                     .scaleEffect(boxScale)
-                    .rotationEffect(.degrees(boxRotation))
+                    .rotation3DEffect(
+                        .degrees(boxRotation),
+                        axis: (x: 0.12, y: 1, z: 0.04),
+                        anchor: .center,
+                        anchorZ: 0,
+                        perspective: 0.55
+                    )
                     .offset(y: boxBounce)
-                    .shadow(color: currentRarity.tint.opacity(0.35 + 0.25 * lidOpen), radius: 26, y: 12)
+                    .shadow(
+                        color: currentRarity.tint.opacity(0.35 + 0.25 * lidOpen + 0.35 * Double(hitAuraProgress)),
+                        radius: 26 + 18 * hitAuraProgress,
+                        y: 12
+                    )
 
                 LuckyShakeParticleLayer(particles: shakeParticles)
-                    .frame(width: 380, height: 380)
+                    .frame(width: 420, height: 420)
                     .allowsHitTesting(false)
             }
             .opacity(Double(1 - lidOpen))
@@ -958,6 +981,8 @@ struct LuckyBoxView: View {
         boxScale = 1
         boxRotation = 0
         boxBounce = 0
+        hitAuraProgress = 0
+        hitAuraIntense = false
         flashOpacity = 0
         rewardCardOpacity = 0
         rewardCardScale = 0.72
@@ -1074,79 +1099,122 @@ struct LuckyBoxView: View {
         }
     }
 
-    /// Výraznější otočení bedny = cooldown mezi klepnutími.
+    /// 3D otočka bedny kolem dokola (osa Y) + aura / částice.
     @MainActor
     private func playChestSpin(upgraded: Bool) async {
-        let spins = upgraded ? 10 : 8
-        for i in 0..<spins {
-            guard !Task.isCancelled else { return }
-            let progress = Double(i) / Double(max(spins - 1, 1))
-            let decay = 1 - progress * 0.85
-            let sign: Double = i.isMultiple(of: 2) ? 1 : -1
-            let amp = (upgraded ? 22.0 : 16.0) * decay
-
-            withAnimation(.easeInOut(duration: 0.055)) {
-                boxRotation = sign * amp
-                boxScale = 1 + 0.06 * decay * (i.isMultiple(of: 2) ? 1 : -0.55)
-                boxBounce = -amp * 0.35
-            }
-            try? await Task.sleep(nanoseconds: upgraded ? 55_000_000 : 48_000_000)
+        let turns = upgraded ? 2.0 : 1.0
+        let spinDuration = upgraded ? 0.78 : 0.58
+        let startRotation = boxRotation.truncatingRemainder(dividingBy: 360)
+        var noAnim = Transaction()
+        noAnim.disablesAnimations = true
+        withTransaction(noAnim) {
+            boxRotation = startRotation
+            hitAuraProgress = 0
+            hitAuraIntense = upgraded
         }
 
-        guard !Task.isCancelled else { return }
+        emitHitParticles(upgraded: upgraded)
+        particleBoost = true
+
+        // squash před odletem
+        withAnimation(.easeOut(duration: 0.1)) {
+            boxScale = upgraded ? 0.86 : 0.9
+            boxBounce = 12
+            hitAuraProgress = 0.2
+        }
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        guard !Task.isCancelled else {
+            finishHitMotionCleanup()
+            return
+        }
+
+        // 3D spin kolem svislé osy (1× / 2×) + expandující aura
+        withAnimation(.easeInOut(duration: spinDuration)) {
+            boxRotation = startRotation + 360 * turns
+            boxScale = upgraded ? 1.16 : 1.1
+            boxBounce = upgraded ? -22 : -14
+            hitAuraProgress = 1
+        }
+        try? await Task.sleep(nanoseconds: UInt64(spinDuration * 1_000_000_000))
+        guard !Task.isCancelled else {
+            finishHitMotionCleanup()
+            return
+        }
 
         if upgraded {
-            emitStarUpgradeParticles()
-            withAnimation(.spring(response: 0.42, dampingFraction: 0.58)) {
-                boxScale = 1.12
-                boxRotation = 0
-                boxBounce = -12
+            emitHitParticles(upgraded: true, burstExtra: 5)
+            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+            withAnimation(.spring(response: 0.36, dampingFraction: 0.52)) {
+                boxScale = 1.18
+                boxBounce = -14
             }
-            try? await Task.sleep(nanoseconds: 180_000_000)
-            guard !Task.isCancelled else { return }
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            guard !Task.isCancelled else {
+                finishHitMotionCleanup()
+                return
+            }
             withAnimation(.spring(response: 0.48, dampingFraction: 0.72)) {
                 boxScale = 1
                 boxBounce = 0
                 starBurst = false
+                hitAuraProgress = 0
             }
-            try? await Task.sleep(nanoseconds: 120_000_000)
         } else {
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.65)) {
-                boxRotation = 0
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.64)) {
                 boxScale = 1
-                boxBounce = 6
+                boxBounce = 7
             }
-            try? await Task.sleep(nanoseconds: 140_000_000)
-            guard !Task.isCancelled else { return }
-            withAnimation(.spring(response: 0.42, dampingFraction: 0.75)) {
+            try? await Task.sleep(nanoseconds: 110_000_000)
+            guard !Task.isCancelled else {
+                finishHitMotionCleanup()
+                return
+            }
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.78)) {
                 boxBounce = 0
+                hitAuraProgress = 0
             }
-            try? await Task.sleep(nanoseconds: 80_000_000)
+        }
+
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        finishHitMotionCleanup()
+    }
+
+    @MainActor
+    private func finishHitMotionCleanup() {
+        var noAnim = Transaction()
+        noAnim.disablesAnimations = true
+        withTransaction(noAnim) {
+            boxRotation = boxRotation.truncatingRemainder(dividingBy: 360)
+            hitAuraIntense = false
+            particleBoost = false
+            if hitAuraProgress > 0.01 {
+                hitAuraProgress = 0
+            }
         }
     }
 
     @MainActor
-    private func emitStarUpgradeParticles() {
+    private func emitHitParticles(upgraded: Bool, burstExtra: Int = 0) {
         let now = Date()
-        let assets = ["LuckyParticleGold", "LuckyParticleCyan", "LuckyParticleSoft"]
-        let count = 6
+        let assets = ["LuckyParticleGold", "LuckyParticleCyan", "LuckyParticleSoft", "LuckyParticleWhite"]
+        let count = (upgraded ? 10 : 7) + burstExtra
         for i in 0..<count {
-            let angle = Double(i) / Double(count) * .pi * 2 + Double.random(in: -0.15...0.15)
+            let angle = Double(i) / Double(count) * .pi * 2 + Double.random(in: -0.2...0.2)
             shakeParticles.append(
                 LuckyShakeParticle(
                     assetName: assets[i % assets.count],
                     angle: angle,
-                    startRadius: Double.random(in: 88...108),
-                    speed: Double.random(in: 35...70),
-                    size: CGFloat.random(in: 24...36),
-                    spin: Double.random(in: -60...60),
+                    startRadius: Double.random(in: upgraded ? 70...95 : 78...100),
+                    speed: Double.random(in: upgraded ? 55...110 : 40...85),
+                    size: CGFloat.random(in: upgraded ? 26...42 : 22...34),
+                    spin: Double.random(in: -120...120),
                     startedAt: now,
-                    duration: Double.random(in: 0.55...0.75)
+                    duration: Double.random(in: upgraded ? 0.55...0.85 : 0.45...0.7)
                 )
             )
         }
-        if shakeParticles.count > 18 {
-            shakeParticles.removeFirst(shakeParticles.count - 18)
+        if shakeParticles.count > 28 {
+            shakeParticles.removeFirst(shakeParticles.count - 28)
         }
     }
 
@@ -1165,6 +1233,8 @@ struct LuckyBoxView: View {
         boxRotation = 0
         boxScale = 1
         boxBounce = 0
+        hitAuraProgress = 0
+        hitAuraIntense = false
         UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
 
         let token = authState.authToken
@@ -1299,6 +1369,8 @@ struct LuckyBoxView: View {
             boxRotation = 0
             boxScale = 1
             boxBounce = 0
+            hitAuraProgress = 0
+            hitAuraIntense = false
         }
         phase = .readyToOpen
         isBusy = false
@@ -1314,7 +1386,7 @@ struct LuckyBoxView: View {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.5)) {
             starBurst = true
         }
-        emitStarUpgradeParticles()
+        emitHitParticles(upgraded: true)
         UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
         try? await Task.sleep(nanoseconds: 200_000_000)
         withAnimation(.easeOut(duration: 0.2)) { starBurst = false }
@@ -1651,6 +1723,96 @@ private struct LuckyShareSheet: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+// MARK: - Hit aura (expanding rings around chest)
+
+private struct LuckyHitAura: View {
+    let progress: CGFloat
+    let intense: Bool
+    let tint: Color
+    let gold: Color
+
+    var body: some View {
+        let p = max(0, min(1, progress))
+        ZStack {
+            // měkký bloom
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color.white.opacity(0.55 * Double(1 - p) * (intense ? 1 : 0.7)),
+                            gold.opacity(0.4 * Double(1 - p)),
+                            tint.opacity(0.28 * Double(1 - p)),
+                            .clear
+                        ],
+                        center: .center,
+                        startRadius: 10,
+                        endRadius: 150 + 40 * p
+                    )
+                )
+                .frame(width: 260 + 90 * p, height: 260 + 90 * p)
+                .blendMode(.plusLighter)
+
+            ForEach(0..<3, id: \.self) { index in
+                ring(at: index, progress: p)
+            }
+
+            // jiskřivé čárky
+            ForEach(0..<(intense ? 12 : 8), id: \.self) { index in
+                spark(at: index, progress: p)
+            }
+        }
+        .opacity(Double(min(1, p * 2.2)) * Double(1 - p * 0.15))
+        .allowsHitTesting(false)
+    }
+
+    private func ring(at index: Int, progress: CGFloat) -> some View {
+        let stagger = CGFloat(index) * 0.14
+        let local = max(0, min(1, (progress - stagger) / max(0.01, 1 - stagger)))
+        let size: CGFloat = 140 + local * (110 + CGFloat(index) * 48)
+        return Circle()
+            .stroke(
+                AngularGradient(
+                    colors: [
+                        Color.white.opacity(0.85),
+                        gold.opacity(0.9),
+                        tint.opacity(0.75),
+                        Color.white.opacity(0.35),
+                        gold.opacity(0.8)
+                    ],
+                    center: .center
+                ),
+                lineWidth: (intense ? 3.2 : 2.4) - CGFloat(index) * 0.55
+            )
+            .frame(width: size, height: size)
+            .opacity(Double((1 - local) * (intense ? 0.95 : 0.7)))
+            .blur(radius: 0.4 + CGFloat(index) * 0.35)
+            .rotationEffect(.degrees(Double(local) * (intense ? 55 : 35) * (index.isMultiple(of: 2) ? 1 : -1)))
+    }
+
+    private func spark(at index: Int, progress: CGFloat) -> some View {
+        let count = intense ? 12.0 : 8.0
+        let baseAngle = Double(index) / count * .pi * 2
+        let local = max(0, min(1, progress))
+        let radius = 70 + local * (95 + Double(index % 3) * 18)
+        let x = cos(baseAngle + local * 0.35) * radius
+        let y = sin(baseAngle + local * 0.35) * radius * 0.9
+        let len: CGFloat = intense ? 16 : 11
+        return Capsule()
+            .fill(
+                LinearGradient(
+                    colors: [Color.white, gold.opacity(0.8), .clear],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .frame(width: len + CGFloat(index % 3) * 4, height: 2.2)
+            .rotationEffect(.degrees(baseAngle * 180 / .pi + 90))
+            .offset(x: x, y: y)
+            .opacity(Double((1 - local) * 0.85))
+            .blendMode(.plusLighter)
+    }
 }
 
 // MARK: - AI particle sprites around chest

@@ -127,27 +127,16 @@ struct CollectiblesCollectionView: View {
         .toolbar {
             if let inventory {
                 ToolbarItem(placement: .topBarTrailing) {
-                    CollectiblesToolbarPowderBadge(
+                    CollectiblesToolbarStats(
                         wallet: inventory.wallet,
                         currencyName: inventory.currency.name,
+                        owned: inventory.ownedCount,
+                        total: inventory.total,
                         gold: gold,
                         orange: orange
-                    )
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
+                    ) {
                         showProgressDetail = true
-                    } label: {
-                        CollectiblesToolbarProgressBadge(
-                            owned: inventory.ownedCount,
-                            total: inventory.total,
-                            gold: gold,
-                            orange: orange
-                        )
                     }
-                    .accessibilityLabel(
-                        "Pokrok sbírky, \(inventory.ownedCount) z \(inventory.total)"
-                    )
                 }
             }
         }
@@ -304,52 +293,14 @@ struct CollectiblesCollectionView: View {
 
 // MARK: - Toolbar badges + progress sheet
 
-private struct CollectiblesToolbarPowderBadge: View {
+private struct CollectiblesToolbarStats: View {
     let wallet: Int
     let currencyName: String
-    let gold: Color
-    let orange: Color
-
-    var body: some View {
-        HStack(spacing: 5) {
-            Image(systemName: "sparkles")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(
-                    LinearGradient(colors: [gold, orange], startPoint: .top, endPoint: .bottom)
-                )
-            Text("\(wallet)")
-                .font(.subheadline.weight(.bold))
-                .monospacedDigit()
-                .contentTransition(.numericText())
-                .foregroundStyle(.primary)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(
-            Capsule(style: .continuous)
-                .fill(gold.opacity(0.16))
-                .overlay(
-                    Capsule(style: .continuous)
-                        .stroke(
-                            LinearGradient(
-                                colors: [gold.opacity(0.55), orange.opacity(0.25)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 1
-                        )
-                )
-        )
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(currencyName), \(wallet)")
-    }
-}
-
-private struct CollectiblesToolbarProgressBadge: View {
     let owned: Int
     let total: Int
     let gold: Color
     let orange: Color
+    let onProgressTap: () -> Void
 
     private var progress: Double {
         guard total > 0 else { return 0 }
@@ -357,31 +308,130 @@ private struct CollectiblesToolbarProgressBadge: View {
     }
 
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 0) {
+            powderSegment
+            segmentDivider
+            progressSegment
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 4)
+        .background(chromeBackground)
+        .accessibilityElement(children: .contain)
+    }
+
+    private var powderSegment: some View {
+        HStack(spacing: 6) {
             ZStack {
                 Circle()
-                    .stroke(Color.primary.opacity(0.12), lineWidth: 2.5)
-                Circle()
-                    .trim(from: 0, to: progress)
-                    .stroke(
-                        AngularGradient(colors: [gold, orange, gold], center: .center),
-                        style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
+                    .fill(
+                        LinearGradient(
+                            colors: [gold.opacity(0.95), orange.opacity(0.85)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
                     )
-                    .rotationEffect(.degrees(-90))
-            }
-            .frame(width: 18, height: 18)
+                    .frame(width: 22, height: 22)
+                    .shadow(color: orange.opacity(0.35), radius: 3, y: 1)
 
-            Text("\(owned)/\(total)")
-                .font(.subheadline.weight(.bold))
-                .monospacedDigit()
-                .foregroundStyle(.primary)
+                Image(systemName: "sparkles")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Prach")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.secondary)
+                Text("\(wallet)")
+                    .font(.system(.subheadline, design: .rounded).weight(.bold))
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                    .foregroundStyle(.primary)
+            }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(
-            Capsule(style: .continuous)
-                .fill(Color(uiColor: .secondarySystemFill))
-        )
+        .padding(.leading, 4)
+        .padding(.trailing, 10)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(currencyName), \(wallet)")
+    }
+
+    private var progressSegment: some View {
+        Button(action: onProgressTap) {
+            HStack(spacing: 7) {
+                ZStack {
+                    Circle()
+                        .stroke(Color.primary.opacity(0.1), lineWidth: 2.5)
+                        .frame(width: 22, height: 22)
+                    Circle()
+                        .trim(from: 0, to: progress)
+                        .stroke(
+                            AngularGradient(colors: [gold, orange, gold], center: .center),
+                            style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
+                        )
+                        .frame(width: 22, height: 22)
+                        .rotationEffect(.degrees(-90))
+
+                    Image(systemName: "square.grid.2x2.fill")
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(orange.opacity(0.9))
+                }
+
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("Sbírka")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: 2) {
+                        Text("\(owned)")
+                            .font(.system(.subheadline, design: .rounded).weight(.bold))
+                            .monospacedDigit()
+                            .contentTransition(.numericText())
+                            .foregroundStyle(.primary)
+                        Text("/\(total)")
+                            .font(.system(.caption, design: .rounded).weight(.semibold))
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.tertiary)
+                    .padding(.leading, 1)
+            }
+            .padding(.leading, 8)
+            .padding(.trailing, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Pokrok sbírky, \(owned) z \(total)")
+        .accessibilityHint("Zobrazí detail pokroku")
+    }
+
+    private var segmentDivider: some View {
+        Capsule()
+            .fill(Color.primary.opacity(0.12))
+            .frame(width: 1, height: 22)
+    }
+
+    private var chromeBackground: some View {
+        Capsule(style: .continuous)
+            .fill(.ultraThinMaterial)
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                gold.opacity(0.45),
+                                Color.primary.opacity(0.08),
+                                orange.opacity(0.3)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            )
+            .shadow(color: Color.black.opacity(0.06), radius: 4, y: 1)
     }
 }
 
