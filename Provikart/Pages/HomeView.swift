@@ -82,19 +82,6 @@ struct HomeView: View {
                 // Přehledové karty
                 Section {
                     NavigationLink {
-                        DealwarsLevelDetailView(initialLevel: dealwarsLevel)
-                            .environmentObject(authState)
-                    } label: {
-                        dealwarsLevelRow(dealwarsLevel)
-                    }
-                    .buttonStyle(.plain)
-                    .navigationLinkIndicatorVisibility(.hidden)
-                    .listRowBackground(dealwarsLevelBackground)
-                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                }
-
-                Section {
-                    NavigationLink {
                         LuckyBoxView()
                             .environmentObject(authState)
                     } label: {
@@ -103,6 +90,19 @@ struct HomeView: View {
                     .buttonStyle(.plain)
                     .navigationLinkIndicatorVisibility(.hidden)
                     .listRowBackground(luckyBoxBackground)
+                    .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
+                }
+
+                Section {
+                    NavigationLink {
+                        DealwarsLevelDetailView(initialLevel: dealwarsLevel)
+                            .environmentObject(authState)
+                    } label: {
+                        dealwarsLevelRow(dealwarsLevel)
+                    }
+                    .buttonStyle(.plain)
+                    .navigationLinkIndicatorVisibility(.hidden)
+                    .listRowBackground(dealwarsLevelBackground)
                     .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
                 }
 
@@ -146,16 +146,11 @@ struct HomeView: View {
             }
             .navigationTitle("Domů")
             .navigationBarTitleDisplayMode(.large)
+            .background {
+                HideCollapsedNavigationTitle()
+            }
             .toolbar {
                 ToolbarItemGroup(placement: .topBarLeading) {
-                    NavigationLink {
-                        CalendarView()
-                            .environmentObject(authState)
-                            .environment(\.openAddSheet, openAddSheet)
-                    } label: {
-                        Image(systemName: "calendar")
-                    }
-                    .accessibilityLabel("Kalendář")
                     NavigationLink {
                         UserLocationUpdateView()
                             .environmentObject(authState)
@@ -350,46 +345,66 @@ struct HomeView: View {
         let orange = Color(red: 0.97, green: 0.58, blue: 0.12)
         let progress = level?.progressFraction ?? 0
         let pct = level.map { Int($0.levelProgressPct.rounded()) }
+        let toNext = level?.pointsToNextLevel
 
-        return HStack(spacing: 12) {
-            Text(level.map { "\($0.level)" } ?? "—")
-                .font(.system(size: 28, weight: .heavy, design: .rounded))
-                .foregroundStyle(gold)
-                .monospacedDigit()
-                .frame(minWidth: 36, alignment: .center)
+        return HStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .stroke(Color.white.opacity(0.14), lineWidth: 6)
+                Circle()
+                    .trim(from: 0, to: progress)
+                    .stroke(
+                        AngularGradient(
+                            colors: [gold, orange, gold],
+                            center: .center
+                        ),
+                        style: StrokeStyle(lineWidth: 6, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Level")
-                    .font(.subheadline.weight(.semibold))
+                VStack(spacing: 0) {
+                    Text(level.map { "\($0.level)" } ?? "—")
+                        .font(.system(size: 26, weight: .heavy, design: .rounded))
+                        .foregroundStyle(gold)
+                        .monospacedDigit()
+                    Text("LVL")
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.55))
+                        .tracking(0.8)
+                }
+            }
+            .frame(width: 68, height: 68)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Tvůj level")
+                    .font(.headline.weight(.bold))
                     .foregroundStyle(.white)
 
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule()
-                            .fill(Color.white.opacity(0.16))
-                        Capsule()
-                            .fill(
-                                LinearGradient(
-                                    colors: [gold, orange],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                            .frame(width: max(4, geo.size.width * progress))
-                    }
+                if let pct {
+                    Text("\(pct) % k dalšímu levelu")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(gold.opacity(0.95))
+                        .monospacedDigit()
+                } else {
+                    Text("Načítám postup…")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.55))
                 }
-                .frame(height: 5)
-            }
 
-            Text(pct.map { "\($0) %" } ?? "—")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(gold.opacity(0.9))
-                .monospacedDigit()
+                if let toNext {
+                    Text(toNext == 0 ? "Maximální level" : "Ještě \(toNext) XP")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.62))
+                        .monospacedDigit()
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Image(systemName: "chevron.right")
-                .font(.caption2.weight(.bold))
+                .font(.caption.weight(.bold))
                 .foregroundStyle(.white.opacity(0.4))
         }
+        .padding(.vertical, 4)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
             level.map {
@@ -399,7 +414,7 @@ struct HomeView: View {
     }
 
     private var dealwarsLevelBackground: some View {
-        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
         let gold = Color(red: 1.0, green: 0.86, blue: 0.42)
         let orange = Color(red: 0.97, green: 0.58, blue: 0.12)
         return ZStack {
@@ -407,17 +422,26 @@ struct HomeView: View {
                 .fill(
                     LinearGradient(
                         colors: [
-                            Color(red: 0.42, green: 0.18, blue: 0.28),
-                            Color(red: 0.28, green: 0.10, blue: 0.22)
+                            Color(red: 0.38, green: 0.14, blue: 0.26),
+                            Color(red: 0.22, green: 0.08, blue: 0.18)
                         ],
-                        startPoint: .leading,
-                        endPoint: .trailing
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
                     )
                 )
             shape
-                .stroke(gold.opacity(0.35), lineWidth: 1)
+                .fill(
+                    RadialGradient(
+                        colors: [gold.opacity(0.18), .clear],
+                        center: .leading,
+                        startRadius: 0,
+                        endRadius: 120
+                    )
+                )
+            shape
+                .stroke(gold.opacity(0.28), lineWidth: 1)
         }
-        .shadow(color: orange.opacity(0.12), radius: 4, y: 2)
+        .shadow(color: orange.opacity(0.14), radius: 6, y: 2)
     }
 
     private var dealwarsRow: some View {
@@ -1107,6 +1131,81 @@ private struct HomeTopArchGlow: View {
         }
         .frame(height: 380)
     }
+}
+
+/// Skryje sbalený (inline) navigation title, large title nechá beze změny.
+/// Při odchodu z obrazovky obnoví výchozí vzhled, aby podřízené obrazovky měly viditelný title.
+private struct HideCollapsedNavigationTitle: UIViewControllerRepresentable {
+    final class Controller: UIViewController {
+        private var isHiding = false
+
+        override func viewWillAppear(_ animated: Bool) {
+            super.viewWillAppear(animated)
+            applyHiddenInlineTitle()
+        }
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            applyHiddenInlineTitle()
+        }
+
+        override func viewDidLayoutSubviews() {
+            super.viewDidLayoutSubviews()
+            if isViewLoaded, view.window != nil {
+                applyHiddenInlineTitle()
+            }
+        }
+
+        override func viewWillDisappear(_ animated: Bool) {
+            super.viewWillDisappear(animated)
+            restoreInlineTitle()
+        }
+
+        private func resolveNavigationBar() -> UINavigationBar? {
+            if let bar = navigationController?.navigationBar { return bar }
+            var parent = self.parent
+            while let current = parent {
+                if let bar = current.navigationController?.navigationBar { return bar }
+                if let nav = current as? UINavigationController { return nav.navigationBar }
+                parent = current.parent
+            }
+            return nil
+        }
+
+        private func applyHiddenInlineTitle() {
+            guard let bar = resolveNavigationBar() else { return }
+
+            func appearance() -> UINavigationBarAppearance {
+                let value = UINavigationBarAppearance()
+                value.configureWithDefaultBackground()
+                value.titleTextAttributes = [.foregroundColor: UIColor.clear]
+                return value
+            }
+
+            let next = appearance()
+            bar.standardAppearance = next
+            bar.compactAppearance = next
+            bar.scrollEdgeAppearance = next
+            bar.compactScrollEdgeAppearance = next
+            isHiding = true
+        }
+
+        private func restoreInlineTitle() {
+            guard isHiding, let bar = resolveNavigationBar() else { return }
+
+            let appearance = UINavigationBarAppearance()
+            appearance.configureWithDefaultBackground()
+            bar.standardAppearance = appearance
+            bar.compactAppearance = appearance
+            bar.scrollEdgeAppearance = appearance
+            bar.compactScrollEdgeAppearance = appearance
+            isHiding = false
+        }
+    }
+
+    func makeUIViewController(context: Context) -> Controller { Controller() }
+
+    func updateUIViewController(_ uiViewController: Controller, context: Context) {}
 }
 
 /// Spodní hrana do oblouku (výraznější uprostřed, měkčí po stranách).

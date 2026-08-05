@@ -37,6 +37,7 @@ struct SalesLocalityItem: Decodable, Identifiable, Equatable {
     let managerUserId: Int?
     let managerName: String?
     let salesName: String?
+    let komerceDate: String?
     let updatedAt: String?
 
     enum CodingKeys: String, CodingKey {
@@ -73,6 +74,7 @@ struct SalesLocalityItem: Decodable, Identifiable, Equatable {
         case managerLastname = "manager_lastname"
         case salesFirstname = "sales_firstname"
         case salesLastname = "sales_lastname"
+        case komerceDate = "komerce_date"
         case updatedAt = "updated_at"
     }
 
@@ -99,6 +101,7 @@ struct SalesLocalityItem: Decodable, Identifiable, Equatable {
         penetrationPct = c.decodeFlexibleDouble(forKey: .penetrationPct)
         salesUserId = c.decodeFlexibleInt(forKey: .salesUserId)
         managerUserId = c.decodeFlexibleInt(forKey: .managerUserId)
+        komerceDate = c.decodeFlexibleString(forKey: .komerceDate)
         updatedAt = c.decodeFlexibleString(forKey: .updatedAt)
 
         let rawPopisne = c.firstFlexibleString(forKeys: [
@@ -204,6 +207,27 @@ struct SalesLocalityItem: Decodable, Identifiable, Equatable {
         if let penetrationPct { return penetrationPct }
         guard hp > 0 else { return 0 }
         return round(Double(min(fiberKs, openedCount)) / Double(hp) * 1000) / 10
+    }
+
+    /// Datum komerce ve formátu `d. M. yyyy`, nebo `nil` pokud chybí / nejde parsovat.
+    var komerceDateLabel: String? {
+        guard let raw = komerceDate?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+            return nil
+        }
+        let parsers = ["yyyy-MM-dd", "yyyy-MM-dd HH:mm:ss", "dd.MM.yyyy", "d.M.yyyy"]
+        let output = DateFormatter()
+        output.locale = Locale(identifier: "cs_CZ")
+        output.dateFormat = "d. M. yyyy"
+        for format in parsers {
+            let parser = DateFormatter()
+            parser.locale = Locale(identifier: "en_US_POSIX")
+            parser.timeZone = TimeZone(secondsFromGMT: 0)
+            parser.dateFormat = format
+            if let date = parser.date(from: raw) {
+                return output.string(from: date)
+            }
+        }
+        return raw
     }
 
     private static func joinedName(_ first: String?, _ last: String?) -> String? {

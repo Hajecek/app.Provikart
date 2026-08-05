@@ -71,6 +71,7 @@ struct CollectiblesCollectionView: View {
     @State private var selectedItem: CollectibleItem?
     @State private var ownershipFilter: CollectiblesOwnershipFilter = .all
     @State private var rarityFilter: CollectiblesRarityFilter = .all
+    @State private var showProgressDetail = false
 
     private let gold = Color(red: 1.0, green: 0.86, blue: 0.42)
     private let orange = Color(red: 0.97, green: 0.58, blue: 0.12)
@@ -123,6 +124,48 @@ struct CollectiblesCollectionView: View {
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle("Sbírka")
         .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            if let inventory {
+                ToolbarItem(placement: .topBarTrailing) {
+                    CollectiblesToolbarPowderBadge(
+                        wallet: inventory.wallet,
+                        currencyName: inventory.currency.name,
+                        gold: gold,
+                        orange: orange
+                    )
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showProgressDetail = true
+                    } label: {
+                        CollectiblesToolbarProgressBadge(
+                            owned: inventory.ownedCount,
+                            total: inventory.total,
+                            gold: gold,
+                            orange: orange
+                        )
+                    }
+                    .accessibilityLabel(
+                        "Pokrok sbírky, \(inventory.ownedCount) z \(inventory.total)"
+                    )
+                }
+            }
+        }
+        .sheet(isPresented: $showProgressDetail) {
+            if let inventory {
+                NavigationStack {
+                    CollectiblesProgressDetailView(inventory: inventory, gold: gold, orange: orange)
+                        .toolbar {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Button("Hotovo") { showProgressDetail = false }
+                                    .fontWeight(.semibold)
+                            }
+                        }
+                }
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+            }
+        }
         .task {
             await loadInventory()
         }
@@ -146,11 +189,6 @@ struct CollectiblesCollectionView: View {
     private var collectionContent: some View {
         ScrollView {
             VStack(spacing: 20) {
-                if let inventory {
-                    CollectiblesStatsHeader(inventory: inventory, gold: gold, orange: orange)
-                        .padding(.horizontal, 16)
-                }
-
                 filtersSection
 
                 if filteredItems.isEmpty {
@@ -264,9 +302,90 @@ struct CollectiblesCollectionView: View {
     }
 }
 
-// MARK: - Stats header
+// MARK: - Toolbar badges + progress sheet
 
-private struct CollectiblesStatsHeader: View {
+private struct CollectiblesToolbarPowderBadge: View {
+    let wallet: Int
+    let currencyName: String
+    let gold: Color
+    let orange: Color
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "sparkles")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(
+                    LinearGradient(colors: [gold, orange], startPoint: .top, endPoint: .bottom)
+                )
+            Text("\(wallet)")
+                .font(.subheadline.weight(.bold))
+                .monospacedDigit()
+                .contentTransition(.numericText())
+                .foregroundStyle(.primary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            Capsule(style: .continuous)
+                .fill(gold.opacity(0.16))
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(
+                            LinearGradient(
+                                colors: [gold.opacity(0.55), orange.opacity(0.25)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                )
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(currencyName), \(wallet)")
+    }
+}
+
+private struct CollectiblesToolbarProgressBadge: View {
+    let owned: Int
+    let total: Int
+    let gold: Color
+    let orange: Color
+
+    private var progress: Double {
+        guard total > 0 else { return 0 }
+        return min(1, Double(owned) / Double(total))
+    }
+
+    var body: some View {
+        HStack(spacing: 7) {
+            ZStack {
+                Circle()
+                    .stroke(Color.primary.opacity(0.12), lineWidth: 2.5)
+                Circle()
+                    .trim(from: 0, to: progress)
+                    .stroke(
+                        AngularGradient(colors: [gold, orange, gold], center: .center),
+                        style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+            }
+            .frame(width: 18, height: 18)
+
+            Text("\(owned)/\(total)")
+                .font(.subheadline.weight(.bold))
+                .monospacedDigit()
+                .foregroundStyle(.primary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            Capsule(style: .continuous)
+                .fill(Color(uiColor: .secondarySystemFill))
+        )
+    }
+}
+
+private struct CollectiblesProgressDetailView: View {
     let inventory: CollectiblesInventory
     let gold: Color
     let orange: Color
@@ -285,136 +404,44 @@ private struct CollectiblesStatsHeader: View {
     }
 
     var body: some View {
-        VStack(spacing: 12) {
-            dustPanel
-            progressPanel
-        }
-    }
-
-    private var dustPanel: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.18, green: 0.11, blue: 0.04),
-                            Color(red: 0.32, green: 0.16, blue: 0.05),
-                            Color(red: 0.12, green: 0.07, blue: 0.03)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-
-            // atmosférické glow
-            Circle()
-                .fill(gold.opacity(0.35))
-                .frame(width: 140, height: 140)
-                .blur(radius: 36)
-                .offset(x: -70, y: -20)
-
-            Circle()
-                .fill(orange.opacity(0.22))
-                .frame(width: 110, height: 110)
-                .blur(radius: 28)
-                .offset(x: 90, y: 30)
-
-            HStack(alignment: .center, spacing: 16) {
+        ScrollView {
+            VStack(spacing: 20) {
                 ZStack {
                     Circle()
-                        .stroke(gold.opacity(0.25), lineWidth: 2)
-                        .frame(width: 64, height: 64)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 14)
+                        .frame(width: 128, height: 128)
 
                     Circle()
-                        .fill(
-                            RadialGradient(
-                                colors: [gold, orange.opacity(0.85)],
-                                center: .center,
-                                startRadius: 2,
-                                endRadius: 28
-                            )
+                        .trim(from: 0, to: progress)
+                        .stroke(
+                            AngularGradient(colors: [gold, orange, gold], center: .center),
+                            style: StrokeStyle(lineWidth: 14, lineCap: .round)
                         )
-                        .frame(width: 52, height: 52)
-                        .shadow(color: gold.opacity(0.55), radius: 12, y: 2)
+                        .frame(width: 128, height: 128)
+                        .rotationEffect(.degrees(-90))
+                        .shadow(color: orange.opacity(0.35), radius: 8, y: 2)
 
-                    Image(systemName: "sparkles")
-                        .font(.title2.weight(.black))
-                        .foregroundStyle(Color(red: 0.25, green: 0.1, blue: 0.03))
+                    VStack(spacing: 2) {
+                        Text("\(percent)")
+                            .font(.system(size: 36, weight: .heavy, design: .rounded))
+                            .monospacedDigit()
+                            .contentTransition(.numericText())
+                        Text("%")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.secondary)
+                    }
                 }
+                .padding(.top, 12)
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(inventory.currency.name.uppercased())
-                        .font(.system(size: 11, weight: .heavy, design: .rounded))
-                        .tracking(1.4)
-                        .foregroundStyle(gold.opacity(0.85))
-
-                    Text("\(inventory.wallet)")
-                        .font(.system(size: 42, weight: .heavy, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(.white)
-                        .contentTransition(.numericText())
-                        .shadow(color: gold.opacity(0.35), radius: 8, y: 1)
-
-                    Text("aktuální zásoba")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.white.opacity(0.55))
-                }
-
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 20)
-        }
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(
-                    LinearGradient(
-                        colors: [gold.opacity(0.65), orange.opacity(0.25), gold.opacity(0.1)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1.2
-                )
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-    }
-
-    private var progressPanel: some View {
-        HStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .stroke(Color.primary.opacity(0.08), lineWidth: 10)
-                    .frame(width: 84, height: 84)
-
-                Circle()
-                    .trim(from: 0, to: progress)
-                    .stroke(
-                        AngularGradient(
-                            colors: [gold, orange, gold],
-                            center: .center
-                        ),
-                        style: StrokeStyle(lineWidth: 10, lineCap: .round)
-                    )
-                    .frame(width: 84, height: 84)
-                    .rotationEffect(.degrees(-90))
-                    .shadow(color: orange.opacity(0.35), radius: 6, y: 1)
-
-                VStack(spacing: 0) {
-                    Text("\(percent)")
-                        .font(.system(size: 22, weight: .heavy, design: .rounded))
-                        .monospacedDigit()
-                        .contentTransition(.numericText())
-                    Text("%")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 10) {
                 Text("Pokrok sbírky")
-                    .font(.headline.weight(.bold))
+                    .font(.title3.weight(.bold))
 
-                HStack(spacing: 8) {
+                Text("\(inventory.ownedCount) z \(inventory.total) předmětů")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+
+                HStack(spacing: 10) {
                     progressStatPill(
                         value: "\(inventory.ownedCount)",
                         label: "vlastněno",
@@ -426,12 +453,12 @@ private struct CollectiblesStatsHeader: View {
                         tint: Color(red: 0.95, green: 0.55, blue: 0.35)
                     )
                 }
+                .padding(.horizontal, 20)
 
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         Capsule()
                             .fill(Color.primary.opacity(0.07))
-
                         Capsule()
                             .fill(
                                 LinearGradient(
@@ -443,24 +470,15 @@ private struct CollectiblesStatsHeader: View {
                             .frame(width: max(8, geo.size.width * progress))
                     }
                 }
-                .frame(height: 8)
-
-                Text("\(inventory.ownedCount) z \(inventory.total) předmětů")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
+                .frame(height: 10)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 24)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity)
         }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(Color.primary.opacity(0.05), lineWidth: 1)
-                )
-        )
+        .background(Color(uiColor: .systemGroupedBackground))
+        .navigationTitle("Pokrok")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private func progressStatPill(value: String, label: String, tint: Color) -> some View {
@@ -473,11 +491,11 @@ private struct CollectiblesStatsHeader: View {
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(tint.opacity(0.12))
         )
     }

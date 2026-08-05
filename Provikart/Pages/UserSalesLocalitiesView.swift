@@ -1007,6 +1007,9 @@ struct UserSalesLocalityDetailView: View {
                     LabeledContent("E-mail", value: email)
                 }
                 LabeledContent("HP", value: "\(item.hp)")
+                if let komerce = item.komerceDateLabel {
+                    LabeledContent("Datum komerce", value: komerce)
+                }
             } header: {
                 Text("Lokalita")
             }

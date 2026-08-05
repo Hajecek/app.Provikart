@@ -180,6 +180,14 @@ struct OrdersView: View {
             .toolbar {
                 ToolbarItemGroup(placement: .topBarLeading) {
                     NavigationLink {
+                        CalendarView()
+                            .environmentObject(authState)
+                            .environment(\.openAddSheet, openAddSheet)
+                    } label: {
+                        Image(systemName: "calendar")
+                    }
+                    .accessibilityLabel("Kalendář")
+                    NavigationLink {
                         UserAttendanceView()
                             .environmentObject(authState)
                     } label: {
