@@ -353,6 +353,11 @@ enum LuckyBoxLocalStore {
         UserDefaults.standard.string(forKey: dayKey) == todayKey()
     }
 
+    /// Auto-ukázat při startu appky, dokud dnešní bedna není otevřená.
+    static var shouldAutoPresent: Bool {
+        !hasOpenedToday
+    }
+
     static var lastReward: LuckyBoxReward? {
         guard let data = UserDefaults.standard.data(forKey: rewardKey) else { return nil }
         return try? JSONDecoder().decode(LuckyBoxReward.self, from: data)
@@ -426,7 +431,6 @@ struct LuckyBoxView: View {
     @State private var hitAuraIntense = false
     @State private var lidOpen: CGFloat
     @State private var glowPulse = false
-    @State private var hintPulse = false
     @State private var revealOpacity: Double
     @State private var flashOpacity: Double = 0
     @State private var starBurst = false
@@ -516,12 +520,21 @@ struct LuckyBoxView: View {
 
                 Spacer(minLength: 16)
 
-                bottomSection
+                // Rezerva výšky – samotný hint je v overlay, ať neskáče se Spacerem.
+                Color.clear
+                    .frame(height: phase == .revealed || (hasOpenedToday && phase != .opening) ? 120 : 100)
                     .padding(.horizontal, 28)
                     .padding(.bottom, 36)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .animation(.easeInOut(duration: 0.35), value: phase)
+            .overlay(alignment: .bottom) {
+                bottomSection
+                    .padding(.horizontal, 28)
+                    .padding(.bottom, 36)
+                    // Odřízni implicitní animace z otáčení bedny / hvězd.
+                    .transaction { $0.animation = nil }
+            }
 
             // flash musí být navrchu – zakryje bednu i UI
             Color.white
@@ -575,7 +588,6 @@ struct LuckyBoxView: View {
         }
         .onAppear {
             glowPulse = true
-            hintPulse = true
             // Záloha, kdyby se store změnil mimo init (např. reset jinde).
             restoreRevealedStateIfNeeded()
         }
@@ -875,19 +887,25 @@ struct LuckyBoxView: View {
                 clickTokensRow
                     .frame(maxWidth: .infinity)
 
-                ZStack {
+                TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: isClickLocked)) { context in
+                    let t = context.date.timeIntervalSinceReferenceDate
+                    let wave = 0.5 + 0.5 * sin(t * (.pi * 2 / 1.8))
+                    let opacity = isClickLocked ? 0.4 : (0.55 + 0.45 * wave)
+
                     Text(hintText)
                         .font(.title3.weight(.bold))
                         .foregroundStyle(.white)
-                        .opacity(hintPulse ? 1 : 0.55)
+                        .opacity(opacity)
                         .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
                         .multilineTextAlignment(.center)
-                        .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: hintPulse)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 28, alignment: .center)
                 }
                 .frame(maxWidth: .infinity)
-                .frame(minHeight: 28)
-                .animation(nil, value: hintText)
-                .animation(nil, value: clicksLeft)
+                .frame(height: 28)
+                .allowsHitTesting(false)
             }
         }
         .frame(maxWidth: .infinity)
@@ -895,9 +913,6 @@ struct LuckyBoxView: View {
     }
 
     private var hintText: String {
-        if isClickLocked, phase == .charging {
-            return "…"
-        }
         switch phase {
         case .charging:
             return "Klepni pro upgrade"
@@ -941,10 +956,10 @@ struct LuckyBoxView: View {
                                     .foregroundStyle(Color(red: 0.35, green: 0.12, blue: 0.05))
                             )
                             .shadow(color: orange.opacity(0.45), radius: 6, y: 2)
-                            .transition(.scale.combined(with: .opacity))
+                            .transition(.opacity)
                     }
                 }
-                .animation(.spring(response: 0.35, dampingFraction: 0.7), value: clicksLeft)
+                .animation(.easeOut(duration: 0.2), value: clicksLeft)
             }
         }
         .accessibilityLabel("Zbývá \(clicksLeft) pokusů")
@@ -1060,10 +1075,7 @@ struct LuckyBoxView: View {
         }
 
         isClickLocked = true
-
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-            clicksLeft -= 1
-        }
+        clicksLeft -= 1
 
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 

@@ -469,11 +469,13 @@ final class CollectibleImageCache: @unchecked Sendable {
                 var request = URLRequest(url: url)
                 request.cachePolicy = .reloadIgnoringLocalCacheData
                 request.timeoutInterval = 30
+                // Collectibles obrázky jsou často .webp
+                request.setValue("image/webp,image/*,*/*;q=0.8", forHTTPHeaderField: "Accept")
                 let (data, response) = try await session.data(for: request)
                 if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
                     return nil
                 }
-                guard let image = Self.downsample(data: data, maxPixelSize: maxPixelSize) else {
+                guard !data.isEmpty, let image = Self.decodeImage(data: data, maxPixelSize: maxPixelSize) else {
                     return nil
                 }
                 cache.setObject(image, forKey: cacheKey as NSString, cost: data.count)
@@ -490,22 +492,64 @@ final class CollectibleImageCache: @unchecked Sendable {
         return await task.value
     }
 
-    private static func downsample(data: Data, maxPixelSize: CGFloat) -> UIImage? {
+    /// Dekódování JPEG/PNG/WebP (ImageIO od iOS 14 umí WebP nativně).
+    /// Thumbnail API u WebP občas selže → fallback na full frame + scale.
+    private static func decodeImage(data: Data, maxPixelSize: CGFloat) -> UIImage? {
         let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
-        guard let source = CGImageSourceCreateWithData(data as CFData, sourceOptions) else {
-            return UIImage(data: data)
+        if let source = CGImageSourceCreateWithData(data as CFData, sourceOptions),
+           CGImageSourceGetCount(source) > 0 {
+
+            let thumbOptions: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceShouldCacheImmediately: true,
+                kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
+            ]
+            if let thumb = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbOptions as CFDictionary) {
+                return UIImage(cgImage: thumb)
+            }
+
+            let fullOptions = [kCGImageSourceShouldCache: true] as CFDictionary
+            if let full = CGImageSourceCreateImageAtIndex(source, 0, fullOptions) {
+                return scaledUIImage(from: full, maxPixelSize: maxPixelSize)
+            }
         }
 
-        let thumbnailOptions: [CFString: Any] = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceShouldCacheImmediately: true,
-            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
-        ]
+        // Poslední záchrana (UIImage umí WebP na iOS 14+)
+        guard let image = UIImage(data: data) else { return nil }
+        return scaledUIImage(from: image, maxPixelSize: maxPixelSize)
+    }
 
-        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnailOptions as CFDictionary) else {
-            return UIImage(data: data)
+    private static func scaledUIImage(from cgImage: CGImage, maxPixelSize: CGFloat) -> UIImage {
+        let width = CGFloat(cgImage.width)
+        let height = CGFloat(cgImage.height)
+        let longest = max(width, height)
+        guard longest > maxPixelSize, longest > 0 else {
+            return UIImage(cgImage: cgImage)
         }
-        return UIImage(cgImage: cgImage)
+        let scale = maxPixelSize / longest
+        let size = CGSize(width: width * scale, height: height * scale)
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        format.opaque = false
+        let renderer = UIGraphicsImageRenderer(size: size, format: format)
+        return renderer.image { _ in
+            UIImage(cgImage: cgImage).draw(in: CGRect(origin: .zero, size: size))
+        }
+    }
+
+    private static func scaledUIImage(from image: UIImage, maxPixelSize: CGFloat) -> UIImage {
+        let size = image.size
+        let longest = max(size.width, size.height) * image.scale
+        guard longest > maxPixelSize, longest > 0 else { return image }
+        let ratio = maxPixelSize / longest
+        let target = CGSize(width: size.width * image.scale * ratio, height: size.height * image.scale * ratio)
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        format.opaque = false
+        let renderer = UIGraphicsImageRenderer(size: target, format: format)
+        return renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: target))
+        }
     }
 }

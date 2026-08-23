@@ -36,6 +36,10 @@ struct HomeView: View {
     }()
     @State private var luckyBoxStatus: LuckyBoxHomeStatus = .current()
     @State private var luckyBoxTick = Date()
+    @State private var showLuckyBoxAuto = false
+    /// V rámci jedné session neotevírat znovu po zavření (po killnutí appky ano).
+    @State private var didAutoPresentThisSession = false
+    @Environment(\.scenePhase) private var scenePhase
 
     private let commissionService = CommissionService()
     private let userGoalsService = UserGoalsService()
@@ -186,7 +190,29 @@ struct HomeView: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .onAppear {
                 refreshLuckyBoxStatus()
+                maybeAutoPresentLuckyBox()
             }
+        }
+        .fullScreenCover(isPresented: $showLuckyBoxAuto, onDismiss: {
+            refreshLuckyBoxStatus()
+        }) {
+            NavigationStack {
+                LuckyBoxView()
+                    .environmentObject(authState)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("Zavřít") {
+                                showLuckyBoxAuto = false
+                            }
+                            .fontWeight(.semibold)
+                        }
+                    }
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            refreshLuckyBoxStatus()
+            maybeAutoPresentLuckyBox()
         }
         .task {
             // Obnov uložený cíl hned (z předchozího načtení), než stáhneme z API
@@ -194,6 +220,7 @@ struct HomeView: View {
                 commissionGoal = saved
             }
             refreshLuckyBoxStatus()
+            maybeAutoPresentLuckyBox()
             // Dealwars + level + provize hned paralelně s ostatním.
             async let dealwars: Void = loadDealwarsSummary()
             async let goals: Void = loadGoals()
@@ -338,6 +365,18 @@ struct HomeView: View {
     private func refreshLuckyBoxStatus() {
         luckyBoxTick = Date()
         luckyBoxStatus = .current(now: luckyBoxTick)
+    }
+
+    /// Při každém spuštění appky otevře Lucky Box, dokud dnešní bedna není otevřená.
+    private func maybeAutoPresentLuckyBox() {
+        guard !showLuckyBoxAuto, !didAutoPresentThisSession else { return }
+        guard LuckyBoxLocalStore.shouldAutoPresent else { return }
+        didAutoPresentThisSession = true
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 550_000_000)
+            guard !LuckyBoxLocalStore.hasOpenedToday else { return }
+            showLuckyBoxAuto = true
+        }
     }
 
     private func dealwarsLevelRow(_ level: DealwarsLevelInfo?) -> some View {
