@@ -12,8 +12,8 @@ import SwiftUI
 enum LuckyBoxQuota {
     static let dailyFree = 1
     /// Včerejší služby → bonusové bedny dnes.
-    /// Běžný den je 4–5 služeb: 4 = 1 bonus, 5 = 2 bonusy, 7 = 3 bonusy.
-    static let bonusThresholds = [4, 5, 7]
+    /// 2–3 služby = 1 bonus, 5 = 2 bonusy, 7 = 3 bonusy.
+    static let bonusThresholds = [2, 5, 7]
     static var maxChests: Int { dailyFree + bonusThresholds.count }
 
     static func earnedChests(settledServices: Int) -> Int {

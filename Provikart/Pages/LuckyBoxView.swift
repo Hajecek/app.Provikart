@@ -2325,7 +2325,8 @@ private struct LuckyBoxTomorrowInfoSheet: View {
                 }
 
                 Section {
-                    thresholdRow(services: 4, bonus: 1, title: "Běžný den")
+                    thresholdRow(services: 2, bonus: 1, title: "Dvě služby")
+                    thresholdRow(services: 3, bonus: 1, title: "Tři služby")
                     thresholdRow(services: 5, bonus: 2, title: "Dobrý den")
                     thresholdRow(services: 7, bonus: 3, title: "Silný den")
                 } header: {
