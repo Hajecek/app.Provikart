@@ -43,7 +43,6 @@ final class ManagerSalesLocalitiesViewModel: ObservableObject {
     @Published var isLoadingMore = false
     @Published var isAssigning = false
     @Published var errorMessage: String?
-    @Published var infoMessage: String?
 
     private let service = ManagerSalesLocalitiesService()
     private let teamService = ManagerTeamMembersService()
@@ -65,6 +64,11 @@ final class ManagerSalesLocalitiesViewModel: ObservableObject {
     var canEditFiber: Bool { editableFields.contains("fiber_ks") || editableFields.isEmpty }
     var canEditOpened: Bool { editableFields.contains("opened_count") || editableFields.isEmpty }
     var canEditDone: Bool { editableFields.contains("is_done") || editableFields.isEmpty }
+    var canEditClose: Bool {
+        editableFields.contains("close")
+            || editableFields.contains("closed")
+            || editableFields.isEmpty
+    }
     var canEditNote: Bool { editableFields.contains("note") }
     var canEditMajitel: Bool { editableFields.contains("majitel") }
     var canEditEmail: Bool { editableFields.contains("email") }
@@ -239,7 +243,6 @@ final class ManagerSalesLocalitiesViewModel: ObservableObject {
             editableFields = result.editableFields
         }
         replaceItem(result.item)
-        infoMessage = "Uloženo."
         return result.item
     }
 
@@ -264,9 +267,6 @@ final class ManagerSalesLocalitiesViewModel: ObservableObject {
                 localityIds: ids,
                 salesUserId: salesUserId
             )
-            infoMessage = result.message ?? (salesUserId == nil || salesUserId == 0
-                ? "Odebráno: \(result.updated)."
-                : "Přiřazeno: \(result.updated).")
             if !result.errors.isEmpty {
                 errorMessage = result.errors.joined(separator: "\n")
             }
@@ -368,11 +368,6 @@ struct ManagerSalesLocalitiesView: View {
                 } message: {
                     Text(viewModel.errorMessage ?? "")
                 }
-                .alert("Hotovo", isPresented: infoAlertBinding) {
-                    Button("OK") { viewModel.infoMessage = nil }
-                } message: {
-                    Text(viewModel.infoMessage ?? "")
-                }
         }
     }
 
@@ -455,13 +450,6 @@ struct ManagerSalesLocalitiesView: View {
         )
     }
 
-    private var infoAlertBinding: Binding<Bool> {
-        Binding(
-            get: { viewModel.infoMessage != nil },
-            set: { if !$0 { viewModel.infoMessage = nil } }
-        )
-    }
-
     private var listContent: some View {
         List {
             filtersSection
@@ -486,6 +474,7 @@ struct ManagerSalesLocalitiesView: View {
                     Section {
                         localityListRow(item)
                             .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16))
+                            .listRowBackground(SalesLocalityClosedStyle.rowBackground(isClosed: item.isClosed))
                     }
                 }
 
@@ -957,15 +946,7 @@ private struct ManagerSalesLocalityRow: View {
     }
 
     private var statusBadge: some View {
-        Text(item.isDone ? "Hotovo" : "Aktivní")
-            .font(.caption2.weight(.bold))
-            .foregroundStyle(item.isDone ? Color.green : Color.orange)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
-                (item.isDone ? Color.green : Color.orange).opacity(0.14),
-                in: Capsule()
-            )
+        SalesLocalityStatusBadge(item: item)
     }
 
     private func metricProgressRow(
@@ -1123,6 +1104,7 @@ struct ManagerSalesLocalityDetailView: View {
     @State private var openedValue: Int
     @State private var hpValue: Int
     @State private var isDone: Bool
+    @State private var isClosed: Bool
     @State private var d2d: Bool
     @State private var noteText: String
     @State private var majitelText: String
@@ -1151,17 +1133,13 @@ struct ManagerSalesLocalityDetailView: View {
         _openedValue = State(initialValue: item.openedCount)
         _hpValue = State(initialValue: item.hp)
         _isDone = State(initialValue: item.isDone)
+        _isClosed = State(initialValue: item.isClosed)
         _d2d = State(initialValue: item.d2d)
         _noteText = State(initialValue: item.note ?? "")
         _majitelText = State(initialValue: item.majitel ?? "")
         _emailText = State(initialValue: item.email ?? "")
         _telefonText = State(initialValue: item.telefon ?? "")
         _salesUserId = State(initialValue: item.salesUserId.flatMap { $0 > 0 ? $0 : nil })
-    }
-
-    private var maxOpened: Int { max(hpValue, 0) }
-    private var maxFiber: Int {
-        max(0, min(maxOpened == 0 ? hpValue : openedValue, hpValue > 0 ? hpValue : openedValue))
     }
 
     private var assignedMemberName: String {
@@ -1178,44 +1156,32 @@ struct ManagerSalesLocalityDetailView: View {
     var body: some View {
         Form {
             Section {
-                if viewModel.canEditOpened {
-                    PenetrationCounterCard(
-                        title: "Otevřené dveře",
-                        unitLabel: "dveří",
-                        icon: "door.left.hand.open",
-                        theme: .doors,
-                        value: $openedValue,
-                        total: max(hpValue, 1),
-                        range: 0...max(maxOpened, openedValue),
-                        onChange: { newOpened in
-                            if fiberValue > newOpened {
-                                fiberValue = newOpened
-                            }
-                        }
-                    )
-                    .listRowInsets(EdgeInsets(top: 10, leading: 12, bottom: 6, trailing: 12))
-                    .listRowBackground(Color.clear)
-                } else {
-                    LabeledContent("Otevřené dveře", value: "\(item.openedCount)")
-                }
-
-                if viewModel.canEditFiber {
-                    PenetrationCounterCard(
-                        title: "Penetrace",
-                        unitLabel: "fiber",
-                        icon: "cable.connector",
-                        theme: .fiber,
-                        value: $fiberValue,
-                        total: max(hpValue, 1),
-                        range: 0...max(maxFiber, fiberValue)
-                    )
-                    .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 10, trailing: 12))
-                    .listRowBackground(Color.clear)
-                } else {
-                    LabeledContent("Penetrace", value: "\(item.fiberKs)")
-                }
+                LocalityVisitActionsCard(
+                    opened: $openedValue,
+                    fiber: $fiberValue,
+                    isClosed: isClosed,
+                    hp: max(hpValue, 0),
+                    canEditOpened: viewModel.canEditOpened,
+                    canEditFiber: viewModel.canEditFiber
+                )
+                .listRowInsets(EdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12))
+                .listRowBackground(Color.clear)
             } footer: {
-                Text("Změny se ukládají automaticky.")
+                Text(isClosed
+                     ? "Lokalita je zavřená, otevřené dveře a fiber už nejde měnit."
+                     : "Klepnutím přidáš otevřené dveře nebo fiber. Změny se ukládají automaticky.")
+            }
+
+            if viewModel.canEditClose {
+                Section {
+                    LocalityClosedToggle(isClosed: $isClosed)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+                        .listRowBackground(Color.clear)
+                } footer: {
+                    Text(isClosed
+                         ? "Klepnutím lokalitu znovu otevřeš a odemkneš přidávání."
+                         : "Zavřením se lokalita uzavře a zamkne se přidávání dveří i fiberu.")
+                }
             }
 
             if viewModel.canAssignSales {
@@ -1355,6 +1321,7 @@ struct ManagerSalesLocalityDetailView: View {
             markDirtyAndDebounce(ms: 650)
         }
         .onChange(of: isDone) { _, _ in markDirtyAndDebounce(ms: 300) }
+        .onChange(of: isClosed) { _, _ in markDirtyAndDebounce(ms: 300) }
         .onChange(of: d2d) { _, _ in markDirtyAndDebounce(ms: 300) }
         .onChange(of: noteText) { _, _ in markDirtyAndDebounce(ms: 900) }
         .onChange(of: majitelText) { _, _ in markDirtyAndDebounce(ms: 900) }
@@ -1453,6 +1420,7 @@ struct ManagerSalesLocalityDetailView: View {
         openedValue = updated.openedCount
         hpValue = updated.hp
         isDone = updated.isDone
+        isClosed = updated.isClosed
         d2d = updated.d2d
         noteText = updated.note ?? ""
         majitelText = updated.majitel ?? ""
@@ -1489,6 +1457,9 @@ struct ManagerSalesLocalityDetailView: View {
         }
         if viewModel.canEditDone, isDone != item.isDone {
             fields.isDone = isDone
+        }
+        if viewModel.canEditClose, isClosed != item.isClosed {
+            fields.isClosed = isClosed
         }
         if viewModel.canEditD2d, d2d != item.d2d {
             fields.d2d = d2d

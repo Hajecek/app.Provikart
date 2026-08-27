@@ -36,7 +36,6 @@ final class UserSalesLocalitiesViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var isLoadingMore = false
     @Published var errorMessage: String?
-    @Published var infoMessage: String?
 
     private let service = UserSalesLocalitiesService()
     private var pagination = SalesLocalityPagination(page: 1, pageSize: 50, total: 0, totalPages: 1)
@@ -50,7 +49,13 @@ final class UserSalesLocalitiesViewModel: ObservableObject {
     var canEditFiber: Bool { editableFields.contains("fiber_ks") || editableFields.isEmpty }
     var canEditOpened: Bool { editableFields.contains("opened_count") || editableFields.isEmpty }
     var canEditDone: Bool { editableFields.contains("is_done") || editableFields.isEmpty }
+    var canEditClose: Bool {
+        editableFields.contains("close")
+            || editableFields.contains("closed")
+            || editableFields.isEmpty
+    }
     var canEditNote: Bool { editableFields.contains("note") }
+    var canEditD2d: Bool { editableFields.contains("d2d") || editableFields.isEmpty }
 
     func scheduleSearchReload(token: String?) {
         searchTask?.cancel()
@@ -136,7 +141,6 @@ final class UserSalesLocalitiesViewModel: ObservableObject {
             editableFields = result.editableFields
         }
         replaceItem(result.item)
-        infoMessage = "Uloženo."
         return result.item
     }
 
@@ -238,6 +242,7 @@ struct UserSalesLocalitiesView: View {
                             SalesLocalityRow(item: item)
                         }
                         .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16))
+                        .listRowBackground(SalesLocalityClosedStyle.rowBackground(isClosed: item.isClosed))
                     }
                 }
 
@@ -840,15 +845,7 @@ private struct SalesLocalityRow: View {
     }
 
     private var statusBadge: some View {
-        Text(item.isDone ? "Hotovo" : "Aktivní")
-            .font(.caption2.weight(.bold))
-            .foregroundStyle(item.isDone ? Color.green : Color.orange)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
-                (item.isDone ? Color.green : Color.orange).opacity(0.14),
-                in: Capsule()
-            )
+        SalesLocalityStatusBadge(item: item)
     }
 
     private func metricProgressRow(
@@ -901,6 +898,8 @@ struct UserSalesLocalityDetailView: View {
     @State private var fiberValue: Int
     @State private var openedValue: Int
     @State private var isDone: Bool
+    @State private var isClosed: Bool
+    @State private var d2d: Bool
     @State private var noteText: String
     @State private var syncStatus: SyncStatus = .idle
     @State private var debounceTask: Task<Void, Never>?
@@ -922,55 +921,40 @@ struct UserSalesLocalityDetailView: View {
         _fiberValue = State(initialValue: item.fiberKs)
         _openedValue = State(initialValue: item.openedCount)
         _isDone = State(initialValue: item.isDone)
+        _isClosed = State(initialValue: item.isClosed)
+        _d2d = State(initialValue: item.d2d)
         _noteText = State(initialValue: item.note ?? "")
-    }
-
-    private var maxOpened: Int { max(item.hp, 0) }
-    private var maxFiber: Int {
-        max(0, min(maxOpened == 0 ? item.hp : openedValue, item.hp > 0 ? item.hp : openedValue))
     }
 
     var body: some View {
         Form {
             Section {
-                if viewModel.canEditOpened {
-                    PenetrationCounterCard(
-                        title: "Otevřené dveře",
-                        unitLabel: "dveří",
-                        icon: "door.left.hand.open",
-                        theme: .doors,
-                        value: $openedValue,
-                        total: max(item.hp, 1),
-                        range: 0...max(maxOpened, openedValue),
-                        onChange: { newOpened in
-                            if fiberValue > newOpened {
-                                fiberValue = newOpened
-                            }
-                        }
-                    )
-                    .listRowInsets(EdgeInsets(top: 10, leading: 12, bottom: 6, trailing: 12))
-                    .listRowBackground(Color.clear)
-                } else {
-                    LabeledContent("Otevřené dveře", value: "\(item.openedCount)")
-                }
-
-                if viewModel.canEditFiber {
-                    PenetrationCounterCard(
-                        title: "Penetrace",
-                        unitLabel: "fiber",
-                        icon: "cable.connector",
-                        theme: .fiber,
-                        value: $fiberValue,
-                        total: max(item.hp, 1),
-                        range: 0...max(maxFiber, fiberValue)
-                    )
-                    .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 10, trailing: 12))
-                    .listRowBackground(Color.clear)
-                } else {
-                    LabeledContent("Penetrace", value: "\(item.fiberKs)")
-                }
+                LocalityVisitActionsCard(
+                    opened: $openedValue,
+                    fiber: $fiberValue,
+                    isClosed: isClosed,
+                    hp: max(item.hp, 0),
+                    canEditOpened: viewModel.canEditOpened,
+                    canEditFiber: viewModel.canEditFiber
+                )
+                .listRowInsets(EdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12))
+                .listRowBackground(Color.clear)
             } footer: {
-                Text("Změny se ukládají automaticky po chvíli nečinnosti.")
+                Text(isClosed
+                     ? "Lokalita je zavřená, otevřené dveře a fiber už nejde měnit."
+                     : "Klepnutím přidáš otevřené dveře nebo fiber. Změny se ukládají automaticky.")
+            }
+
+            if viewModel.canEditClose {
+                Section {
+                    LocalityClosedToggle(isClosed: $isClosed)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+                        .listRowBackground(Color.clear)
+                } footer: {
+                    Text(isClosed
+                         ? "Klepnutím lokalitu znovu otevřeš a odemkneš přidávání."
+                         : "Zavřením se lokalita uzavře a zamkne se přidávání dveří i fiberu.")
+                }
             }
 
             Section {
@@ -1023,6 +1007,14 @@ struct UserSalesLocalityDetailView: View {
                 }
             }
 
+            if viewModel.canEditD2d {
+                Section {
+                    Toggle(isOn: $d2d) {
+                        Label("D2D", systemImage: "figure.walk")
+                    }
+                }
+            }
+
             if viewModel.canEditNote {
                 Section("Poznámka") {
                     TextField("Volitelná poznámka", text: $noteText, axis: .vertical)
@@ -1041,6 +1033,8 @@ struct UserSalesLocalityDetailView: View {
         .onChange(of: fiberValue) { _, _ in markDirtyAndDebounce(ms: 650) }
         .onChange(of: openedValue) { _, _ in markDirtyAndDebounce(ms: 650) }
         .onChange(of: isDone) { _, _ in markDirtyAndDebounce(ms: 300) }
+        .onChange(of: isClosed) { _, _ in markDirtyAndDebounce(ms: 300) }
+        .onChange(of: d2d) { _, _ in markDirtyAndDebounce(ms: 300) }
         .onChange(of: noteText) { _, _ in markDirtyAndDebounce(ms: 900) }
         .onDisappear {
             debounceTask?.cancel()
@@ -1102,6 +1096,8 @@ struct UserSalesLocalityDetailView: View {
         let fiberSnapshot = fiberValue
         let openedSnapshot = openedValue
         let doneSnapshot = isDone
+        let closedSnapshot = isClosed
+        let d2dSnapshot = d2d
         let noteSnapshot = noteText
 
         do {
@@ -1115,6 +1111,8 @@ struct UserSalesLocalityDetailView: View {
                 fiberSnapshot: fiberSnapshot,
                 openedSnapshot: openedSnapshot,
                 doneSnapshot: doneSnapshot,
+                closedSnapshot: closedSnapshot,
+                d2dSnapshot: d2dSnapshot,
                 noteSnapshot: noteSnapshot
             )
             shouldSaveAgain = saveAgainWhenDone || hasPendingChanges
@@ -1133,6 +1131,8 @@ struct UserSalesLocalityDetailView: View {
                         fiberSnapshot: fiberValue,
                         openedSnapshot: openedValue,
                         doneSnapshot: isDone,
+                        closedSnapshot: isClosed,
+                        d2dSnapshot: d2d,
                         noteSnapshot: noteText
                     )
                 }
@@ -1161,6 +1161,8 @@ struct UserSalesLocalityDetailView: View {
                     fiberSnapshot: fiberValue,
                     openedSnapshot: openedValue,
                     doneSnapshot: isDone,
+                    closedSnapshot: isClosed,
+                    d2dSnapshot: d2d,
                     noteSnapshot: noteText
                 )
                 showSavedThenIdle()
@@ -1175,6 +1177,8 @@ struct UserSalesLocalityDetailView: View {
         fiberSnapshot: Int,
         openedSnapshot: Int,
         doneSnapshot: Bool,
+        closedSnapshot: Bool,
+        d2dSnapshot: Bool,
         noteSnapshot: String
     ) {
         isApplyingRemote = true
@@ -1186,6 +1190,8 @@ struct UserSalesLocalityDetailView: View {
         if fiberValue == fiberSnapshot { fiberValue = updated.fiberKs }
         if openedValue == openedSnapshot { openedValue = updated.openedCount }
         if isDone == doneSnapshot { isDone = updated.isDone }
+        if isClosed == closedSnapshot { isClosed = updated.isClosed }
+        if d2d == d2dSnapshot { d2d = updated.d2d }
         if noteText == noteSnapshot { noteText = updated.note ?? "" }
     }
 
@@ -1216,6 +1222,12 @@ struct UserSalesLocalityDetailView: View {
         if viewModel.canEditDone, isDone != item.isDone {
             fields.isDone = isDone
         }
+        if viewModel.canEditClose, isClosed != item.isClosed {
+            fields.isClosed = isClosed
+        }
+        if viewModel.canEditD2d, d2d != item.d2d {
+            fields.d2d = d2d
+        }
         if viewModel.canEditNote {
             let trimmed = noteText.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed != (item.note ?? "") {
@@ -1226,217 +1238,231 @@ struct UserSalesLocalityDetailView: View {
     }
 }
 
-// MARK: - Počítadlo penetrace / dveří
+// MARK: - Stav lokality
 
-enum PenetrationCounterTheme {
-    case doors
-    case fiber
+enum SalesLocalityClosedStyle {
+    static let tint = Color(red: 0.82, green: 0.26, blue: 0.28)
 
-    var primary: Color {
-        switch self {
-        case .doors:
-            return Color(red: 0.97, green: 0.58, blue: 0.12)
-        case .fiber:
-            return Color(red: 0.12, green: 0.62, blue: 0.72)
-        }
-    }
-
-    var secondary: Color {
-        switch self {
-        case .doors:
-            return Color(red: 1.0, green: 0.78, blue: 0.32)
-        case .fiber:
-            return Color(red: 0.35, green: 0.82, blue: 0.78)
-        }
-    }
-
-    var deep: Color {
-        switch self {
-        case .doors:
-            return Color(red: 0.72, green: 0.32, blue: 0.04)
-        case .fiber:
-            return Color(red: 0.06, green: 0.38, blue: 0.48)
+    @ViewBuilder
+    static func rowBackground(isClosed: Bool) -> some View {
+        ZStack {
+            Color(uiColor: .secondarySystemGroupedBackground)
+            if isClosed {
+                tint.opacity(0.16)
+            }
         }
     }
 }
 
-struct PenetrationCounterCard: View {
-    let title: String
-    let unitLabel: String
-    let icon: String
-    let theme: PenetrationCounterTheme
-    @Binding var value: Int
-    let total: Int
-    let range: ClosedRange<Int>
-    var onChange: ((Int) -> Void)? = nil
+struct SalesLocalityStatusBadge: View {
+    let item: SalesLocalityItem
 
-    @State private var pulseToken = 0
-
-    private var canDecrease: Bool { value > range.lowerBound }
-    private var canIncrease: Bool { value < range.upperBound }
-
-    private var progress: Double {
-        guard total > 0 else { return 0 }
-        return min(1, max(0, Double(value) / Double(total)))
+    private var title: String {
+        if item.isClosed { return "Zavřeno" }
+        if item.isDone { return "Hotovo" }
+        return "Aktivní"
     }
 
-    private var percentText: String {
-        String(format: "%.0f %%", progress * 100)
+    private var tint: Color {
+        if item.isClosed { return SalesLocalityClosedStyle.tint }
+        if item.isDone { return .green }
+        return .orange
     }
 
     var body: some View {
-        VStack(spacing: 18) {
-            HStack(alignment: .center, spacing: 16) {
-                ringGauge
+        Text(title)
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(tint.opacity(0.16), in: Capsule())
+    }
+}
 
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
-                        Image(systemName: icon)
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(theme.deep)
-                            .frame(width: 26, height: 26)
-                            .background(
-                                Circle()
-                                    .fill(theme.secondary.opacity(0.35))
-                            )
+// MARK: - Akce na lokalitě (dveře / fiber)
 
-                        Text(title)
-                            .font(.subheadline.weight(.bold))
-                            .foregroundStyle(.primary)
-                    }
+private enum LocalityVisitPalette {
+    static let doors = Color(red: 0.97, green: 0.58, blue: 0.12)
+    static let doorsSoft = Color(red: 1.0, green: 0.78, blue: 0.32)
+    static let fiber = Color(red: 0.12, green: 0.62, blue: 0.72)
+    static let fiberSoft = Color(red: 0.35, green: 0.82, blue: 0.78)
+    static let closed = Color(red: 0.82, green: 0.26, blue: 0.28)
+}
 
-                    Text("\(value) z \(total) \(unitLabel)")
+private struct LocalityVisitTapStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.snappy(duration: 0.16), value: configuration.isPressed)
+    }
+}
+
+struct LocalityVisitActionsCard: View {
+    @Binding var opened: Int
+    @Binding var fiber: Int
+    let isClosed: Bool
+    let hp: Int
+    var canEditOpened: Bool = true
+    var canEditFiber: Bool = true
+
+    @State private var openedPulse = 0
+    @State private var fiberPulse = 0
+
+    private var canIncreaseOpened: Bool { !isClosed && canEditOpened && opened < hp }
+    private var canDecreaseOpened: Bool { !isClosed && canEditOpened && opened > 0 }
+    private var canIncreaseFiber: Bool {
+        guard !isClosed, canEditFiber else { return false }
+        if fiber < opened { return true }
+        return canEditOpened && opened < hp
+    }
+    private var canDecreaseFiber: Bool { !isClosed && canEditFiber && fiber > 0 }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            countRow(
+                title: "Otevřené dveře",
+                unitLabel: "dveří",
+                icon: "door.left.hand.open",
+                value: opened,
+                tint: LocalityVisitPalette.doors,
+                soft: LocalityVisitPalette.doorsSoft,
+                pulse: openedPulse,
+                canIncrease: canIncreaseOpened,
+                canDecrease: canDecreaseOpened,
+                increaseLabel: "Přidat otevřené dveře",
+                decreaseLabel: "Odebrat otevřené dveře",
+                onIncrease: incrementOpened,
+                onDecrease: decrementOpened
+            )
+            countRow(
+                title: "Fiber",
+                unitLabel: "fiber",
+                icon: "cable.connector",
+                value: fiber,
+                tint: LocalityVisitPalette.fiber,
+                soft: LocalityVisitPalette.fiberSoft,
+                pulse: fiberPulse,
+                canIncrease: canIncreaseFiber,
+                canDecrease: canDecreaseFiber,
+                increaseLabel: "Přidat fiber",
+                decreaseLabel: "Odebrat fiber",
+                onIncrease: incrementFiber,
+                onDecrease: decrementFiber
+            )
+        }
+        .opacity(isClosed ? 0.55 : 1)
+        .animation(.snappy(duration: 0.2), value: isClosed)
+        .allowsHitTesting(!isClosed)
+        .accessibilityElement(children: .contain)
+        .accessibilityHint(isClosed ? "Lokalita je zavřená, hodnoty nelze měnit" : "")
+    }
+
+    private func countRow(
+        title: String,
+        unitLabel: String,
+        icon: String,
+        value: Int,
+        tint: Color,
+        soft: Color,
+        pulse: Int,
+        canIncrease: Bool,
+        canDecrease: Bool,
+        increaseLabel: String,
+        decreaseLabel: String,
+        onIncrease: @escaping () -> Void,
+        onDecrease: @escaping () -> Void
+    ) -> some View {
+        let progress: Double = hp > 0 ? min(1, max(0, Double(value) / Double(hp))) : 0
+
+        return VStack(spacing: 14) {
+            HStack(spacing: 10) {
+                Image(systemName: isClosed ? "lock.fill" : icon)
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(tint)
+                    .frame(width: 34, height: 34)
+                    .background(soft.opacity(0.4), in: Circle())
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline.weight(.bold))
+                    Text("\(value) z \(hp) \(unitLabel)")
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
-                        .contentTransition(.numericText())
-
-                    Text(percentText)
-                        .font(.title3.weight(.heavy))
-                        .foregroundStyle(theme.primary)
-                        .contentTransition(.numericText())
-                        .animation(.snappy(duration: 0.22), value: value)
-                }
-
-                Spacer(minLength: 0)
-            }
-
-            HStack(spacing: 14) {
-                stepButton(systemName: "minus", enabled: canDecrease, accessibility: "Odebrat") {
-                    adjust(by: -1)
-                }
-
-                VStack(spacing: 2) {
-                    Text("\(value)")
-                        .font(.system(size: 44, weight: .bold, design: .rounded))
                         .monospacedDigit()
-                        .foregroundStyle(.primary)
                         .contentTransition(.numericText())
-                        .animation(.snappy(duration: 0.2), value: value)
-
-                    Text(unitLabel.uppercased())
-                        .font(.caption2.weight(.bold))
-                        .tracking(1.2)
-                        .foregroundStyle(.secondary)
                 }
-                .frame(maxWidth: .infinity)
-                .scaleEffect(pulseToken > 0 ? 1.03 : 1)
-                .animation(.spring(response: 0.28, dampingFraction: 0.65), value: pulseToken)
 
-                stepButton(systemName: "plus", enabled: canIncrease, accessibility: "Přidat") {
-                    adjust(by: 1)
-                }
-            }
+                Spacer(minLength: 8)
 
-            progressTrack
-        }
-        .padding(18)
-        .background(cardBackground)
-        .overlay { cardStroke }
-    }
-
-    private var ringGauge: some View {
-        ZStack {
-            Circle()
-                .stroke(theme.primary.opacity(0.12), lineWidth: 9)
-                .frame(width: 78, height: 78)
-
-            Circle()
-                .trim(from: 0, to: progress)
-                .stroke(
-                    AngularGradient(
-                        colors: [theme.secondary, theme.primary, theme.deep],
-                        center: .center
-                    ),
-                    style: StrokeStyle(lineWidth: 9, lineCap: .round)
-                )
-                .frame(width: 78, height: 78)
-                .rotationEffect(.degrees(-90))
-                .animation(.snappy(duration: 0.28), value: progress)
-
-            VStack(spacing: 0) {
-                Image(systemName: icon)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(theme.primary)
-                Text(percentText)
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(theme.deep)
+                Text(String(format: "%.0f %%", progress * 100))
+                    .font(.title3.weight(.heavy))
+                    .foregroundStyle(tint)
                     .monospacedDigit()
+                    .contentTransition(.numericText())
             }
-        }
-        .accessibilityHidden(true)
-    }
 
-    private var progressTrack: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(theme.primary.opacity(0.1))
+            HStack(spacing: 16) {
+                stepButton(systemName: "minus", enabled: canDecrease, tint: tint, accessibility: decreaseLabel, action: onDecrease)
 
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: [theme.secondary, theme.primary],
-                            startPoint: .leading,
-                            endPoint: .trailing
+                Text("\(value)")
+                    .font(.system(size: 42, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity)
+                    .contentTransition(.numericText())
+                    .scaleEffect(pulse > 0 ? 1.04 : 1)
+                    .animation(.spring(response: 0.28, dampingFraction: 0.62), value: pulse)
+
+                stepButton(systemName: "plus", enabled: canIncrease, tint: tint, accessibility: increaseLabel, action: onIncrease)
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(tint.opacity(0.12))
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [soft, tint],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
                         )
-                    )
-                    .frame(width: max(10, geo.size.width * progress))
-                    .animation(.snappy(duration: 0.28), value: progress)
-                    .shadow(color: theme.primary.opacity(0.35), radius: 5, y: 1)
+                        .frame(width: max(value > 0 ? 8 : 0, geo.size.width * progress))
+                }
+                .animation(.snappy(duration: 0.24), value: value)
             }
+            .frame(height: 8)
         }
-        .frame(height: 10)
+        .padding(16)
+        .background(rowBackground(tint: tint))
+        .overlay { rowStroke(tint: tint, soft: soft) }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(title)
+        .accessibilityValue("\(value) z \(hp)")
     }
 
-    private var cardBackground: some View {
+    private func rowBackground(tint: Color) -> some View {
         RoundedRectangle(cornerRadius: 22, style: .continuous)
             .fill(Color(uiColor: .secondarySystemGroupedBackground))
             .overlay {
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .fill(
                         LinearGradient(
-                            colors: [
-                                theme.primary.opacity(0.14),
-                                theme.primary.opacity(0.02),
-                                .clear
-                            ],
+                            colors: [tint.opacity(0.14), tint.opacity(0.03), .clear],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
                     )
             }
-            .shadow(color: theme.primary.opacity(0.12), radius: 14, y: 6)
+            .shadow(color: tint.opacity(0.1), radius: 10, y: 4)
     }
 
-    private var cardStroke: some View {
+    private func rowStroke(tint: Color, soft: Color) -> some View {
         RoundedRectangle(cornerRadius: 22, style: .continuous)
             .strokeBorder(
                 LinearGradient(
-                    colors: [
-                        theme.secondary.opacity(0.55),
-                        theme.primary.opacity(0.18),
-                        theme.primary.opacity(0.08)
-                    ],
+                    colors: [soft.opacity(0.7), tint.opacity(0.2)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 ),
@@ -1447,46 +1473,121 @@ struct PenetrationCounterCard: View {
     private func stepButton(
         systemName: String,
         enabled: Bool,
+        tint: Color,
         accessibility: String,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            ZStack {
-                Circle()
-                    .fill(
-                        enabled
-                            ? LinearGradient(
-                                colors: [theme.secondary, theme.primary],
+            Image(systemName: systemName)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(enabled ? Color.white : Color.secondary.opacity(0.4))
+                .frame(width: 56, height: 56)
+                .background(
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: enabled
+                                    ? [tint.opacity(0.92), tint]
+                                    : [Color.primary.opacity(0.08), Color.primary.opacity(0.05)],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
-                              )
-                            : LinearGradient(
-                                colors: [Color.primary.opacity(0.08), Color.primary.opacity(0.05)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                              )
-                    )
-                    .frame(width: 58, height: 58)
-                    .shadow(color: enabled ? theme.primary.opacity(0.35) : .clear, radius: 8, y: 3)
-
-                Image(systemName: systemName)
-                    .font(.title2.weight(.bold))
-                    .foregroundStyle(enabled ? Color.white : Color.secondary.opacity(0.4))
-            }
+                            )
+                        )
+                )
+                .shadow(color: enabled ? tint.opacity(0.28) : .clear, radius: 6, y: 2)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(LocalityVisitTapStyle())
         .disabled(!enabled)
-        .opacity(enabled ? 1 : 0.7)
         .accessibilityLabel(accessibility)
     }
 
-    private func adjust(by delta: Int) {
-        let next = min(range.upperBound, max(range.lowerBound, value + delta))
-        guard next != value else { return }
-        value = next
-        pulseToken += 1
-        onChange?(next)
+    private func incrementOpened() {
+        guard canIncreaseOpened else { return }
+        opened += 1
+        openedPulse += 1
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    private func decrementOpened() {
+        guard canDecreaseOpened else { return }
+        opened -= 1
+        if fiber > opened { fiber = opened }
+        openedPulse += 1
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    private func incrementFiber() {
+        guard canIncreaseFiber else { return }
+        if fiber >= opened, canEditOpened, opened < hp {
+            opened += 1
+            openedPulse += 1
+        }
+        fiber += 1
+        fiberPulse += 1
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    private func decrementFiber() {
+        guard canDecreaseFiber else { return }
+        fiber -= 1
+        fiberPulse += 1
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+}
+
+struct LocalityClosedToggle: View {
+    @Binding var isClosed: Bool
+
+    var body: some View {
+        Button {
+            isClosed.toggle()
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: isClosed ? "lock.fill" : "door.left.hand.closed")
+                    .font(.title3.weight(.semibold))
+                    .frame(width: 36, height: 36)
+                    .background(
+                        Circle().fill(isClosed ? Color.white.opacity(0.2) : LocalityVisitPalette.closed.opacity(0.16))
+                    )
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(isClosed ? "Zavřeno" : "Označit jako zavřené")
+                        .font(.headline.weight(.bold))
+                    Text(isClosed ? "Lokalita je uzavřená" : "Uzavře lokalitu a zamkne zápis")
+                        .font(.caption)
+                        .opacity(0.85)
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: isClosed ? "checkmark.circle.fill" : "circle")
+                    .font(.title3.weight(.semibold))
+            }
+            .foregroundStyle(isClosed ? Color.white : LocalityVisitPalette.closed)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
+            .background(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: isClosed
+                                ? [LocalityVisitPalette.closed.opacity(0.92), LocalityVisitPalette.closed]
+                                : [LocalityVisitPalette.closed.opacity(0.1), LocalityVisitPalette.closed.opacity(0.08)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .strokeBorder(LocalityVisitPalette.closed.opacity(isClosed ? 0 : 0.32), lineWidth: 1)
+            }
+            .shadow(color: LocalityVisitPalette.closed.opacity(isClosed ? 0.28 : 0.08), radius: 10, y: 4)
+        }
+        .buttonStyle(LocalityVisitTapStyle())
+        .accessibilityLabel(isClosed ? "Lokalita je zavřená" : "Označit lokalitu jako zavřenou")
+        .accessibilityAddTraits(isClosed ? .isSelected : [])
     }
 }
 

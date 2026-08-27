@@ -2,7 +2,7 @@
 //  LuckyBoxView.swift
 //  Provikart
 //
-//  Denní Lucky Box – hvězdy (UX), otevření přes collectibles_chest.php.
+//  Lucky Box – denní bedna + bonus a drop luck za včerejší usazený výkon.
 //
 
 import SwiftUI
@@ -126,6 +126,38 @@ enum LuckyBoxRarity: String, Codable, CaseIterable {
         case .rare: return 0.34
         case .epic: return 0.42
         case .legendary: return 0.52
+        }
+    }
+
+    /// Smalt truhly podle rarity.
+    var enamel: Color {
+        switch self {
+        case .common: return Color(red: 0.10, green: 0.78, blue: 0.97)
+        case .uncommon: return Color(red: 0.18, green: 0.86, blue: 0.62)
+        case .rare: return Color(red: 0.62, green: 0.38, blue: 0.98)
+        case .epic: return Color(red: 0.96, green: 0.62, blue: 0.14)
+        case .legendary: return Color(red: 0.96, green: 0.22, blue: 0.32)
+        }
+    }
+
+    var enamelDeep: Color {
+        switch self {
+        case .common: return Color(red: 0.05, green: 0.46, blue: 0.68)
+        case .uncommon: return Color(red: 0.06, green: 0.48, blue: 0.38)
+        case .rare: return Color(red: 0.32, green: 0.12, blue: 0.62)
+        case .epic: return Color(red: 0.58, green: 0.28, blue: 0.06)
+        case .legendary: return Color(red: 0.58, green: 0.08, blue: 0.14)
+        }
+    }
+
+    /// Základ kosočtvercového arénového pozadí / podlahy.
+    var arenaTint: Color {
+        switch self {
+        case .common: return Color(red: 0.14, green: 0.38, blue: 0.64)
+        case .uncommon: return Color(red: 0.10, green: 0.46, blue: 0.42)
+        case .rare: return Color(red: 0.36, green: 0.16, blue: 0.58)
+        case .epic: return Color(red: 0.58, green: 0.34, blue: 0.10)
+        case .legendary: return Color(red: 0.58, green: 0.12, blue: 0.18)
         }
     }
 
@@ -336,6 +368,10 @@ enum LuckyBoxPhase: Equatable {
 enum LuckyBoxLocalStore {
     private static let dayKey = "lucky_box_last_open_day"
     private static let rewardKey = "lucky_box_last_reward"
+    private static let openedCountKey = "lucky_box_opened_count"
+    private static let settledDayKey = "lucky_box_settled_day"
+    private static let yesterdayCountKey = "lucky_box_services_yesterday"
+    private static let todayCountKey = "lucky_box_services_today"
 
     private static let dayFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -349,13 +385,20 @@ enum LuckyBoxLocalStore {
         dayFormatter.string(from: reference)
     }
 
-    static var hasOpenedToday: Bool {
-        UserDefaults.standard.string(forKey: dayKey) == todayKey()
+    static var openedCountToday: Int {
+        guard UserDefaults.standard.string(forKey: dayKey) == todayKey() else { return 0 }
+        let stored = UserDefaults.standard.integer(forKey: openedCountKey)
+        if stored > 0 { return stored }
+        return 1
     }
 
-    /// Auto-ukázat při startu appky, dokud dnešní bedna není otevřená.
+    static var hasOpenedToday: Bool {
+        openedCountToday > 0
+    }
+
+    /// Auto-ukázat jen první (ranní) bednu, bonusové si uživatel otevře sám.
     static var shouldAutoPresent: Bool {
-        !hasOpenedToday
+        openedCountToday == 0
     }
 
     static var lastReward: LuckyBoxReward? {
@@ -363,16 +406,86 @@ enum LuckyBoxLocalStore {
         return try? JSONDecoder().decode(LuckyBoxReward.self, from: data)
     }
 
+    static var cachedYesterdayServices: Int {
+        guard UserDefaults.standard.string(forKey: settledDayKey) == todayKey() else { return 0 }
+        return UserDefaults.standard.integer(forKey: yesterdayCountKey)
+    }
+
+    static var cachedTodayServices: Int {
+        guard UserDefaults.standard.string(forKey: settledDayKey) == todayKey() else { return 0 }
+        return UserDefaults.standard.integer(forKey: todayCountKey)
+    }
+
+    static func savePerformance(yesterday: Int, today: Int, on date: Date = Date()) {
+        UserDefaults.standard.set(todayKey(reference: date), forKey: settledDayKey)
+        UserDefaults.standard.set(yesterday, forKey: yesterdayCountKey)
+        UserDefaults.standard.set(today, forKey: todayCountKey)
+    }
+
+    private static let chargeSessionKey = "lucky_box_charge_session"
+
+    private struct ChargeSession: Codable {
+        var day: String
+        var slot: Int
+        var stars: Int
+        var clicksLeft: Int
+        var phase: String
+    }
+
+    static var hasActiveChargeSession: Bool {
+        activeChargeSession() != nil
+    }
+
+    static func activeChargeSession() -> (stars: Int, clicksLeft: Int, isReadyToOpen: Bool)? {
+        guard let data = UserDefaults.standard.data(forKey: chargeSessionKey),
+              let session = try? JSONDecoder().decode(ChargeSession.self, from: data),
+              session.day == todayKey()
+        else { return nil }
+        let nextSlot = openedCountToday + 1
+        guard session.slot == nextSlot else { return nil }
+        return (session.stars, session.clicksLeft, session.phase == "readyToOpen")
+    }
+
+    static func saveChargeSession(stars: Int, clicksLeft: Int, readyToOpen: Bool) {
+        let session = ChargeSession(
+            day: todayKey(),
+            slot: openedCountToday + 1,
+            stars: stars,
+            clicksLeft: clicksLeft,
+            phase: readyToOpen ? "readyToOpen" : "charging"
+        )
+        if let data = try? JSONEncoder().encode(session) {
+            UserDefaults.standard.set(data, forKey: chargeSessionKey)
+        }
+    }
+
+    static func clearChargeSession() {
+        UserDefaults.standard.removeObject(forKey: chargeSessionKey)
+    }
+
     static func saveOpen(reward: LuckyBoxReward, on date: Date = Date()) {
-        UserDefaults.standard.set(todayKey(reference: date), forKey: dayKey)
+        let day = todayKey(reference: date)
+        let previousDay = UserDefaults.standard.string(forKey: dayKey)
+        let stored = UserDefaults.standard.integer(forKey: openedCountKey)
+        let current = previousDay == day ? (stored > 0 ? stored : 1) : 0
+        UserDefaults.standard.set(day, forKey: dayKey)
+        UserDefaults.standard.set(current + 1, forKey: openedCountKey)
         if let data = try? JSONEncoder().encode(reward) {
             UserDefaults.standard.set(data, forKey: rewardKey)
         }
+        clearChargeSession()
     }
 
     static func resetToday() {
         UserDefaults.standard.removeObject(forKey: dayKey)
         UserDefaults.standard.removeObject(forKey: rewardKey)
+        UserDefaults.standard.removeObject(forKey: openedCountKey)
+        UserDefaults.standard.removeObject(forKey: settledDayKey)
+        UserDefaults.standard.removeObject(forKey: yesterdayCountKey)
+        UserDefaults.standard.removeObject(forKey: todayCountKey)
+        UserDefaults.standard.removeObject(forKey: "lucky_box_services_today")
+        UserDefaults.standard.removeObject(forKey: "lucky_box_services_today_day")
+        clearChargeSession()
     }
 
     static func secondsUntilNextOpen(reference: Date = Date()) -> TimeInterval {
@@ -400,15 +513,17 @@ enum LuckyBoxMockPool {
     /// Max hvězd = legendary (1…5).
     static let maxStars = 5
 
-    /// Šance na +1 hvězdu (raritu) při klepnutí.
-    static func upgradeChance(fromStars: Int) -> Double {
+    /// Šance na +1 hvězdu (raritu) při klepnutí. `luckMultiplier` z včerejšího usazeného výkonu.
+    static func upgradeChance(fromStars: Int, luckMultiplier: Double = 1) -> Double {
+        let base: Double
         switch fromStars {
-        case 1: return 0.42 // → uncommon
-        case 2: return 0.28 // → rare
-        case 3: return 0.16 // → epic
-        case 4: return 0.08 // → legendary
+        case 1: base = 0.42 // → uncommon
+        case 2: base = 0.28 // → rare
+        case 3: base = 0.16 // → epic
+        case 4: base = 0.08 // → legendary
         default: return 0
         }
+        return min(0.58, base * max(1, luckMultiplier))
     }
 }
 
@@ -416,57 +531,50 @@ enum LuckyBoxMockPool {
 
 struct LuckyBoxView: View {
     @EnvironmentObject private var authState: AuthState
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var phase: LuckyBoxPhase
     @State private var stars: Int
     @State private var clicksLeft: Int
     @State private var reward: LuckyBoxReward?
     @State private var hasOpenedToday: Bool
-    @State private var boxScale: CGFloat = 1
-    @State private var boxRotation: Double = 0
-    @State private var boxBounce: CGFloat = 0
-    /// 0…1 – expandující aura kolem bedny při klepnutí.
-    @State private var hitAuraProgress: CGFloat = 0
-    /// true = silnější aura (upgrade hvězdy).
-    @State private var hitAuraIntense = false
-    @State private var lidOpen: CGFloat
-    @State private var glowPulse = false
+    @ObservedObject private var chestController = LuckyChestController.shared
     @State private var revealOpacity: Double
     @State private var flashOpacity: Double = 0
     @State private var starBurst = false
-    @State private var particleBoost = false
     @State private var isBusy = false
     /// Zámek mezi klepnutími – dokud se bedna otáčí / třese.
     @State private var isClickLocked = false
     @State private var countdownTick = Date()
     @State private var hitAnimationTask: Task<Void, Never>?
-    @State private var shakeParticles: [LuckyShakeParticle] = []
     @State private var rewardCardScale: CGFloat
     @State private var rewardCardOpacity: Double
     @State private var rewardCardImage: UIImage?
     @State private var shareReward: LuckyBoxReward?
     @State private var infoReward: LuckyBoxReward?
+    @State private var showTomorrowInfo = false
     @State private var openErrorMessage: String?
     @State private var showOpenError = false
     @State private var openTask: Task<Void, Never>?
     /// Pořadové číslo otevření – staré (zrušené) tasky nesmí měnit stav.
     @State private var openGeneration = 0
+    @ObservedObject private var quota = LuckyBoxQuotaState.shared
 
     private let gold = Color(red: 1.0, green: 0.86, blue: 0.42)
     private let orange = Color(red: 0.97, green: 0.58, blue: 0.12)
 
     init() {
+        let remaining = LuckyBoxQuotaState.shared.remaining
         let opened = LuckyBoxLocalStore.hasOpenedToday
         let last = LuckyBoxLocalStore.lastReward
         _hasOpenedToday = State(initialValue: opened)
 
-        if opened, let last {
+        if remaining <= 0, opened, let last {
             _phase = State(initialValue: .revealed)
             _reward = State(initialValue: last)
             _stars = State(initialValue: last.rarity.stars)
             _clicksLeft = State(initialValue: 0)
             _revealOpacity = State(initialValue: 1)
-            _lidOpen = State(initialValue: 1)
             _rewardCardOpacity = State(initialValue: 1)
             _rewardCardScale = State(initialValue: 1)
             if let url = last.resolvedImageURL {
@@ -474,13 +582,21 @@ struct LuckyBoxView: View {
             } else {
                 _rewardCardImage = State(initialValue: nil)
             }
+        } else if let session = LuckyBoxLocalStore.activeChargeSession() {
+            _phase = State(initialValue: session.isReadyToOpen ? .readyToOpen : .charging)
+            _reward = State(initialValue: nil)
+            _stars = State(initialValue: session.stars)
+            _clicksLeft = State(initialValue: session.clicksLeft)
+            _revealOpacity = State(initialValue: 0)
+            _rewardCardOpacity = State(initialValue: 0)
+            _rewardCardScale = State(initialValue: 0.72)
+            _rewardCardImage = State(initialValue: nil)
         } else {
             _phase = State(initialValue: .charging)
             _reward = State(initialValue: nil)
-            _stars = State(initialValue: 1)
+            _stars = State(initialValue: LuckyBoxQuotaState.shared.startingStars)
             _clicksLeft = State(initialValue: LuckyBoxMockPool.maxClicks)
             _revealOpacity = State(initialValue: 0)
-            _lidOpen = State(initialValue: 0)
             _rewardCardOpacity = State(initialValue: 0)
             _rewardCardScale = State(initialValue: 0.72)
             _rewardCardImage = State(initialValue: nil)
@@ -495,15 +611,39 @@ struct LuckyBoxView: View {
         return LuckyBoxRarity.from(stars: stars)
     }
 
+    /// Dokud tahle bedna není otevřená, nelze odejít a přerollovat hvězdy.
+    private var isChestLocked: Bool {
+        phase == .charging || phase == .readyToOpen || phase == .opening || isBusy
+    }
+
     var body: some View {
         ZStack {
-            fullscreenBackground
+            Color(uiColor: LuckyChestController.stageBackground)
                 .ignoresSafeArea()
-                .animation(.easeInOut(duration: 0.85), value: currentRarity)
 
-            particlesLayer
+            Image(uiImage: LuckyChestScene.diamondImage(for: currentRarity))
+                .resizable()
+                .scaledToFill()
+                .ignoresSafeArea()
                 .allowsHitTesting(false)
-                .animation(.easeInOut(duration: 0.7), value: currentRarity)
+                .animation(.easeInOut(duration: 0.45), value: currentRarity)
+
+            LuckyChestStageView(controller: chestController, onTap: handleScreenTap)
+                .ignoresSafeArea()
+                .opacity(chestController.isLive ? 1 : 0)
+                .allowsHitTesting(phase != .revealed && rewardCardOpacity < 0.5 && chestController.isLive)
+
+            if phase != .revealed, !chestController.isLive {
+                LuckyChestPlaceholderView(rarity: currentRarity)
+                    .ignoresSafeArea()
+                if let preview = chestController.previewImage {
+                    Image(uiImage: preview)
+                        .resizable()
+                        .scaledToFill()
+                        .ignoresSafeArea()
+                        .allowsHitTesting(false)
+                }
+            }
 
             VStack(spacing: 0) {
                 if phase != .revealed {
@@ -528,12 +668,36 @@ struct LuckyBoxView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .animation(.easeInOut(duration: 0.35), value: phase)
+            .allowsHitTesting(phase == .revealed || rewardCardOpacity > 0.5)
             .overlay(alignment: .bottom) {
-                bottomSection
-                    .padding(.horizontal, 28)
-                    .padding(.bottom, 36)
-                    // Odřízni implicitní animace z otáčení bedny / hvězd.
-                    .transaction { $0.animation = nil }
+                VStack(spacing: 12) {
+                    bottomSection
+                        .allowsHitTesting(false)
+                    if phase == .revealed, quota.remaining > 0 {
+                        Button(action: prepareNextChest) {
+                            Text("Otevřít další bednu")
+                                .font(.subheadline.weight(.heavy))
+                                .tracking(0.4)
+                                .foregroundStyle(Color(red: 0.22, green: 0.08, blue: 0.16))
+                                .padding(.horizontal, 18)
+                                .padding(.vertical, 10)
+                                .background(
+                                    Capsule()
+                                        .fill(
+                                            LinearGradient(
+                                                colors: [gold, orange],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
+                                        )
+                                )
+                        }
+                        .accessibilityLabel("Otevřít další Lucky Box za včerejší výkon")
+                    }
+                }
+                .padding(.horizontal, 28)
+                .padding(.bottom, 36)
+                .transaction { $0.animation = nil }
             }
 
             // flash musí být navrchu – zakryje bednu i UI
@@ -542,21 +706,23 @@ struct LuckyBoxView: View {
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
         }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            handleScreenTap()
-        }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
                 if phase == .revealed {
-                    toolbarCountdown
+                    toolbarStatus
                 }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Info", systemImage: "info.circle") {
+                    showTomorrowInfo = true
+                }
+                .accessibilityLabel("Jak fungují další bedny")
             }
             ToolbarItemGroup(placement: .topBarTrailing) {
                 if phase == .revealed, let reward {
-                    Button("Info", systemImage: "info.circle") {
+                    Button("Karta", systemImage: "rectangle.portrait") {
                         infoReward = reward
                     }
                     .accessibilityLabel("Detail karty")
@@ -566,15 +732,24 @@ struct LuckyBoxView: View {
                     }
                     .accessibilityLabel("Sdílet kartu kamarádům")
                 }
-
+            }
+#if DEBUG
+            ToolbarItem(placement: .topBarTrailing) {
                 Button("Reset", systemImage: "arrow.counterclockwise") {
                     resetForTesting()
                 }
                 .accessibilityLabel("Resetovat dnešní Lucky Box")
             }
+#endif
         }
+        .navigationBarBackButtonHidden(isChestLocked)
+        .preference(key: LuckyBoxAllowsLeavingKey.self, value: !isChestLocked)
+        .background(LuckyBoxSwipeBackLock(isLocked: isChestLocked))
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
+        .sheet(isPresented: $showTomorrowInfo) {
+            LuckyBoxTomorrowInfoSheet(quota: quota, gold: gold, orange: orange)
+        }
         .sheet(item: $shareReward) { reward in
             LuckyShareStudioView(reward: reward, gold: gold, preloadedImage: rewardCardImage)
         }
@@ -587,9 +762,30 @@ struct LuckyBoxView: View {
             Text(openErrorMessage ?? "Zkus to znovu.")
         }
         .onAppear {
-            glowPulse = true
-            // Záloha, kdyby se store změnil mimo init (např. reset jinde).
+            LuckyChestController.shared.resumeIfNeeded()
             restoreRevealedStateIfNeeded()
+            if phase != .revealed {
+                chestController.scene.resetToClosed()
+            }
+            LuckyChestController.shared.resumeIfNeeded()
+            syncChestScene()
+        }
+        .task {
+            await quota.refresh(token: authState.authToken, forceOrders: true)
+            hasOpenedToday = LuckyBoxLocalStore.hasOpenedToday
+            if phase == .charging, stars < quota.startingStars {
+                stars = quota.startingStars
+            }
+        }
+        .onChange(of: currentRarity) { _, _ in
+            syncChestScene()
+        }
+        .onChange(of: phase) { _, _ in
+            syncChestScene()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            LuckyChestController.shared.resumeIfNeeded()
         }
         .task(id: reward?.id) {
             await ensureRewardCardImageLoaded()
@@ -603,269 +799,109 @@ struct LuckyBoxView: View {
         }
     }
 
-    private var toolbarCountdown: some View {
+    private var toolbarStatus: some View {
         VStack(spacing: 1) {
-            Text("DALŠÍ ZA")
-                .font(.system(size: 9, weight: .bold, design: .rounded))
-                .tracking(0.8)
-                .foregroundStyle(.secondary)
-            Text(LuckyBoxLocalStore.countdownText(reference: countdownTick))
-                .font(.system(.subheadline, design: .rounded).weight(.bold))
-                .monospacedDigit()
-                .foregroundStyle(.primary)
-                .contentTransition(.numericText())
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Další bedna za \(LuckyBoxLocalStore.countdownText(reference: countdownTick))")
-    }
-
-    private var fullscreenBackground: some View {
-        let rarity = currentRarity
-        let colors = rarity.backgroundColors
-        let tint = rarity.tint
-        let glow = rarity.glowStrength
-        let burstBoost = starBurst ? 0.22 : 0
-        return ZStack {
-            LinearGradient(
-                colors: [colors[0], colors[1], colors[2], .black],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-
-            // horní aura rarity
-            RadialGradient(
-                colors: [
-                    Color.white.opacity(0.14 + glow * 0.25),
-                    tint.opacity(0.2 + glow * 0.35 + burstBoost),
-                    .clear
-                ],
-                center: UnitPoint(x: 0.5, y: 0.06),
-                startRadius: 8,
-                endRadius: 340
-            )
-
-            // středový glow kolem bedny
-            RadialGradient(
-                colors: [
-                    tint.opacity((glowPulse ? glow + 0.12 : glow * 0.65) + burstBoost),
-                    tint.opacity(glow * 0.25),
-                    .clear
-                ],
-                center: UnitPoint(x: 0.5, y: 0.42),
-                startRadius: 16,
-                endRadius: 260
-            )
-            .animation(.easeInOut(duration: 1.45).repeatForever(autoreverses: true), value: glowPulse)
-            .animation(.easeOut(duration: 0.45), value: starBurst)
-
-            // sekundární jiskra (legendary/epic výraznější)
-            RadialGradient(
-                colors: [
-                    rarity.particleSecondary.opacity(glow * 0.35 + burstBoost * 0.5),
-                    .clear
-                ],
-                center: UnitPoint(x: 0.22, y: 0.28),
-                startRadius: 4,
-                endRadius: 180
-            )
-            .blendMode(.plusLighter)
-
-            RadialGradient(
-                colors: [
-                    tint.opacity(glow * 0.28 + burstBoost * 0.4),
-                    .clear
-                ],
-                center: UnitPoint(x: 0.82, y: 0.22),
-                startRadius: 4,
-                endRadius: 160
-            )
-            .blendMode(.plusLighter)
-
-            LinearGradient(
-                colors: [.clear, Color.black.opacity(0.28), Color.black.opacity(0.72)],
-                startPoint: UnitPoint(x: 0.5, y: 0.52),
-                endPoint: .bottom
-            )
-
-            LuckySoftFloor(accent: tint, intensity: glow)
-                .opacity(0.45 + glow * 0.45)
-                .allowsHitTesting(false)
-
-            // viněta
-            RadialGradient(
-                colors: [.clear, .clear, Color.black.opacity(0.45 + glow * 0.2)],
-                center: UnitPoint(x: 0.5, y: 0.4),
-                startRadius: 120,
-                endRadius: 540
-            )
-        }
-    }
-
-    private var particlesLayer: some View {
-        let rarity = currentRarity
-        let tint = rarity.tint
-        let secondary = rarity.particleSecondary
-        let speedMul = rarity.atmosphereSpeed
-        let baseCount = rarity.atmosphereParticleCount
-        let count = particleBoost ? baseCount + 18 : baseCount
-        let revealedDim = phase == .revealed ? 0.35 : 1.0
-
-        return TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-            Canvas { context, size in
-                let t = timeline.date.timeIntervalSinceReferenceDate * speedMul
-                for i in 0..<count {
-                    let seed = Double(i) * 17.13 + 3.7
-                    let dirX = sin(seed * 1.9)
-                    let dirY = cos(seed * 2.3)
-                    let speed = (0.2 + Double(i % 7) * 0.055) * speedMul
-                    let drift = 16 + Double(i % 5) * 7 + Double(rarity.stars) * 2.5
-                    let baseX = (sin(seed) * 0.5 + 0.5) * size.width
-                    let baseY = (cos(seed * 1.4) * 0.5 + 0.5) * size.height * 0.88
-                    let x = baseX + dirX * sin(t * speed + seed) * drift
-                    let y = baseY + dirY * cos(t * speed * 0.9 + seed * 1.1) * (12 + Double(i % 4) * 5)
-                        - (t * (7 + Double(i % 6) * 3.2) + seed * 20)
-                            .truncatingRemainder(dividingBy: Double(size.height * 0.58))
-                    let r = 1.1 + CGFloat(i % 5) * 0.75 + CGFloat(rarity.stars) * 0.12
-                    let kind = i % 4
-                    let color: Color = {
-                        switch kind {
-                        case 0: return tint
-                        case 1: return secondary
-                        case 2: return .white
-                        default: return tint.opacity(0.85)
-                        }
-                    }()
-                    let alpha = (0.14 + 0.3 * Double((i % 4) + 1) / 4.0) * revealedDim
-                        * (0.75 + rarity.glowStrength)
-
-                    var path = Path()
-                    path.addEllipse(in: CGRect(x: x, y: y, width: r, height: r))
-                    context.fill(path, with: .color(color.opacity(alpha)))
-
-                    // větší „jiskry“ u vyšších rarit
-                    if rarity.stars >= 3, i % 5 == 0 {
-                        var spark = Path()
-                        let s = r * 2.2
-                        spark.addEllipse(in: CGRect(x: x - s * 0.3, y: y - s * 0.3, width: s, height: s))
-                        context.fill(spark, with: .color(secondary.opacity(alpha * 0.35)))
-                    }
-                }
+            if quota.remaining > 0 {
+                Text("ZBÝVÁ")
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .tracking(0.8)
+                    .foregroundStyle(.secondary)
+                Text("\(quota.remaining) \(LuckyBoxQuota.chestsWord(quota.remaining))")
+                    .font(.system(.subheadline, design: .rounded).weight(.bold))
+                    .foregroundStyle(.primary)
+            } else {
+                Text("DALŠÍ ZA")
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .tracking(0.8)
+                    .foregroundStyle(.secondary)
+                Text(LuckyBoxLocalStore.countdownText(reference: countdownTick))
+                    .font(.system(.subheadline, design: .rounded).weight(.bold))
+                    .monospacedDigit()
+                    .foregroundStyle(.primary)
+                    .contentTransition(.numericText())
             }
         }
-        .opacity(phase == .revealed ? 0.45 : 0.85)
-        .blendMode(.plusLighter)
-        .allowsHitTesting(false)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(toolbarAccessibilityLabel)
+    }
+
+    private var toolbarAccessibilityLabel: String {
+        if quota.remaining > 0 {
+            return "Zbývá \(quota.remaining) \(LuckyBoxQuota.chestsWord(quota.remaining))"
+        }
+        return "Další bedna za \(LuckyBoxLocalStore.countdownText(reference: countdownTick))"
     }
 
     private var starsRow: some View {
         let tint = currentRarity.tint
-        return HStack(spacing: 8) {
-            ForEach(1...LuckyBoxMockPool.maxStars, id: \.self) { index in
-                LuckyStarBadge(
-                    filled: index <= stars,
-                    emphasized: starBurst && index == stars,
-                    gold: tint,
-                    orange: currentRarity.particleSecondary
-                )
-                .animation(.spring(response: 0.35, dampingFraction: 0.42), value: stars)
-                .animation(.spring(response: 0.35, dampingFraction: 0.42), value: starBurst)
+        return VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                ForEach(1...LuckyBoxMockPool.maxStars, id: \.self) { index in
+                    LuckyStarBadge(
+                        filled: index <= stars,
+                        emphasized: starBurst && index == stars,
+                        gold: tint,
+                        orange: currentRarity.particleSecondary
+                    )
+                    .animation(.spring(response: 0.35, dampingFraction: 0.42), value: stars)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.42), value: starBurst)
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 10)
+            .background(
+                Capsule()
+                    .fill(Color.black.opacity(0.28))
+                    .overlay(
+                        Capsule()
+                            .stroke(
+                                LinearGradient(
+                                    colors: [
+                                        tint.opacity(0.55),
+                                        Color.white.opacity(0.1)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                ),
+                                lineWidth: 1
+                            )
+                    )
+                    .shadow(color: tint.opacity(0.35), radius: 14, y: 6)
+            )
+            if quota.luckPercent > 0, phase == .charging || phase == .readyToOpen {
+                Text("+\(quota.luckPercent) % drop za včerejšek")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(gold)
+                    .opacity(0.92)
             }
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 10)
-        .background(
-            Capsule()
-                .fill(Color.black.opacity(0.28))
-                .overlay(
-                    Capsule()
-                        .stroke(
-                            LinearGradient(
-                                colors: [
-                                    tint.opacity(0.55),
-                                    Color.white.opacity(0.1)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            ),
-                            lineWidth: 1
-                        )
-                )
-                .shadow(color: tint.opacity(0.35), radius: 14, y: 6)
-        )
         .animation(.easeInOut(duration: 0.55), value: currentRarity)
-        .accessibilityLabel("\(stars) z \(LuckyBoxMockPool.maxStars) hvězd")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(starsAccessibilityLabel)
+    }
+
+    private var starsAccessibilityLabel: String {
+        if quota.luckPercent > 0 {
+            return "\(stars) z \(LuckyBoxMockPool.maxStars) hvězd, plus \(quota.luckPercent) procent k dropu za včerejšek"
+        }
+        return "\(stars) z \(LuckyBoxMockPool.maxStars) hvězd"
     }
 
     private var chestView: some View {
-        ZStack {
-            // zavřená bedna (mizí při otevření)
-            ZStack {
-                Ellipse()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                Color.black.opacity(0.65),
-                                Color.black.opacity(0.15),
-                                .clear
-                            ],
-                            center: .center,
-                            startRadius: 4,
-                            endRadius: 120
-                        )
-                    )
-                    .frame(width: 240, height: 44)
-                    .offset(y: 120)
+        LuckyRewardCardView(
+            reward: reward,
+            gold: gold,
+            isInteractive: rewardCardOpacity > 0.5,
+            preloadedImage: rewardCardImage
+        )
+        .opacity(rewardCardOpacity)
+        .scaleEffect(rewardCardScale)
+        .allowsHitTesting(rewardCardOpacity > 0.5)
+        .frame(height: phase == .revealed || rewardCardOpacity > 0.5 ? 520 : 380)
+    }
 
-                LuckyOpenBurst(progress: lidOpen, gold: gold, tint: currentRarity.tint)
-                    .offset(y: -20)
-                    .allowsHitTesting(false)
-
-                LuckyHitAura(
-                    progress: hitAuraProgress,
-                    intense: hitAuraIntense,
-                    tint: currentRarity.tint,
-                    gold: gold
-                )
-                .frame(width: 420, height: 420)
-                .allowsHitTesting(false)
-
-                LuckyChestRig(lidOpen: lidOpen, rarityTint: currentRarity.tint, gold: gold)
-                    .frame(width: 290, height: 290)
-                    .scaleEffect(boxScale)
-                    .rotation3DEffect(
-                        .degrees(boxRotation),
-                        axis: (x: 0.12, y: 1, z: 0.04),
-                        anchor: .center,
-                        anchorZ: 0,
-                        perspective: 0.55
-                    )
-                    .offset(y: boxBounce)
-                    .shadow(
-                        color: currentRarity.tint.opacity(0.35 + 0.25 * lidOpen + 0.35 * Double(hitAuraProgress)),
-                        radius: 26 + 18 * hitAuraProgress,
-                        y: 12
-                    )
-
-                LuckyShakeParticleLayer(particles: shakeParticles)
-                    .frame(width: 420, height: 420)
-                    .allowsHitTesting(false)
-            }
-            .opacity(Double(1 - lidOpen))
-            .scaleEffect(1 - lidOpen * 0.12)
-            .allowsHitTesting(lidOpen < 0.5)
-
-            // Mythic karta (test5) – 3D, otáčení tahem
-            LuckyRewardCardView(
-                reward: reward,
-                gold: gold,
-                isInteractive: rewardCardOpacity > 0.5,
-                preloadedImage: rewardCardImage
-            )
-            .opacity(rewardCardOpacity)
-            .scaleEffect(rewardCardScale)
-            .allowsHitTesting(rewardCardOpacity > 0.5)
-        }
-        .frame(height: phase == .revealed || rewardCardOpacity > 0.5 ? 520 : 420)
+    private func syncChestScene() {
+        chestController.scene.applyRarity(currentRarity, revealed: phase == .revealed)
     }
 
     @ViewBuilder
@@ -875,8 +911,14 @@ struct LuckyBoxView: View {
                 if let reward {
                     LuckyResultStatusView(reward: reward, gold: gold, orange: orange)
                         .opacity(revealOpacity)
+                    if quota.remaining > 0 {
+                        Text("Bonus za včerejšek · zbývá \(quota.remaining)")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(gold.opacity(0.9))
+                            .opacity(revealOpacity)
+                    }
                 }
-            } else if hasOpenedToday && phase != .opening {
+            } else if quota.remaining <= 0 && hasOpenedToday && phase != .opening {
                 LuckyResultStatusView(
                     reward: reward ?? LuckyBoxLocalStore.lastReward,
                     gold: gold,
@@ -966,6 +1008,7 @@ struct LuckyBoxView: View {
     }
 
     private func restoreRevealedStateIfNeeded() {
+        guard quota.remaining <= 0 else { return }
         guard LuckyBoxLocalStore.hasOpenedToday, let last = LuckyBoxLocalStore.lastReward else { return }
         guard phase != .revealed || reward == nil else { return }
 
@@ -975,7 +1018,6 @@ struct LuckyBoxView: View {
         clicksLeft = 0
         phase = .revealed
         revealOpacity = 1
-        lidOpen = 1
         rewardCardOpacity = 1
         rewardCardScale = 1
         if let url = last.resolvedImageURL {
@@ -985,30 +1027,48 @@ struct LuckyBoxView: View {
 
     private func resetForTesting() {
         LuckyBoxLocalStore.resetToday()
+        LuckyBoxQuotaState.shared.applyLocalOpened()
         hasOpenedToday = false
         reward = nil
         rewardCardImage = nil
-        stars = 1
+        stars = quota.startingStars
         clicksLeft = LuckyBoxMockPool.maxClicks
         phase = .charging
         revealOpacity = 0
-        lidOpen = 0
-        boxScale = 1
-        boxRotation = 0
-        boxBounce = 0
-        hitAuraProgress = 0
-        hitAuraIntense = false
         flashOpacity = 0
         rewardCardOpacity = 0
         rewardCardScale = 0.72
         isBusy = false
         isClickLocked = false
-        shakeParticles.removeAll()
         hitAnimationTask?.cancel()
         hitAnimationTask = nil
         openTask?.cancel()
         openTask = nil
+        chestController.scene.resetToClosed()
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    @MainActor
+    private func prepareNextChest() {
+        guard quota.remaining > 0, !isBusy else { return }
+        LuckyBoxLocalStore.clearChargeSession()
+        reward = nil
+        rewardCardImage = nil
+        stars = quota.startingStars
+        clicksLeft = LuckyBoxMockPool.maxClicks
+        phase = .charging
+        revealOpacity = 0
+        flashOpacity = 0
+        rewardCardOpacity = 0
+        rewardCardScale = 0.72
+        isBusy = false
+        isClickLocked = false
+        hitAnimationTask?.cancel()
+        hitAnimationTask = nil
+        openTask?.cancel()
+        openTask = nil
+        chestController.scene.resetToClosed()
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
 
     private static let rewardCardMaxPixelSize: CGFloat = 1200
@@ -1051,13 +1111,28 @@ struct LuckyBoxView: View {
     private func beginOpenChest() {
         guard !isBusy, !isClickLocked, phase == .readyToOpen else { return }
         isBusy = true
-        phase = .opening
         flashOpacity = 0
 
         openGeneration += 1
         let generation = openGeneration
         openTask?.cancel()
         openTask = Task { @MainActor in
+            await quota.refresh(token: authState.authToken, forceOrders: true)
+            guard openGeneration == generation, !Task.isCancelled else { return }
+
+            let nextSlot = LuckyBoxLocalStore.openedCountToday + 1
+            if nextSlot > 1, nextSlot > quota.earned {
+                isBusy = false
+                openErrorMessage = "Zrušené služby se do Lucky Boxu nepočítají, takže tahle bonusová bedna už neplatí."
+                showOpenError = true
+                UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                if openGeneration == generation {
+                    openTask = nil
+                }
+                return
+            }
+
+            phase = .opening
             await openChest(generation: generation)
             if openGeneration == generation {
                 openTask = nil
@@ -1079,12 +1154,14 @@ struct LuckyBoxView: View {
 
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
-        let chance = LuckyBoxMockPool.upgradeChance(fromStars: stars)
+        let chance = LuckyBoxMockPool.upgradeChance(fromStars: stars, luckMultiplier: quota.luckMultiplier)
         let upgraded = stars < LuckyBoxMockPool.maxStars && Double.random(in: 0...1) < chance
+        var newStars = stars
 
         if upgraded {
             let usedClicks = LuckyBoxMockPool.maxClicks - clicksLeft
-            let nextStars = min(stars + 1, 1 + usedClicks, LuckyBoxMockPool.maxStars)
+            let nextStars = min(stars + 1, quota.startingStars + usedClicks, LuckyBoxMockPool.maxStars)
+            newStars = nextStars
             withAnimation(.spring(response: 0.4, dampingFraction: 0.5)) {
                 stars = nextStars
                 starBurst = true
@@ -1097,9 +1174,14 @@ struct LuckyBoxView: View {
         }
 
         let finishedClicks = clicksLeft == 0
+        LuckyBoxLocalStore.saveChargeSession(
+            stars: newStars,
+            clicksLeft: clicksLeft,
+            readyToOpen: finishedClicks
+        )
         hitAnimationTask?.cancel()
         hitAnimationTask = Task { @MainActor in
-            await playChestSpin(upgraded: upgraded)
+            await playChestHit(upgraded: upgraded)
             guard !Task.isCancelled else { return }
             isClickLocked = false
             hitAnimationTask = nil
@@ -1111,122 +1193,13 @@ struct LuckyBoxView: View {
         }
     }
 
-    /// 3D otočka bedny kolem dokola (osa Y) + aura / částice.
     @MainActor
-    private func playChestSpin(upgraded: Bool) async {
-        let turns = upgraded ? 2.0 : 1.0
-        let spinDuration = upgraded ? 0.78 : 0.58
-        let startRotation = boxRotation.truncatingRemainder(dividingBy: 360)
-        var noAnim = Transaction()
-        noAnim.disablesAnimations = true
-        withTransaction(noAnim) {
-            boxRotation = startRotation
-            hitAuraProgress = 0
-            hitAuraIntense = upgraded
-        }
-
-        emitHitParticles(upgraded: upgraded)
-        particleBoost = true
-
-        // squash před odletem
-        withAnimation(.easeOut(duration: 0.1)) {
-            boxScale = upgraded ? 0.86 : 0.9
-            boxBounce = 12
-            hitAuraProgress = 0.2
-        }
-        try? await Task.sleep(nanoseconds: 100_000_000)
-        guard !Task.isCancelled else {
-            finishHitMotionCleanup()
-            return
-        }
-
-        // 3D spin kolem svislé osy (1× / 2×) + expandující aura
-        withAnimation(.easeInOut(duration: spinDuration)) {
-            boxRotation = startRotation + 360 * turns
-            boxScale = upgraded ? 1.16 : 1.1
-            boxBounce = upgraded ? -22 : -14
-            hitAuraProgress = 1
-        }
-        try? await Task.sleep(nanoseconds: UInt64(spinDuration * 1_000_000_000))
-        guard !Task.isCancelled else {
-            finishHitMotionCleanup()
-            return
-        }
-
+    private func playChestHit(upgraded: Bool) async {
+        await chestController.scene.playHit(upgraded: upgraded)
         if upgraded {
-            emitHitParticles(upgraded: true, burstExtra: 5)
-            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
-            withAnimation(.spring(response: 0.36, dampingFraction: 0.52)) {
-                boxScale = 1.18
-                boxBounce = -14
-            }
-            try? await Task.sleep(nanoseconds: 150_000_000)
-            guard !Task.isCancelled else {
-                finishHitMotionCleanup()
-                return
-            }
             withAnimation(.spring(response: 0.48, dampingFraction: 0.72)) {
-                boxScale = 1
-                boxBounce = 0
                 starBurst = false
-                hitAuraProgress = 0
             }
-        } else {
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.64)) {
-                boxScale = 1
-                boxBounce = 7
-            }
-            try? await Task.sleep(nanoseconds: 110_000_000)
-            guard !Task.isCancelled else {
-                finishHitMotionCleanup()
-                return
-            }
-            withAnimation(.spring(response: 0.42, dampingFraction: 0.78)) {
-                boxBounce = 0
-                hitAuraProgress = 0
-            }
-        }
-
-        try? await Task.sleep(nanoseconds: 80_000_000)
-        finishHitMotionCleanup()
-    }
-
-    @MainActor
-    private func finishHitMotionCleanup() {
-        var noAnim = Transaction()
-        noAnim.disablesAnimations = true
-        withTransaction(noAnim) {
-            boxRotation = boxRotation.truncatingRemainder(dividingBy: 360)
-            hitAuraIntense = false
-            particleBoost = false
-            if hitAuraProgress > 0.01 {
-                hitAuraProgress = 0
-            }
-        }
-    }
-
-    @MainActor
-    private func emitHitParticles(upgraded: Bool, burstExtra: Int = 0) {
-        let now = Date()
-        let assets = ["LuckyParticleGold", "LuckyParticleCyan", "LuckyParticleSoft", "LuckyParticleWhite"]
-        let count = (upgraded ? 10 : 7) + burstExtra
-        for i in 0..<count {
-            let angle = Double(i) / Double(count) * .pi * 2 + Double.random(in: -0.2...0.2)
-            shakeParticles.append(
-                LuckyShakeParticle(
-                    assetName: assets[i % assets.count],
-                    angle: angle,
-                    startRadius: Double.random(in: upgraded ? 70...95 : 78...100),
-                    speed: Double.random(in: upgraded ? 55...110 : 40...85),
-                    size: CGFloat.random(in: upgraded ? 26...42 : 22...34),
-                    spin: Double.random(in: -120...120),
-                    startedAt: now,
-                    duration: Double.random(in: upgraded ? 0.55...0.85 : 0.45...0.7)
-                )
-            )
-        }
-        if shakeParticles.count > 28 {
-            shakeParticles.removeFirst(shakeParticles.count - 28)
         }
     }
 
@@ -1238,15 +1211,9 @@ struct LuckyBoxView: View {
         rewardCardOpacity = 0
         rewardCardScale = 0.55
         flashOpacity = 0
-        shakeParticles.removeAll()
         hitAnimationTask?.cancel()
         hitAnimationTask = nil
         isClickLocked = false
-        boxRotation = 0
-        boxScale = 1
-        boxBounce = 0
-        hitAuraProgress = 0
-        hitAuraIntense = false
         UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
 
         let token = authState.authToken
@@ -1260,28 +1227,16 @@ struct LuckyBoxView: View {
             async let apiResult = CollectiblesService().openChest(
                 token: token,
                 luckStars: chargedStars,
-                rarity: chargedRarity.rawValue
+                rarity: chargedRarity.rawValue,
+                source: LuckyBoxLocalStore.openedCountToday == 0 ? "daily" : "performance",
+                slot: LuckyBoxLocalStore.openedCountToday + 1
             )
 
-            for i in 0..<8 {
-                guard stillCurrent() else {
-                    abortOpen(message: nil, generation: generation)
-                    return
-                }
-                withAnimation(.easeInOut(duration: 0.06)) {
-                    boxRotation = (i % 2 == 0) ? -14 : 14
-                    boxScale = i % 2 == 0 ? 1.1 : 0.92
-                    boxBounce = (i % 2 == 0) ? -8 : 6
-                }
-                try? await Task.sleep(nanoseconds: 60_000_000)
+            await chestController.scene.playOpenAnticipation()
+            guard stillCurrent() else {
+                abortOpen(message: nil, generation: generation)
+                return
             }
-
-            withAnimation(.easeOut(duration: 0.08)) {
-                boxRotation = 0
-                boxScale = 1.05
-                boxBounce = 0
-            }
-            particleBoost = true
 
             let result = try await apiResult
             guard stillCurrent() else {
@@ -1323,28 +1278,31 @@ struct LuckyBoxView: View {
 
         rewardCardImage = preloaded
 
-        withAnimation(.easeIn(duration: 0.12)) {
-            flashOpacity = 1
+        await chestController.scene.playLidOpen()
+        guard stillCurrent() else {
+            abortOpen(message: nil, generation: generation)
+            return
         }
-        try? await Task.sleep(nanoseconds: 140_000_000)
 
-        lidOpen = 1
-        boxScale = 1
-        boxBounce = 0
-        rewardCardScale = 0.82
+        withAnimation(.easeIn(duration: 0.14)) {
+            flashOpacity = 0.42
+        }
+        async let openExit: Void = chestController.scene.playOpenExit()
+
+        rewardCardScale = 0.42
         rewardCardOpacity = 0.01
         UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
 
-        try? await Task.sleep(nanoseconds: 120_000_000)
+        try? await Task.sleep(nanoseconds: 80_000_000)
 
-        withAnimation(.easeOut(duration: 0.45)) {
-            flashOpacity = 0
-        }
-        withAnimation(.spring(response: 0.62, dampingFraction: 0.72)) {
+        withAnimation(.spring(response: 0.68, dampingFraction: 0.74)) {
             rewardCardScale = 1.06
             rewardCardOpacity = 1
+            flashOpacity = 0
         }
-        try? await Task.sleep(nanoseconds: 380_000_000)
+        await openExit
+
+        try? await Task.sleep(nanoseconds: 180_000_000)
 
         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
             rewardCardScale = 1
@@ -1356,6 +1314,7 @@ struct LuckyBoxView: View {
         }
 
         LuckyBoxLocalStore.saveOpen(reward: picked)
+        LuckyBoxQuotaState.shared.applyLocalOpened()
         hasOpenedToday = true
         phase = .revealed
 
@@ -1364,26 +1323,17 @@ struct LuckyBoxView: View {
             revealOpacity = 1
         }
         try? await Task.sleep(nanoseconds: 220_000_000)
-        particleBoost = false
         isBusy = false
     }
 
     @MainActor
     private func abortOpen(message: String?, generation: Int) {
         guard openGeneration == generation else { return }
-        particleBoost = false
         flashOpacity = 0
-        lidOpen = 0
         rewardCardOpacity = 0
         rewardCardImage = nil
         isClickLocked = false
-        withAnimation(.easeOut(duration: 0.2)) {
-            boxRotation = 0
-            boxScale = 1
-            boxBounce = 0
-            hitAuraProgress = 0
-            hitAuraIntense = false
-        }
+        chestController.scene.resetToClosed()
         phase = .readyToOpen
         isBusy = false
         if let message, !message.isEmpty {
@@ -1398,7 +1348,6 @@ struct LuckyBoxView: View {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.5)) {
             starBurst = true
         }
-        emitHitParticles(upgraded: true)
         UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
         try? await Task.sleep(nanoseconds: 200_000_000)
         withAnimation(.easeOut(duration: 0.2)) { starBurst = false }
@@ -1735,189 +1684,6 @@ private struct LuckyShareSheet: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
-}
-
-// MARK: - Hit aura (expanding rings around chest)
-
-private struct LuckyHitAura: View {
-    let progress: CGFloat
-    let intense: Bool
-    let tint: Color
-    let gold: Color
-
-    var body: some View {
-        let p = max(0, min(1, progress))
-        ZStack {
-            // měkký bloom
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Color.white.opacity(0.55 * Double(1 - p) * (intense ? 1 : 0.7)),
-                            gold.opacity(0.4 * Double(1 - p)),
-                            tint.opacity(0.28 * Double(1 - p)),
-                            .clear
-                        ],
-                        center: .center,
-                        startRadius: 10,
-                        endRadius: 150 + 40 * p
-                    )
-                )
-                .frame(width: 260 + 90 * p, height: 260 + 90 * p)
-                .blendMode(.plusLighter)
-
-            ForEach(0..<3, id: \.self) { index in
-                ring(at: index, progress: p)
-            }
-
-            // jiskřivé čárky
-            ForEach(0..<(intense ? 12 : 8), id: \.self) { index in
-                spark(at: index, progress: p)
-            }
-        }
-        .opacity(Double(min(1, p * 2.2)) * Double(1 - p * 0.15))
-        .allowsHitTesting(false)
-    }
-
-    private func ring(at index: Int, progress: CGFloat) -> some View {
-        let stagger = CGFloat(index) * 0.14
-        let local = max(0, min(1, (progress - stagger) / max(0.01, 1 - stagger)))
-        let size: CGFloat = 140 + local * (110 + CGFloat(index) * 48)
-        return Circle()
-            .stroke(
-                AngularGradient(
-                    colors: [
-                        Color.white.opacity(0.85),
-                        gold.opacity(0.9),
-                        tint.opacity(0.75),
-                        Color.white.opacity(0.35),
-                        gold.opacity(0.8)
-                    ],
-                    center: .center
-                ),
-                lineWidth: (intense ? 3.2 : 2.4) - CGFloat(index) * 0.55
-            )
-            .frame(width: size, height: size)
-            .opacity(Double((1 - local) * (intense ? 0.95 : 0.7)))
-            .blur(radius: 0.4 + CGFloat(index) * 0.35)
-            .rotationEffect(.degrees(Double(local) * (intense ? 55 : 35) * (index.isMultiple(of: 2) ? 1 : -1)))
-    }
-
-    private func spark(at index: Int, progress: CGFloat) -> some View {
-        let count = intense ? 12.0 : 8.0
-        let baseAngle = Double(index) / count * .pi * 2
-        let local = max(0, min(1, progress))
-        let radius = 70 + local * (95 + Double(index % 3) * 18)
-        let x = cos(baseAngle + local * 0.35) * radius
-        let y = sin(baseAngle + local * 0.35) * radius * 0.9
-        let len: CGFloat = intense ? 16 : 11
-        return Capsule()
-            .fill(
-                LinearGradient(
-                    colors: [Color.white, gold.opacity(0.8), .clear],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-            )
-            .frame(width: len + CGFloat(index % 3) * 4, height: 2.2)
-            .rotationEffect(.degrees(baseAngle * 180 / .pi + 90))
-            .offset(x: x, y: y)
-            .opacity(Double((1 - local) * 0.85))
-            .blendMode(.plusLighter)
-    }
-}
-
-// MARK: - AI particle sprites around chest
-
-private struct LuckyShakeParticle: Identifiable, Equatable {
-    let id = UUID()
-    let assetName: String
-    let angle: Double
-    let startRadius: Double
-    let speed: Double
-    let size: CGFloat
-    let spin: Double
-    let startedAt: Date
-    let duration: TimeInterval
-}
-
-private struct LuckyShakeParticleLayer: View {
-    let particles: [LuckyShakeParticle]
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-            let now = timeline.date
-            ZStack {
-                ForEach(particles) { particle in
-                    LuckyShakeParticleSprite(particle: particle, now: now)
-                }
-            }
-        }
-        .allowsHitTesting(false)
-    }
-}
-
-private struct LuckyShakeParticleSprite: View {
-    let particle: LuckyShakeParticle
-    let now: Date
-
-    var body: some View {
-        let age = max(0, now.timeIntervalSince(particle.startedAt))
-        let life = min(1, age / max(0.01, particle.duration))
-        let visible = age < particle.duration
-        let radius = particle.startRadius + age * particle.speed
-        let x = cos(particle.angle) * radius
-        let y = sin(particle.angle) * radius * 0.82 - age * age * 40
-        let fade = max(0, 1 - life)
-        let scale = 0.85 + fade * 0.45
-
-        Image(particle.assetName)
-            .resizable()
-            .interpolation(.high)
-            .scaledToFit()
-            .frame(width: particle.size, height: particle.size)
-            .rotationEffect(.degrees(particle.spin * life))
-            .scaleEffect(scale)
-            .opacity(visible ? (0.35 + 0.65 * fade) : 0)
-            .blendMode(.screen)
-            .offset(x: x, y: y)
-            .accessibilityHidden(true)
-    }
-}
-
-// MARK: - Chest (closed → fade out)
-
-private struct LuckyChestRig: View {
-    let lidOpen: CGFloat
-    let rarityTint: Color
-    let gold: Color
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Color.white.opacity(0.55 * lidOpen),
-                            gold.opacity(0.4 * lidOpen),
-                            rarityTint.opacity(0.15 * lidOpen),
-                            .clear
-                        ],
-                        center: .center,
-                        startRadius: 4,
-                        endRadius: 110
-                    )
-                )
-                .frame(width: 200, height: 200)
-                .blur(radius: 4)
-                .blendMode(.plusLighter)
-
-            Image("LuckyChestClosed")
-                .resizable()
-                .interpolation(.high)
-                .scaledToFit()
-        }
-    }
 }
 
 struct LuckyRewardCardView: View {
@@ -2399,75 +2165,6 @@ struct LuckyCardOutcomeBadge: View {
     }
 }
 
-private struct LuckyOpenBurst: View {
-    let progress: CGFloat
-    let gold: Color
-    let tint: Color
-
-    var body: some View {
-        ZStack {
-            rays
-            core
-        }
-        .opacity(Double(min(1, progress * 1.2)))
-        .allowsHitTesting(false)
-    }
-
-    private var rays: some View {
-        ForEach(0..<8, id: \.self) { index in
-            ray(at: index)
-        }
-    }
-
-    private func ray(at index: Int) -> some View {
-        let width = 6 + CGFloat(index % 3) * 2
-        let height = 90 + CGFloat(index % 3) * 22
-        let angle = Double(index) * 12 - 42
-        return Capsule()
-            .fill(rayGradient)
-            .frame(width: width, height: height)
-            .offset(y: -40)
-            .rotationEffect(.degrees(angle))
-            .opacity(Double(progress) * 0.7)
-            .blur(radius: 0.8)
-    }
-
-    private var rayGradient: LinearGradient {
-        LinearGradient(
-            colors: [
-                Color.white.opacity(0.4 * progress),
-                gold.opacity(0.28 * progress),
-                .clear
-            ],
-            startPoint: .bottom,
-            endPoint: .top
-        )
-    }
-
-    private var core: some View {
-        Circle()
-            .fill(coreGradient)
-            .frame(width: 140, height: 140)
-            .scaleEffect(0.6 + 0.4 * progress)
-            .blur(radius: 3)
-            .blendMode(.plusLighter)
-    }
-
-    private var coreGradient: RadialGradient {
-        RadialGradient(
-            colors: [
-                Color.white.opacity(0.55 * progress),
-                gold.opacity(0.35 * progress),
-                tint.opacity(0.12 * progress),
-                .clear
-            ],
-            center: .center,
-            startRadius: 2,
-            endRadius: 70
-        )
-    }
-}
-
 private struct LuckyStarBadge: View {
     let filled: Bool
     let emphasized: Bool
@@ -2567,17 +2264,143 @@ private struct LuckySoftFloor: View {
     }
 }
 
+struct LuckyBoxAllowsLeavingKey: PreferenceKey {
+    static var defaultValue = true
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = nextValue()
+    }
+}
+
+private struct LuckyBoxSwipeBackLock: UIViewControllerRepresentable {
+    var isLocked: Bool
+
+    func makeUIViewController(context: Context) -> UIViewController {
+        UIViewController()
+    }
+
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
+        DispatchQueue.main.async {
+            uiViewController.navigationController?.interactivePopGestureRecognizer?.isEnabled = !isLocked
+        }
+    }
+}
+
+// MARK: - Tomorrow chests info
+
+private struct LuckyBoxTomorrowInfoSheet: View {
+    @ObservedObject var quota: LuckyBoxQuotaState
+    let gold: Color
+    let orange: Color
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    HStack {
+                        Label("Dnes služeb", systemImage: "bolt.fill")
+                        Spacer()
+                        Text("\(quota.servicesToday)")
+                            .font(.body.weight(.semibold))
+                            .monospacedDigit()
+                    }
+                    HStack {
+                        Label("Zítra bonusových beden", systemImage: "gift.fill")
+                        Spacer()
+                        Text("\(quota.tomorrowBonusCount)")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(gold)
+                            .monospacedDigit()
+                    }
+                    if let next = LuckyBoxQuota.nextBonus(services: quota.servicesToday) {
+                        HStack {
+                            Label("Další bonus", systemImage: "plus.circle")
+                            Spacer()
+                            Text("za \(next.need) \(LuckyBoxQuota.servicesWord(next.need))")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } footer: {
+                    Text("Dnešní výkon se do Lucky Boxu započítá až zítra. Storno se nepočítá.")
+                }
+
+                Section {
+                    thresholdRow(services: 4, bonus: 1, title: "Běžný den")
+                    thresholdRow(services: 5, bonus: 2, title: "Dobrý den")
+                    thresholdRow(services: 7, bonus: 3, title: "Silný den")
+                } header: {
+                    Text("Bonusové bedny")
+                }
+
+                Section {
+                    luckRow(services: 4, percent: 12)
+                    luckRow(services: 5, percent: 22)
+                    luckRow(services: 7, percent: 35, extra: "start na 2★")
+                } header: {
+                    Text("Šance na drop")
+                } footer: {
+                    Text("Lepší šance bere včerejší výkon. Ranní bedna je každý den.")
+                }
+            }
+            .navigationTitle("Další bedny")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Hotovo") { dismiss() }
+                        .fontWeight(.semibold)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func thresholdRow(services: Int, bonus: Int, title: String) -> some View {
+        let reached = quota.servicesToday >= services
+        return HStack {
+            Image(systemName: reached ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(reached ? Color(red: 0.35, green: 0.82, blue: 0.48) : .secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(services) \(LuckyBoxQuota.servicesWord(services))")
+                    .font(.body.weight(.medium))
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text("+\(bonus) \(LuckyBoxQuota.chestsWord(bonus))")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(reached ? gold : .secondary)
+        }
+    }
+
+    private func luckRow(services: Int, percent: Int, extra: String? = nil) -> some View {
+        HStack {
+            Text("\(services)+ služeb")
+            Spacer()
+            Text(extra.map { "+\(percent) % · \($0)" } ?? "+\(percent) %")
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
 // MARK: - Home entry helpers
 
 enum LuckyBoxHomeStatus {
-    case ready
-    case opened(countdown: String)
+    case ready(remaining: Int, opened: Int)
+    case waitingForBonus(hint: String)
+    case doneForToday(countdown: String)
 
+    @MainActor
     static func current(now: Date = Date()) -> LuckyBoxHomeStatus {
-        if LuckyBoxLocalStore.hasOpenedToday {
-            return .opened(countdown: LuckyBoxLocalStore.countdownText(reference: now))
+        let quota = LuckyBoxQuotaState.shared
+        if quota.remaining > 0 {
+            return .ready(remaining: quota.remaining, opened: quota.opened)
         }
-        return .ready
+        if let hint = quota.nextHint {
+            return .waitingForBonus(hint: hint)
+        }
+        return .doneForToday(countdown: LuckyBoxLocalStore.countdownText(reference: now))
     }
 }
 

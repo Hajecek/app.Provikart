@@ -34,12 +34,18 @@ struct HomeView: View {
         guard let number = UserDefaults.standard.object(forKey: "dealwars_xp_cache") as? NSNumber else { return nil }
         return number.doubleValue
     }()
-    @State private var luckyBoxStatus: LuckyBoxHomeStatus = .current()
     @State private var luckyBoxTick = Date()
+    @ObservedObject private var luckyQuota = LuckyBoxQuotaState.shared
     @State private var showLuckyBoxAuto = false
+    @State private var luckyBoxAllowsLeaving = true
     /// V rámci jedné session neotevírat znovu po zavření (po killnutí appky ano).
     @State private var didAutoPresentThisSession = false
     @Environment(\.scenePhase) private var scenePhase
+
+    private var luckyBoxStatus: LuckyBoxHomeStatus {
+        _ = luckyQuota.remaining
+        return .current(now: luckyBoxTick)
+    }
 
     private let commissionService = CommissionService()
     private let userGoalsService = UserGoalsService()
@@ -189,32 +195,39 @@ struct HomeView: View {
             }
             .toolbarBackground(.visible, for: .navigationBar)
             .onAppear {
+                LuckyChestController.shared.resumeIfNeeded()
                 refreshLuckyBoxStatus()
                 maybeAutoPresentLuckyBox()
             }
         }
         .fullScreenCover(isPresented: $showLuckyBoxAuto, onDismiss: {
             refreshLuckyBoxStatus()
+            luckyBoxAllowsLeaving = true
         }) {
             NavigationStack {
                 LuckyBoxView()
                     .environmentObject(authState)
+                    .onPreferenceChange(LuckyBoxAllowsLeavingKey.self) { luckyBoxAllowsLeaving = $0 }
                     .toolbar {
                         ToolbarItem(placement: .topBarLeading) {
-                            Button("Zavřít") {
-                                showLuckyBoxAuto = false
+                            if luckyBoxAllowsLeaving {
+                                Button("Zavřít") {
+                                    showLuckyBoxAuto = false
+                                }
+                                .fontWeight(.semibold)
                             }
-                            .fontWeight(.semibold)
                         }
                     }
             }
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
+            LuckyChestController.shared.resumeIfNeeded()
             refreshLuckyBoxStatus()
             maybeAutoPresentLuckyBox()
         }
         .task {
+            LuckyChestController.shared.resumeIfNeeded()
             // Obnov uložený cíl hned (z předchozího načtení), než stáhneme z API
             if commissionGoal == nil, let saved = WidgetDataStore.loadCommissionGoal() {
                 commissionGoal = saved
@@ -229,6 +242,7 @@ struct HomeView: View {
             async let services: Void = loadServicesCount()
             async let entries: Void = loadEntryCardsCount()
             _ = await (dealwars, goals, commission, pending, services, entries)
+            await refreshLuckyBoxQuota()
 
             // Periodické obnovení na pozadí (každých 5 s) – silent, bez blikání.
             while !Task.isCancelled {
@@ -242,6 +256,7 @@ struct HomeView: View {
                 async let s: Void = loadServicesCount()
                 async let e: Void = loadEntryCardsCount()
                 _ = await (d, g, c, p, s, e)
+                await refreshLuckyBoxQuota()
             }
         }
         .refreshable {
@@ -251,6 +266,7 @@ struct HomeView: View {
             await loadServicesCount()
             await loadEntryCardsCount()
             await loadDealwarsSummary()
+            await refreshLuckyBoxQuota()
         }
     }
 
@@ -287,11 +303,21 @@ struct HomeView: View {
                     .foregroundStyle(.white)
 
                 switch luckyBoxStatus {
-                case .ready:
-                    Text("Připraveno k otevření")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(gold)
-                case .opened(let countdown):
+                case .ready(let remaining, let opened):
+                    if opened == 0 {
+                        Text(remaining > 1 ? "Denní + bonus za včera · zbývá \(remaining)" : "Připraveno k otevření")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(gold)
+                    } else {
+                        Text("Bonus za včerejšek · zbývá \(remaining)")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(gold)
+                    }
+                case .waitingForBonus(let hint):
+                    Text(hint)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.78))
+                case .doneForToday(let countdown):
                     Text("Další zítra · \(countdown)")
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.white.opacity(0.72))
@@ -325,11 +351,23 @@ struct HomeView: View {
                 .foregroundStyle(.white.opacity(0.4))
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(
-            ready
-                ? "Lucky Box, připraveno k otevření"
-                : "Lucky Box, dnes už otevřeno"
-        )
+        .accessibilityLabel(luckyBoxAccessibilityLabel)
+    }
+
+    private var luckyBoxAccessibilityLabel: String {
+        switch luckyBoxStatus {
+        case .ready(let remaining, let opened):
+            if opened == 0 {
+                return remaining > 1
+                    ? "Lucky Box, denní bedna a bonus za včerejšek, zbývá \(remaining)"
+                    : "Lucky Box, připraveno k otevření"
+            }
+            return "Lucky Box, bonus za včerejšek, zbývá \(remaining)"
+        case .waitingForBonus(let hint):
+            return "Lucky Box, \(hint)"
+        case .doneForToday:
+            return "Lucky Box, dnes už otevřeno"
+        }
     }
 
     private var luckyBoxBackground: some View {
@@ -364,7 +402,14 @@ struct HomeView: View {
 
     private func refreshLuckyBoxStatus() {
         luckyBoxTick = Date()
-        luckyBoxStatus = .current(now: luckyBoxTick)
+        LuckyBoxQuotaState.shared.applyLocalOpened()
+    }
+
+    private func refreshLuckyBoxQuota() async {
+        let token = await MainActor.run { authState.authToken }
+        let total = await MainActor.run { servicesCount }
+        await LuckyBoxQuotaState.shared.refresh(token: token, totalServices: total)
+        await MainActor.run { refreshLuckyBoxStatus() }
     }
 
     /// Při každém spuštění appky otevře Lucky Box, dokud dnešní bedna není otevřená.

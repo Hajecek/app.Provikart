@@ -31,6 +31,7 @@ struct SalesLocalityItem: Decodable, Identifiable, Equatable {
     let openedCount: Int
     let d2d: Bool
     let isDone: Bool
+    let isClosed: Bool
     let openedPct: Double?
     let penetrationPct: Double?
     let salesUserId: Int?
@@ -64,6 +65,9 @@ struct SalesLocalityItem: Decodable, Identifiable, Equatable {
         case openedCount = "opened_count"
         case d2d
         case isDone = "is_done"
+        case close
+        case closed
+        case isClosed = "is_closed"
         case openedPct = "opened_pct"
         case penetrationPct = "penetration_pct"
         case salesUserId = "sales_user_id"
@@ -97,6 +101,9 @@ struct SalesLocalityItem: Decodable, Identifiable, Equatable {
         openedCount = c.decodeFlexibleInt(forKey: .openedCount) ?? 0
         d2d = c.decodeFlexibleBool(forKey: .d2d)
         isDone = c.decodeFlexibleBool(forKey: .isDone)
+        isClosed = c.decodeFlexibleBool(forKey: .close)
+            || c.decodeFlexibleBool(forKey: .closed)
+            || c.decodeFlexibleBool(forKey: .isClosed)
         openedPct = c.decodeFlexibleDouble(forKey: .openedPct)
         penetrationPct = c.decodeFlexibleDouble(forKey: .penetrationPct)
         salesUserId = c.decodeFlexibleInt(forKey: .salesUserId)
@@ -358,6 +365,7 @@ struct SalesLocalityUpdateFields {
     var fiberKs: Int?
     var openedCount: Int?
     var isDone: Bool?
+    var isClosed: Bool?
     var note: String?
     var majitel: String?
     var email: String?
@@ -372,6 +380,7 @@ struct SalesLocalityUpdateFields {
         if let fiberKs { body["fiber_ks"] = fiberKs }
         if let openedCount { body["opened_count"] = openedCount }
         if let isDone { body["is_done"] = isDone ? 1 : 0 }
+        if let isClosed { body["close"] = isClosed ? 1 : 0 }
         if let note { body["note"] = note }
         if let majitel { body["majitel"] = majitel }
         if let email { body["email"] = email }

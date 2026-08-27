@@ -246,6 +246,10 @@ struct ProvikartApp: App {
                             hasVerifiedBiometricThisSession = true
                             sessionUnlock.unlock()
                         }
+                        LuckyChestController.shared.resumeIfNeeded()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                            LuckyChestController.shared.resumeIfNeeded()
+                        }
                     })
                     .ignoresSafeArea()
                     .transition(.opacity)

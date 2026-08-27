@@ -85,6 +85,9 @@ struct EmployeeTabMenuView: View {
                     .environment(\.openAddSheet, { showAddSheet = true })
             }
         }
+        .onAppear {
+            LuckyChestController.shared.prepareIfNeeded()
+        }
         .onChange(of: selectedTab) { oldValue, newValue in
             if newValue == .add {
                 showAddSheet = true

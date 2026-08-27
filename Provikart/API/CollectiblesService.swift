@@ -194,11 +194,20 @@ private struct CollectiblesInventoryDataDTO: Decodable {
 final class CollectiblesService {
     private let baseURL = "https://provikart.cz/api"
 
-    /// POST /api/collectibles_chest.php – otevře denní sběratelskou bednu.
+    /// POST /api/collectibles_chest.php – otevře sběratelskou bednu.
+    /// Denní limit hlídá aplikace; server extra otevření (bonus za výkon) neblokuje.
     /// - Parameters:
     ///   - luckStars: nabité hvězdy (1…5) = cílová rarita dropu
     ///   - rarity: API hodnota rarity (`common`…`legendary`) odpovídající hvězdám
-    func openChest(token: String?, luckStars: Int? = nil, rarity: String? = nil) async throws -> CollectiblesChestOpenResult {
+    ///   - source: `daily` nebo `performance`
+    ///   - slot: pořadí dnešního otevření (1 = ranní bedna)
+    func openChest(
+        token: String?,
+        luckStars: Int? = nil,
+        rarity: String? = nil,
+        source: String? = nil,
+        slot: Int? = nil
+    ) async throws -> CollectiblesChestOpenResult {
         guard let token, !token.isEmpty else { throw CollectiblesError.notAuthenticated }
 
         var comp = URLComponents(string: "\(baseURL)/collectibles_chest.php")
@@ -224,6 +233,14 @@ final class CollectiblesService {
         if let rarity, !rarity.isEmpty {
             body["rarity"] = rarity
             body["target_rarity"] = rarity
+        }
+        if let source, !source.isEmpty {
+            body["source"] = source
+            body["chest"] = source
+        }
+        if let slot {
+            body["slot"] = slot
+            body["chest_index"] = slot
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
