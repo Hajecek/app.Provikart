@@ -13,7 +13,7 @@ import UIKit
 @MainActor
 final class LuckyChestController: NSObject, ObservableObject {
     static let shared = LuckyChestController()
-    static let stageBackground = UIColor(red: 0.10, green: 0.26, blue: 0.46, alpha: 1)
+    static let stageBackground = UIColor(red: 0.08, green: 0.14, blue: 0.32, alpha: 1)
 
     let scene: LuckyChestScene
     fileprivate let stageView: SCNView
@@ -60,6 +60,7 @@ final class LuckyChestController: NSObject, ObservableObject {
     /// Připraví stálý SCNView, Metal náhled a shadery, ať Lucky Box nezačíná černou obrazovkou.
     func prepareIfNeeded() {
         scene.ensureParticles()
+        scene.preloadArenaImages()
         if previewImage == nil || isPreviewMostlyBlack(previewImage) {
             let image = renderPreviewImage()
             if !isPreviewMostlyBlack(image) {
@@ -86,6 +87,7 @@ final class LuckyChestController: NSObject, ObservableObject {
         }
         stageView.frame = host.bounds
         stageView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        scene.layoutBackdrop(viewSize: host.bounds.size)
         let needsKick = moved || scene.scnScene.isPaused || stageView.scene?.isPaused == true || !stageView.isPlaying
         if needsKick {
             resumeRendering()
@@ -220,6 +222,7 @@ final class LuckyChestController: NSObject, ObservableObject {
 
     private func renderPreviewImage() -> UIImage {
         let size = Self.previewSize
+        scene.layoutBackdrop(viewSize: size)
         let scale = min(2, UITraitCollection.current.displayScale)
         let pixelSize = CGSize(
             width: min(900, max(2, (size.width * scale).rounded())),
@@ -278,6 +281,7 @@ final class LuckyChestController: NSObject, ObservableObject {
         }
         stageView.frame = window.bounds
         stageView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        scene.layoutBackdrop(viewSize: window.bounds.size)
     }
 
     private static var keyWindow: UIWindow? {
@@ -317,9 +321,12 @@ extension LuckyChestController: SCNSceneRendererDelegate {
 }
 
 private final class LuckyChestStageContainer: UIView {
+    weak var controller: LuckyChestController?
+
     override func layoutSubviews() {
         super.layoutSubviews()
         subviews.first { $0 is SCNView }?.frame = bounds
+        controller?.scene.layoutBackdrop(viewSize: bounds.size)
     }
 }
 
@@ -333,6 +340,7 @@ struct LuckyChestStageView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> UIView {
         let container = LuckyChestStageContainer()
+        container.controller = controller
         container.backgroundColor = LuckyChestController.stageBackground
         container.isOpaque = true
         container.clipsToBounds = true
@@ -352,6 +360,7 @@ struct LuckyChestStageView: UIViewRepresentable {
     func updateUIView(_ uiView: UIView, context: Context) {
         context.coordinator.onTap = onTap
         context.coordinator.controller = controller
+        (uiView as? LuckyChestStageContainer)?.controller = controller
         controller.attach(to: uiView)
     }
 
@@ -400,7 +409,7 @@ struct LuckyChestPlaceholderView: View {
             let w = min(geo.size.width * 0.34, 148)
             let h = w * 0.92
             ZStack {
-                Image(uiImage: LuckyChestScene.diamondImage(for: rarity))
+                Image(rarity.arenaImageName)
                     .resizable()
                     .scaledToFill()
                     .frame(width: geo.size.width, height: geo.size.height)
@@ -409,10 +418,11 @@ struct LuckyChestPlaceholderView: View {
                 Ellipse()
                     .fill(Color.black.opacity(0.38))
                     .frame(width: w * 1.35, height: w * 0.32)
-                    .offset(y: h * 0.42)
+                    .offset(y: geo.size.height * 0.04 + h * 0.42)
                     .blur(radius: 10)
 
                 chestShape(width: w, height: h)
+                    .offset(y: geo.size.height * 0.04)
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }
@@ -497,6 +507,9 @@ final class LuckyChestScene {
     private let fillLightNode = SCNNode()
     private let rimLightNode = SCNNode()
     private let ambientNode = SCNNode()
+    private let backdropNode = SCNNode()
+    private var backdropMaterial = SCNMaterial()
+    private var lastBackdropSize: CGSize = .zero
 
     private var bodyMaterial = SCNMaterial()
     private var barrelMaterial = SCNMaterial()
@@ -504,7 +517,6 @@ final class LuckyChestScene {
     private var goldMaterial = SCNMaterial()
     private var lockMaterial = SCNMaterial()
     private var darkWoodMaterial = SCNMaterial()
-    private var floorMaterial = SCNMaterial()
     private var glowMaterial = SCNMaterial()
     private var rarityGlowMaterial = SCNMaterial()
     private var interiorMaterial = SCNMaterial()
@@ -520,8 +532,8 @@ final class LuckyChestScene {
 
     private let bronzeTint = UIColor(red: 0.82, green: 0.54, blue: 0.22, alpha: 1)
     private let bronzeDark = UIColor(red: 0.38, green: 0.20, blue: 0.08, alpha: 1)
-    private let displayScale: Float = 0.42
-    private let restY: Float = 0.04
+    private let displayScale: Float = 0.31
+    private let restY: Float = 0.02
     private let lidHinge = SCNVector3(0, 0.35, -0.50)
 
     init() {
@@ -783,21 +795,22 @@ final class LuckyChestScene {
     // MARK: - World
 
     private func buildWorld() {
-        scnScene.background.contents = Self.diamondImage(for: .common)
+        scnScene.background.contents = LuckyChestController.stageBackground
         scnScene.lightingEnvironment.contents = nil
         scnScene.lightingEnvironment.intensity = 0
-        scnScene.fogStartDistance = 3.2
-        scnScene.fogEndDistance = 9.5
-        scnScene.fogColor = UIColor(red: 0.08, green: 0.20, blue: 0.36, alpha: 1)
+        scnScene.fogStartDistance = 0
+        scnScene.fogEndDistance = 0
 
         cameraNode.camera = SCNCamera()
-        cameraNode.camera?.fieldOfView = 32
+        cameraNode.camera?.fieldOfView = 30
         cameraNode.camera?.wantsHDR = false
         cameraNode.camera?.wantsExposureAdaptation = false
         cameraNode.camera?.bloomIntensity = 0
-        cameraNode.position = SCNVector3(0, 1.08, 3.35)
-        cameraNode.look(at: SCNVector3(0, 0.04, 0))
+        cameraNode.position = SCNVector3(0, 1.06, 3.62)
+        cameraNode.look(at: SCNVector3(0, 0.02, 0))
         scnScene.rootNode.addChildNode(cameraNode)
+        buildBackdrop()
+        layoutBackdrop(viewSize: CGSize(width: 390, height: 844))
 
         buildArenaFloor()
         buildLights()
@@ -813,6 +826,62 @@ final class LuckyChestScene {
         ensureParticles()
     }
 
+    func layoutBackdrop(viewSize: CGSize) {
+        let size = viewSize.width > 1 && viewSize.height > 1
+            ? viewSize
+            : CGSize(width: 390, height: 844)
+        if abs(size.width - lastBackdropSize.width) < 0.5,
+           abs(size.height - lastBackdropSize.height) < 0.5 {
+            return
+        }
+        lastBackdropSize = size
+
+        let fovDeg = cameraNode.camera?.fieldOfView ?? 30
+        let fov = Float(fovDeg) * .pi / 180
+        let distance: Float = 12
+        let viewAspect = Float(size.width / max(size.height, 1))
+        let frustumH = 2 * distance * tan(fov / 2)
+        let frustumW = frustumH * viewAspect
+        let image = Self.arenaImage(for: currentRarity)
+        let imageAspect = Float(max(image.size.width, 1) / max(image.size.height, 1))
+
+        let planeW: Float
+        let planeH: Float
+        if imageAspect > viewAspect {
+            planeH = frustumH
+            planeW = planeH * imageAspect
+        } else {
+            planeW = frustumW
+            planeH = planeW / imageAspect
+        }
+
+        let plane = SCNPlane(width: CGFloat(planeW), height: CGFloat(planeH))
+        plane.firstMaterial = backdropNode.geometry?.firstMaterial
+        backdropNode.geometry = plane
+        backdropNode.position = SCNVector3(0, 0, -distance)
+    }
+
+    private func buildBackdrop() {
+        backdropMaterial.lightingModel = .constant
+        backdropMaterial.diffuse.contents = Self.arenaImage(for: .common)
+        backdropMaterial.diffuse.magnificationFilter = .linear
+        backdropMaterial.diffuse.minificationFilter = .linear
+        backdropMaterial.isDoubleSided = false
+        backdropMaterial.writesToDepthBuffer = false
+        let plane = SCNPlane(width: 16, height: 28)
+        plane.firstMaterial = backdropMaterial
+        backdropNode.geometry = plane
+        backdropNode.renderingOrder = -1000
+        backdropNode.castsShadow = false
+        cameraNode.addChildNode(backdropNode)
+    }
+
+    func preloadArenaImages() {
+        for rarity in LuckyBoxRarity.allCases {
+            _ = Self.arenaImage(for: rarity)
+        }
+    }
+
     func ensureParticles() {
         guard atmosphere == nil else { return }
         buildParticles()
@@ -820,48 +889,30 @@ final class LuckyChestScene {
     }
 
     private func buildArenaFloor() {
-        floorMaterial = SCNMaterial()
-        floorMaterial.lightingModel = .constant
-        floorMaterial.diffuse.contents = Self.diamondTile(for: .common)
-        floorMaterial.emission.contents = UIColor.black
-        floorMaterial.locksAmbientWithDiffuse = true
-        floorMaterial.diffuse.wrapS = .repeat
-        floorMaterial.diffuse.wrapT = .repeat
-        floorMaterial.diffuse.contentsTransform = SCNMatrix4MakeScale(9, 11, 1)
-        floorMaterial.diffuse.magnificationFilter = .linear
-        floorMaterial.diffuse.minificationFilter = .linear
-
-        let floor = SCNPlane(width: 12, height: 14)
-        floor.firstMaterial = floorMaterial
-        let floorNode = SCNNode(geometry: floor)
-        floorNode.eulerAngles.x = -.pi / 2
-        floorNode.position = SCNVector3(0, -0.17, 0.15)
-        scnScene.rootNode.addChildNode(floorNode)
-
         glowMaterial = unlitMaterial(UIColor.black)
         glowMaterial.diffuse.contents = Self.shadowImage
         glowMaterial.writesToDepthBuffer = false
         glowMaterial.blendMode = .alpha
-        let shadow = SCNPlane(width: 1.15, height: 0.82)
+        let shadow = SCNPlane(width: 0.95, height: 0.68)
         shadow.firstMaterial = glowMaterial
         floorGlowNode.geometry = shadow
         floorGlowNode.eulerAngles.x = -.pi / 2
-        floorGlowNode.position = SCNVector3(0, -0.162, 0.06)
-        floorGlowNode.opacity = 0.5
+        floorGlowNode.position = SCNVector3(0, -0.01, 0.04)
+        floorGlowNode.opacity = 0.42
         floorGlowNode.castsShadow = false
         scnScene.rootNode.addChildNode(floorGlowNode)
 
-        rarityGlowMaterial = unlitMaterial(UIColor(red: 0.25, green: 0.7, blue: 1, alpha: 1))
+        rarityGlowMaterial = unlitMaterial(UIColor(red: 1.0, green: 0.82, blue: 0.28, alpha: 1))
         rarityGlowMaterial.diffuse.contents = Self.blobImage
         rarityGlowMaterial.emission.contents = UIColor.black
         rarityGlowMaterial.writesToDepthBuffer = false
         rarityGlowMaterial.blendMode = .add
-        let halo = SCNPlane(width: 1.55, height: 1.1)
+        let halo = SCNPlane(width: 1.15, height: 0.82)
         halo.firstMaterial = rarityGlowMaterial
         rarityGlowNode.geometry = halo
         rarityGlowNode.eulerAngles.x = -.pi / 2
-        rarityGlowNode.position = SCNVector3(0, -0.158, 0.06)
-        rarityGlowNode.opacity = 0.28
+        rarityGlowNode.position = SCNVector3(0, -0.006, 0.04)
+        rarityGlowNode.opacity = 0.22
         rarityGlowNode.castsShadow = false
         scnScene.rootNode.addChildNode(rarityGlowNode)
     }
@@ -869,24 +920,24 @@ final class LuckyChestScene {
     private func buildLights() {
         let ambient = SCNLight()
         ambient.type = .ambient
-        ambient.intensity = 320
-        ambient.color = UIColor(red: 0.55, green: 0.68, blue: 0.82, alpha: 1)
+        ambient.intensity = 260
+        ambient.color = UIColor(red: 0.42, green: 0.52, blue: 0.78, alpha: 1)
         ambientNode.light = ambient
         scnScene.rootNode.addChildNode(ambientNode)
 
         let key = SCNLight()
         key.type = .directional
-        key.intensity = 920
-        key.color = UIColor(red: 1.0, green: 0.97, blue: 0.92, alpha: 1)
+        key.intensity = 1080
+        key.color = UIColor(red: 1.0, green: 0.93, blue: 0.72, alpha: 1)
         key.castsShadow = false
         keyLightNode.light = key
-        keyLightNode.eulerAngles = SCNVector3(-0.55, 0.25, 0)
+        keyLightNode.eulerAngles = SCNVector3(-1.05, 0.18, 0)
         scnScene.rootNode.addChildNode(keyLightNode)
 
         let fill = SCNLight()
         fill.type = .omni
-        fill.intensity = 240
-        fill.color = UIColor(red: 0.45, green: 0.78, blue: 1.0, alpha: 1)
+        fill.intensity = 170
+        fill.color = UIColor(red: 0.38, green: 0.55, blue: 0.95, alpha: 1)
         fill.attenuationEndDistance = 16
         fillLightNode.light = fill
         fillLightNode.position = SCNVector3(-2.2, 1.5, 2.8)
@@ -1213,7 +1264,6 @@ final class LuckyChestScene {
 
     private func paintRarity(_ rarity: LuckyBoxRarity) {
         let crystal = UIColor(rarity.enamel)
-        let arena = UIColor(rarity.arenaTint)
         let spark = UIColor(rarity.particleSecondary)
         let glow = max(0.16, min(0.5, CGFloat(rarity.glowStrength)))
         let emit = glowColor(crystal, amount: 0.18 + CGFloat(rarity.glowStrength) * 0.28)
@@ -1234,16 +1284,13 @@ final class LuckyChestScene {
         lockMaterial.multiply.contents = bronzeDark
         lockMaterial.emission.contents = UIColor.black
 
-        let diamond = Self.diamondImage(for: rarity)
-        floorMaterial.diffuse.contents = Self.diamondTile(for: rarity)
+        backdropMaterial.diffuse.contents = Self.arenaImage(for: rarity)
         rarityGlowMaterial.diffuse.contents = Self.blobImage
         rarityGlowMaterial.multiply.contents = crystal
         interiorMaterial.diffuse.contents = Self.blobImage
         interiorMaterial.multiply.contents = crystal
         rarityGlowNode.opacity = glow
         glowMaterial.diffuse.contents = Self.shadowImage
-        scnScene.fogColor = arena.withAlphaComponent(1)
-        scnScene.background.contents = diamond
         fillLightNode.light?.color = crystal
         rimLightNode.light?.color = bronzeTint
         innerLightNode.light?.color = crystal
@@ -1410,7 +1457,11 @@ final class LuckyChestScene {
         return m
     }
 
-    static let arenaImage: UIImage = diamondImage(for: .common)
+    static func arenaImage(for rarity: LuckyBoxRarity) -> UIImage {
+        UIImage(named: rarity.arenaImageName)
+            ?? UIImage(named: "LuckyBoxArena")
+            ?? diamondImage(for: rarity)
+    }
     private static let woodImage: UIImage = makeWoodImage()
     private static let crystalImage: UIImage = makeCrystalImage()
     private static let shadowImage: UIImage = makeShadowImage()

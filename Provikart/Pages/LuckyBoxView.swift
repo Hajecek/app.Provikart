@@ -161,6 +161,16 @@ enum LuckyBoxRarity: String, Codable, CaseIterable {
         }
     }
 
+    var arenaImageName: String {
+        switch self {
+        case .common: return "LuckyBoxArenaCommon"
+        case .uncommon: return "LuckyBoxArenaUncommon"
+        case .rare: return "LuckyBoxArenaRare"
+        case .epic: return "LuckyBoxArenaEpic"
+        case .legendary: return "LuckyBoxArenaLegendary"
+        }
+    }
+
     var backgroundColors: [Color] {
         switch self {
         case .common:
@@ -621,7 +631,7 @@ struct LuckyBoxView: View {
             Color(uiColor: LuckyChestController.stageBackground)
                 .ignoresSafeArea()
 
-            Image(uiImage: LuckyChestScene.diamondImage(for: currentRarity))
+            Image(currentRarity.arenaImageName)
                 .resizable()
                 .scaledToFill()
                 .ignoresSafeArea()
