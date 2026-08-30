@@ -514,19 +514,6 @@ enum LuckyBoxLocalStore {
         clearChargeSession()
     }
 
-    static func resetToday() {
-        UserDefaults.standard.removeObject(forKey: dayKey)
-        UserDefaults.standard.removeObject(forKey: rewardKey)
-        UserDefaults.standard.removeObject(forKey: rewardsKey)
-        UserDefaults.standard.removeObject(forKey: openedCountKey)
-        UserDefaults.standard.removeObject(forKey: settledDayKey)
-        UserDefaults.standard.removeObject(forKey: yesterdayCountKey)
-        UserDefaults.standard.removeObject(forKey: todayCountKey)
-        UserDefaults.standard.removeObject(forKey: "lucky_box_services_today")
-        UserDefaults.standard.removeObject(forKey: "lucky_box_services_today_day")
-        clearChargeSession()
-    }
-
     static func secondsUntilNextOpen(reference: Date = Date()) -> TimeInterval {
         var calendar = Calendar.current
         calendar.timeZone = .current
@@ -772,14 +759,6 @@ struct LuckyBoxView: View {
                     .accessibilityLabel("Sdílet kartu kamarádům")
                 }
             }
-#if DEBUG
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Reset", systemImage: "arrow.counterclockwise") {
-                    resetForTesting()
-                }
-                .accessibilityLabel("Resetovat dnešní Lucky Box")
-            }
-#endif
         }
         .navigationBarBackButtonHidden(isChestLocked)
         .preference(key: LuckyBoxAllowsLeavingKey.self, value: !isChestLocked)
@@ -1210,31 +1189,6 @@ struct LuckyBoxView: View {
         if let url = last.resolvedImageURL {
             rewardCardImage = CollectibleImageCache.shared.imageIfCached(for: url, maxPixelSize: Self.rewardCardMaxPixelSize)
         }
-    }
-
-    private func resetForTesting() {
-        LuckyBoxLocalStore.resetToday()
-        LuckyBoxQuotaState.shared.applyLocalOpened()
-        hasOpenedToday = false
-        reward = nil
-        todayDrops = []
-        galleryIndex = 0
-        rewardCardImage = nil
-        stars = quota.startingStars
-        clicksLeft = LuckyBoxMockPool.maxClicks
-        phase = .charging
-        revealOpacity = 0
-        flashOpacity = 0
-        rewardCardOpacity = 0
-        rewardCardScale = 0.72
-        isBusy = false
-        isClickLocked = false
-        hitAnimationTask?.cancel()
-        hitAnimationTask = nil
-        openTask?.cancel()
-        openTask = nil
-        chestController.scene.resetToClosed()
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     @MainActor
