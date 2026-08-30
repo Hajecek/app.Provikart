@@ -375,9 +375,16 @@ enum LuckyBoxPhase: Equatable {
 
 // MARK: - Local store
 
+struct LuckyBoxDayDrop: Identifiable, Codable, Equatable {
+    let slot: Int
+    let reward: LuckyBoxReward
+    var id: String { "slot-\(slot)-\(reward.id)" }
+}
+
 enum LuckyBoxLocalStore {
     private static let dayKey = "lucky_box_last_open_day"
     private static let rewardKey = "lucky_box_last_reward"
+    private static let rewardsKey = "lucky_box_today_rewards"
     private static let openedCountKey = "lucky_box_opened_count"
     private static let settledDayKey = "lucky_box_settled_day"
     private static let yesterdayCountKey = "lucky_box_services_yesterday"
@@ -412,8 +419,24 @@ enum LuckyBoxLocalStore {
     }
 
     static var lastReward: LuckyBoxReward? {
-        guard let data = UserDefaults.standard.data(forKey: rewardKey) else { return nil }
-        return try? JSONDecoder().decode(LuckyBoxReward.self, from: data)
+        todayDrops.last?.reward ?? {
+            guard let data = UserDefaults.standard.data(forKey: rewardKey) else { return nil }
+            return try? JSONDecoder().decode(LuckyBoxReward.self, from: data)
+        }()
+    }
+
+    static var todayDrops: [LuckyBoxDayDrop] {
+        guard UserDefaults.standard.string(forKey: dayKey) == todayKey() else { return [] }
+        if let data = UserDefaults.standard.data(forKey: rewardsKey),
+           let list = try? JSONDecoder().decode([LuckyBoxDayDrop].self, from: data),
+           !list.isEmpty {
+            return list
+        }
+        if let data = UserDefaults.standard.data(forKey: rewardKey),
+           let last = try? JSONDecoder().decode(LuckyBoxReward.self, from: data) {
+            return [LuckyBoxDayDrop(slot: max(1, openedCountToday), reward: last)]
+        }
+        return []
     }
 
     static var cachedYesterdayServices: Int {
@@ -478,8 +501,13 @@ enum LuckyBoxLocalStore {
         let previousDay = UserDefaults.standard.string(forKey: dayKey)
         let stored = UserDefaults.standard.integer(forKey: openedCountKey)
         let current = previousDay == day ? (stored > 0 ? stored : 1) : 0
+        var drops = previousDay == day ? todayDrops : []
+        drops.append(LuckyBoxDayDrop(slot: current + 1, reward: reward))
         UserDefaults.standard.set(day, forKey: dayKey)
         UserDefaults.standard.set(current + 1, forKey: openedCountKey)
+        if let data = try? JSONEncoder().encode(drops) {
+            UserDefaults.standard.set(data, forKey: rewardsKey)
+        }
         if let data = try? JSONEncoder().encode(reward) {
             UserDefaults.standard.set(data, forKey: rewardKey)
         }
@@ -489,6 +517,7 @@ enum LuckyBoxLocalStore {
     static func resetToday() {
         UserDefaults.standard.removeObject(forKey: dayKey)
         UserDefaults.standard.removeObject(forKey: rewardKey)
+        UserDefaults.standard.removeObject(forKey: rewardsKey)
         UserDefaults.standard.removeObject(forKey: openedCountKey)
         UserDefaults.standard.removeObject(forKey: settledDayKey)
         UserDefaults.standard.removeObject(forKey: yesterdayCountKey)
@@ -524,16 +553,17 @@ enum LuckyBoxMockPool {
     static let maxStars = 5
 
     /// Šance na +1 hvězdu (raritu) při klepnutí. `luckMultiplier` z včerejšího usazeného výkonu.
+    /// Common má nejvyšší drop při startu 1★. Od 5 služeb start na 2★, od 7 na 3★.
     static func upgradeChance(fromStars: Int, luckMultiplier: Double = 1) -> Double {
         let base: Double
         switch fromStars {
-        case 1: base = 0.42 // → uncommon
-        case 2: base = 0.28 // → rare
-        case 3: base = 0.16 // → epic
-        case 4: base = 0.08 // → legendary
+        case 1: base = 0.14 // → uncommon
+        case 2: base = 0.12 // → rare
+        case 3: base = 0.12 // → epic
+        case 4: base = 0.07 // → legendary
         default: return 0
         }
-        return min(0.58, base * max(1, luckMultiplier))
+        return min(0.26, base * max(1, luckMultiplier))
     }
 }
 
@@ -547,6 +577,8 @@ struct LuckyBoxView: View {
     @State private var stars: Int
     @State private var clicksLeft: Int
     @State private var reward: LuckyBoxReward?
+    @State private var todayDrops: [LuckyBoxDayDrop]
+    @State private var galleryIndex: Int
     @State private var hasOpenedToday: Bool
     @ObservedObject private var chestController = LuckyChestController.shared
     @State private var revealOpacity: Double
@@ -576,7 +608,10 @@ struct LuckyBoxView: View {
     init() {
         let remaining = LuckyBoxQuotaState.shared.remaining
         let opened = LuckyBoxLocalStore.hasOpenedToday
-        let last = LuckyBoxLocalStore.lastReward
+        let drops = LuckyBoxLocalStore.todayDrops
+        let last = drops.last?.reward ?? LuckyBoxLocalStore.lastReward
+        _todayDrops = State(initialValue: drops)
+        _galleryIndex = State(initialValue: max(0, drops.count - 1))
         _hasOpenedToday = State(initialValue: opened)
 
         if remaining <= 0, opened, let last {
@@ -613,10 +648,17 @@ struct LuckyBoxView: View {
         }
     }
 
+    private var displayedReward: LuckyBoxReward? {
+        if phase == .revealed, todayDrops.indices.contains(galleryIndex) {
+            return todayDrops[galleryIndex].reward
+        }
+        return reward
+    }
+
     private var currentRarity: LuckyBoxRarity {
         // Během nabíjení řídí atmosféru hvězdy; po reveal karty rarity z odměny
-        if phase == .revealed, let reward {
-            return reward.rarity
+        if phase == .revealed, let displayedReward {
+            return displayedReward.rarity
         }
         return LuckyBoxRarity.from(stars: stars)
     }
@@ -657,10 +699,15 @@ struct LuckyBoxView: View {
 
             VStack(spacing: 0) {
                 if phase != .revealed {
-                    starsRow
-                        .padding(.top, 8)
-                        .padding(.bottom, 8)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
+                    VStack(spacing: 8) {
+                        if chestTotal > 1 {
+                            chestProgressRow
+                        }
+                        starsRow
+                    }
+                    .padding(.top, 8)
+                    .padding(.bottom, 8)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
                 Spacer(minLength: 8)
@@ -672,41 +719,25 @@ struct LuckyBoxView: View {
 
                 // Rezerva výšky – samotný hint je v overlay, ať neskáče se Spacerem.
                 Color.clear
-                    .frame(height: phase == .revealed || (hasOpenedToday && phase != .opening) ? 120 : 100)
+                    .frame(height: phase == .revealed || (hasOpenedToday && phase != .opening) ? 140 : 100)
                     .padding(.horizontal, 28)
                     .padding(.bottom, 36)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .animation(.easeInOut(duration: 0.35), value: phase)
-            .allowsHitTesting(phase == .revealed || rewardCardOpacity > 0.5)
+            .allowsHitTesting(phase == .revealed && rewardCardOpacity > 0.5)
             .overlay(alignment: .bottom) {
                 VStack(spacing: 12) {
                     bottomSection
-                        .allowsHitTesting(false)
-                    if phase == .revealed, quota.remaining > 0 {
-                        Button(action: prepareNextChest) {
-                            Text("Otevřít další bednu")
-                                .font(.subheadline.weight(.heavy))
-                                .tracking(0.4)
-                                .foregroundStyle(Color(red: 0.22, green: 0.08, blue: 0.16))
-                                .padding(.horizontal, 18)
-                                .padding(.vertical, 10)
-                                .background(
-                                    Capsule()
-                                        .fill(
-                                            LinearGradient(
-                                                colors: [gold, orange],
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            )
-                                        )
-                                )
-                        }
-                        .accessibilityLabel("Otevřít další Lucky Box za včerejší výkon")
-                    }
                 }
                 .padding(.horizontal, 28)
                 .padding(.bottom, 36)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    guard phase == .revealed, quota.remaining > 0 else { return }
+                    prepareNextChest()
+                }
+                .allowsHitTesting(phase == .revealed && quota.remaining > 0)
                 .transaction { $0.animation = nil }
             }
 
@@ -720,9 +751,7 @@ struct LuckyBoxView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                if phase == .revealed {
-                    toolbarStatus
-                }
+                toolbarStatus
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Info", systemImage: "info.circle") {
@@ -731,14 +760,14 @@ struct LuckyBoxView: View {
                 .accessibilityLabel("Jak fungují další bedny")
             }
             ToolbarItemGroup(placement: .topBarTrailing) {
-                if phase == .revealed, let reward {
+                if phase == .revealed, let displayedReward {
                     Button("Karta", systemImage: "rectangle.portrait") {
-                        infoReward = reward
+                        infoReward = displayedReward
                     }
                     .accessibilityLabel("Detail karty")
 
                     Button("Sdílet", systemImage: "square.and.arrow.up") {
-                        shareReward = reward
+                        shareReward = displayedReward
                     }
                     .accessibilityLabel("Sdílet kartu kamarádům")
                 }
@@ -761,10 +790,10 @@ struct LuckyBoxView: View {
             LuckyBoxTomorrowInfoSheet(quota: quota, gold: gold, orange: orange)
         }
         .sheet(item: $shareReward) { reward in
-            LuckyShareStudioView(reward: reward, gold: gold, preloadedImage: rewardCardImage)
+            LuckyShareStudioView(reward: reward, gold: gold, preloadedImage: galleryPreloadedImage(for: reward))
         }
         .sheet(item: $infoReward) { reward in
-            LuckyCardInfoSheet(reward: reward, gold: gold, orange: orange, preloadedImage: rewardCardImage)
+            LuckyCardInfoSheet(reward: reward, gold: gold, orange: orange, preloadedImage: galleryPreloadedImage(for: reward))
         }
         .alert("Bednu se nepodařilo otevřít", isPresented: $showOpenError) {
             Button("OK", role: .cancel) {}
@@ -783,6 +812,7 @@ struct LuckyBoxView: View {
         .task {
             await quota.refresh(token: authState.authToken, forceOrders: true)
             hasOpenedToday = LuckyBoxLocalStore.hasOpenedToday
+            restoreRevealedStateIfNeeded()
             if phase == .charging, stars < quota.startingStars {
                 stars = quota.startingStars
             }
@@ -797,8 +827,14 @@ struct LuckyBoxView: View {
             guard newPhase == .active else { return }
             LuckyChestController.shared.resumeIfNeeded()
         }
+        .onChange(of: galleryIndex) { _, index in
+            applyGallerySelection(index)
+        }
         .task(id: reward?.id) {
             await ensureRewardCardImageLoaded()
+        }
+        .task(id: todayDrops.map(\.id).joined(separator: "|")) {
+            await prefetchTodayDropImages()
         }
         .task(id: phase == .revealed) {
             while !Task.isCancelled {
@@ -809,17 +845,20 @@ struct LuckyBoxView: View {
         }
     }
 
+    private var chestTotal: Int {
+        max(1, quota.earned)
+    }
+
+    private var currentChestNumber: Int {
+        if phase == .revealed {
+            return max(1, min(quota.opened, chestTotal))
+        }
+        return min(chestTotal, quota.opened + 1)
+    }
+
     private var toolbarStatus: some View {
         VStack(spacing: 1) {
-            if quota.remaining > 0 {
-                Text("ZBÝVÁ")
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                    .tracking(0.8)
-                    .foregroundStyle(.secondary)
-                Text("\(quota.remaining) \(LuckyBoxQuota.chestsWord(quota.remaining))")
-                    .font(.system(.subheadline, design: .rounded).weight(.bold))
-                    .foregroundStyle(.primary)
-            } else {
+            if phase == .revealed, quota.remaining <= 0 {
                 Text("DALŠÍ ZA")
                     .font(.system(size: 9, weight: .bold, design: .rounded))
                     .tracking(0.8)
@@ -829,6 +868,24 @@ struct LuckyBoxView: View {
                     .monospacedDigit()
                     .foregroundStyle(.primary)
                     .contentTransition(.numericText())
+            } else if phase == .revealed {
+                Text("OTEVŘENO")
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .tracking(0.8)
+                    .foregroundStyle(.secondary)
+                Text("\(quota.opened) z \(chestTotal)")
+                    .font(.system(.subheadline, design: .rounded).weight(.bold))
+                    .foregroundStyle(.primary)
+                    .monospacedDigit()
+            } else {
+                Text("BEDNA")
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .tracking(0.8)
+                    .foregroundStyle(.secondary)
+                Text("\(currentChestNumber) z \(chestTotal)")
+                    .font(.system(.subheadline, design: .rounded).weight(.bold))
+                    .foregroundStyle(.primary)
+                    .monospacedDigit()
             }
         }
         .accessibilityElement(children: .combine)
@@ -836,10 +893,66 @@ struct LuckyBoxView: View {
     }
 
     private var toolbarAccessibilityLabel: String {
-        if quota.remaining > 0 {
-            return "Zbývá \(quota.remaining) \(LuckyBoxQuota.chestsWord(quota.remaining))"
+        if phase == .revealed, quota.remaining <= 0 {
+            return "Další bedna za \(LuckyBoxLocalStore.countdownText(reference: countdownTick))"
         }
-        return "Další bedna za \(LuckyBoxLocalStore.countdownText(reference: countdownTick))"
+        if phase == .revealed {
+            return "Otevřeno \(quota.opened) z \(chestTotal) beden"
+        }
+        return "Bedna \(currentChestNumber) z \(chestTotal)"
+    }
+
+    private var chestProgressRow: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 7) {
+                ForEach(1...chestTotal, id: \.self) { index in
+                    chestProgressDot(index)
+                }
+            }
+            Text("\(currentChestNumber) z \(chestTotal)")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white.opacity(0.9))
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Capsule().fill(Color.black.opacity(0.28)))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Bedna \(currentChestNumber) z \(chestTotal)")
+    }
+
+    private func chestProgressDot(_ index: Int) -> some View {
+        let opened = index <= quota.opened
+        let current = phase != .revealed && index == quota.opened + 1
+        return Image(systemName: opened || current ? "gift.fill" : "gift")
+            .font(.caption.weight(.bold))
+            .foregroundStyle(current ? gold : opened ? gold.opacity(0.75) : Color.white.opacity(0.32))
+            .scaleEffect(current ? 1.12 : 1)
+            .shadow(color: current ? gold.opacity(0.45) : .clear, radius: 5)
+            .accessibilityHidden(true)
+    }
+
+    private func tapHint(text: String) -> some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: isClickLocked || text.isEmpty)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            let wave = 0.5 + 0.5 * sin(t * (.pi * 2 / 1.8))
+            let opacity = isClickLocked ? 0.4 : (0.55 + 0.45 * wave)
+
+            Text(text)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(.white)
+                .opacity(text.isEmpty ? 0 : opacity)
+                .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
+                .multilineTextAlignment(.center)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .frame(maxWidth: .infinity)
+                .frame(height: 28, alignment: .center)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 28)
+        .allowsHitTesting(false)
+        .accessibilityLabel(text)
     }
 
     private var starsRow: some View {
@@ -898,16 +1011,86 @@ struct LuckyBoxView: View {
     }
 
     private var chestView: some View {
-        LuckyRewardCardView(
-            reward: reward,
-            gold: gold,
-            isInteractive: rewardCardOpacity > 0.5,
-            preloadedImage: rewardCardImage
-        )
+        Group {
+            if phase == .revealed, todayDrops.count > 1 {
+                todayCardsGallery
+            } else {
+                LuckyRewardCardView(
+                    reward: reward,
+                    gold: gold,
+                    isInteractive: rewardCardOpacity > 0.5,
+                    preloadedImage: rewardCardImage
+                )
+            }
+        }
         .opacity(rewardCardOpacity)
-        .scaleEffect(rewardCardScale)
         .allowsHitTesting(rewardCardOpacity > 0.5)
-        .frame(height: phase == .revealed || rewardCardOpacity > 0.5 ? 520 : 380)
+        .frame(height: phase == .revealed || rewardCardOpacity > 0.5 ? 560 : 380)
+    }
+
+    private var todayCardsGallery: some View {
+        VStack(spacing: 8) {
+            TabView(selection: $galleryIndex) {
+                ForEach(Array(todayDrops.enumerated()), id: \.element.id) { index, drop in
+                    LuckyRewardCardView(
+                        reward: drop.reward,
+                        gold: gold,
+                        isInteractive: false,
+                        preloadedImage: galleryPreloadedImage(for: drop.reward)
+                    )
+                    .tag(index)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .frame(height: 520)
+            .onAppear {
+                if !todayDrops.isEmpty {
+                    galleryIndex = min(max(galleryIndex, 0), todayDrops.count - 1)
+                }
+            }
+
+            galleryPageIndicator
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Dnešní otevřené karty")
+        .accessibilityHint("Táhni doleva nebo doprava")
+    }
+
+    private var galleryPageIndicator: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 7) {
+                ForEach(todayDrops.indices, id: \.self) { index in
+                    Capsule()
+                        .fill(index == galleryIndex ? gold : Color.white.opacity(0.35))
+                        .frame(width: index == galleryIndex ? 18 : 7, height: 7)
+                        .animation(.spring(response: 0.36, dampingFraction: 0.72), value: galleryIndex)
+                }
+            }
+            Text("\(galleryIndex + 1) / \(todayDrops.count)")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white.opacity(0.88))
+                .monospacedDigit()
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Karta \(galleryIndex + 1) z \(todayDrops.count)")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment:
+                galleryIndex = min(galleryIndex + 1, todayDrops.count - 1)
+            case .decrement:
+                galleryIndex = max(galleryIndex - 1, 0)
+            @unknown default:
+                break
+            }
+        }
+    }
+
+    private func galleryPreloadedImage(for reward: LuckyBoxReward) -> UIImage? {
+        if reward.id == self.reward?.id, let rewardCardImage {
+            return rewardCardImage
+        }
+        guard let url = reward.resolvedImageURL else { return nil }
+        return CollectibleImageCache.shared.bestCachedImage(for: url)
     }
 
     private func syncChestScene() {
@@ -918,19 +1101,28 @@ struct LuckyBoxView: View {
     private var bottomSection: some View {
         VStack(spacing: 14) {
             if phase == .revealed {
-                if let reward {
-                    LuckyResultStatusView(reward: reward, gold: gold, orange: orange)
+                if let displayedReward {
+                    LuckyResultStatusView(reward: displayedReward, gold: gold, orange: orange)
                         .opacity(revealOpacity)
                     if quota.remaining > 0 {
-                        Text("Bonus za včerejšek · zbývá \(quota.remaining)")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(gold.opacity(0.9))
+                        chestProgressRow
+                            .opacity(revealOpacity)
+                        tapHint(text: "Klepni pro další bednu")
+                            .opacity(revealOpacity)
+                        if todayDrops.count > 1 {
+                            Text("Táhni do stran mezi dnešními kartami")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.72))
+                                .opacity(revealOpacity)
+                        }
+                    } else if todayDrops.count > 1 {
+                        tapHint(text: "Táhni do stran")
                             .opacity(revealOpacity)
                     }
                 }
             } else if quota.remaining <= 0 && hasOpenedToday && phase != .opening {
                 LuckyResultStatusView(
-                    reward: reward ?? LuckyBoxLocalStore.lastReward,
+                    reward: displayedReward ?? LuckyBoxLocalStore.lastReward,
                     gold: gold,
                     orange: orange,
                     fallbackTitle: "Dnes už otevřeno"
@@ -939,25 +1131,7 @@ struct LuckyBoxView: View {
                 clickTokensRow
                     .frame(maxWidth: .infinity)
 
-                TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: isClickLocked)) { context in
-                    let t = context.date.timeIntervalSinceReferenceDate
-                    let wave = 0.5 + 0.5 * sin(t * (.pi * 2 / 1.8))
-                    let opacity = isClickLocked ? 0.4 : (0.55 + 0.45 * wave)
-
-                    Text(hintText)
-                        .font(.title3.weight(.bold))
-                        .foregroundStyle(.white)
-                        .opacity(opacity)
-                        .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 28, alignment: .center)
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: 28)
-                .allowsHitTesting(false)
+                tapHint(text: hintText)
             }
         }
         .frame(maxWidth: .infinity)
@@ -1019,9 +1193,12 @@ struct LuckyBoxView: View {
 
     private func restoreRevealedStateIfNeeded() {
         guard quota.remaining <= 0 else { return }
-        guard LuckyBoxLocalStore.hasOpenedToday, let last = LuckyBoxLocalStore.lastReward else { return }
-        guard phase != .revealed || reward == nil else { return }
+        let drops = LuckyBoxLocalStore.todayDrops
+        guard LuckyBoxLocalStore.hasOpenedToday, let last = drops.last?.reward ?? LuckyBoxLocalStore.lastReward else { return }
+        guard phase != .revealed || reward == nil || todayDrops.count != drops.count else { return }
 
+        todayDrops = drops
+        galleryIndex = max(0, drops.count - 1)
         hasOpenedToday = true
         reward = last
         stars = last.rarity.stars
@@ -1040,6 +1217,8 @@ struct LuckyBoxView: View {
         LuckyBoxQuotaState.shared.applyLocalOpened()
         hasOpenedToday = false
         reward = nil
+        todayDrops = []
+        galleryIndex = 0
         rewardCardImage = nil
         stars = quota.startingStars
         clicksLeft = LuckyBoxMockPool.maxClicks
@@ -1061,24 +1240,29 @@ struct LuckyBoxView: View {
     @MainActor
     private func prepareNextChest() {
         guard quota.remaining > 0, !isBusy else { return }
+        isBusy = true
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.easeInOut(duration: 0.22)) {
+            revealOpacity = 0
+            rewardCardOpacity = 0
+            rewardCardScale = 0.86
+        }
         LuckyBoxLocalStore.clearChargeSession()
         reward = nil
         rewardCardImage = nil
         stars = quota.startingStars
         clicksLeft = LuckyBoxMockPool.maxClicks
         phase = .charging
-        revealOpacity = 0
         flashOpacity = 0
-        rewardCardOpacity = 0
         rewardCardScale = 0.72
-        isBusy = false
         isClickLocked = false
         hitAnimationTask?.cancel()
         hitAnimationTask = nil
         openTask?.cancel()
         openTask = nil
         chestController.scene.resetToClosed()
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        LuckyChestController.shared.resumeIfNeeded()
+        isBusy = false
     }
 
     private static let rewardCardMaxPixelSize: CGFloat = 1200
@@ -1088,6 +1272,26 @@ struct LuckyBoxView: View {
         guard let reward else { return }
         if rewardCardImage != nil { return }
         rewardCardImage = await preloadRewardCardImage(for: reward)
+    }
+
+    @MainActor
+    private func applyGallerySelection(_ index: Int) {
+        guard todayDrops.indices.contains(index) else { return }
+        let selected = todayDrops[index].reward
+        reward = selected
+        stars = selected.rarity.stars
+        if let url = selected.resolvedImageURL {
+            rewardCardImage = CollectibleImageCache.shared.bestCachedImage(for: url)
+        } else {
+            rewardCardImage = nil
+        }
+    }
+
+    @MainActor
+    private func prefetchTodayDropImages() async {
+        for drop in todayDrops {
+            _ = await preloadRewardCardImage(for: drop.reward)
+        }
     }
 
     private func preloadRewardCardImage(for reward: LuckyBoxReward) async -> UIImage? {
@@ -1105,6 +1309,10 @@ struct LuckyBoxView: View {
     @MainActor
     private func handleScreenTap() {
         guard !isBusy, !isClickLocked else { return }
+        if phase == .revealed, quota.remaining > 0 {
+            prepareNextChest()
+            return
+        }
         guard phase != .revealed, phase != .opening else { return }
 
         switch phase {
@@ -1325,6 +1533,8 @@ struct LuckyBoxView: View {
 
         LuckyBoxLocalStore.saveOpen(reward: picked)
         LuckyBoxQuotaState.shared.applyLocalOpened()
+        todayDrops = LuckyBoxLocalStore.todayDrops
+        galleryIndex = max(0, todayDrops.count - 1)
         hasOpenedToday = true
         phase = .revealed
 
@@ -1713,7 +1923,7 @@ struct LuckyRewardCardView: View {
     private var idleScale: CGFloat { idlePulse ? 1.02 : 0.985 }
 
     private var displayImage: UIImage? {
-        preloadedImage ?? resolvedImage
+        resolvedImage ?? preloadedImage
     }
 
     var body: some View {
@@ -1801,26 +2011,27 @@ struct LuckyRewardCardView: View {
 
     private func syncResolvedImageFromCache() {
         didFailLoading = false
-        if let preloadedImage {
+        guard let url = reward?.resolvedImageURL else {
             resolvedImage = preloadedImage
             return
         }
-        guard let url = reward?.resolvedImageURL else {
-            resolvedImage = nil
-            return
-        }
-        resolvedImage = CollectibleImageCache.shared.imageIfCached(for: url, maxPixelSize: 1200)
+        resolvedImage = CollectibleImageCache.shared.bestCachedImage(for: url) ?? preloadedImage
     }
 
     private func loadImageIfNeeded() async {
-        if displayImage != nil { return }
         guard let url = reward?.resolvedImageURL else { return }
+        if CollectibleImageCache.shared.imageIfCached(for: url, maxPixelSize: 1200) != nil {
+            if resolvedImage == nil {
+                resolvedImage = CollectibleImageCache.shared.imageIfCached(for: url, maxPixelSize: 1200)
+            }
+            return
+        }
         let image = await CollectibleImageCache.shared.image(for: url, maxPixelSize: 1200)
         guard !Task.isCancelled else { return }
         if let image {
             resolvedImage = image
             didFailLoading = false
-        } else {
+        } else if displayImage == nil {
             didFailLoading = true
         }
     }
@@ -2345,12 +2556,12 @@ private struct LuckyBoxTomorrowInfoSheet: View {
 
                 Section {
                     luckRow(services: 4, percent: 12)
-                    luckRow(services: 5, percent: 22)
-                    luckRow(services: 7, percent: 35, extra: "start na 2★")
+                    luckRow(services: 5, percent: 22, extra: "start na 2★")
+                    luckRow(services: 7, percent: 35, extra: "start na 3★")
                 } header: {
                     Text("Šance na drop")
                 } footer: {
-                    Text("Lepší šance bere včerejší výkon. Ranní bedna je každý den.")
+                    Text("Nejčastěji padne běžná karta. Včerejší služby zvedají šanci na vzácnější drop. Od 5 služeb start na 2★, od 7 na 3★.")
                 }
             }
             .navigationTitle("Další bedny")

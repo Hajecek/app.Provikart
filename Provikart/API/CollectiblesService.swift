@@ -6,6 +6,7 @@
 //  GET/POST collectibles.php, POST collectibles_chest.php
 //
 
+import CryptoKit
 import Foundation
 import ImageIO
 import UIKit
@@ -385,19 +386,29 @@ final class CollectiblesService {
 
 final class CollectibleImageCache: @unchecked Sendable {
     static let shared = CollectibleImageCache()
+    static var collectionThumbMaxPixelSize: CGFloat {
+        140 * UIScreen.main.scale
+    }
 
     private let cache = NSCache<NSString, UIImage>()
     private let session: URLSession
     private let inFlightLock = NSLock()
     private var inFlight: [String: Task<UIImage?, Never>] = [:]
+    private let diskDir: URL
+    private let ioQueue = DispatchQueue(label: "cz.provikart.collectible-images", qos: .utility)
 
     private init() {
-        cache.countLimit = 160
-        cache.totalCostLimit = 40 * 1024 * 1024
+        cache.countLimit = 240
+        cache.totalCostLimit = 80 * 1024 * 1024
 
-        // Jen paměťová cache v rámci session – disková cache dřív držela staré
-        // obrázky i po výměně souboru na stejné URL.
-        let config = URLSessionConfiguration.ephemeral
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        diskDir = caches.appendingPathComponent("CollectibleImages", isDirectory: true)
+        try? FileManager.default.createDirectory(at: diskDir, withIntermediateDirectories: true)
+
+        let config = URLSessionConfiguration.default
+        config.httpMaximumConnectionsPerHost = 8
+        config.timeoutIntervalForRequest = 20
+        config.timeoutIntervalForResource = 40
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
         config.urlCache = nil
         session = URLSession(configuration: config)
@@ -405,7 +416,7 @@ final class CollectibleImageCache: @unchecked Sendable {
         Self.purgeLegacyDiskCache()
     }
 
-    /// Smaže starou diskovou cache z dřívějších verzí aplikace.
+    /// Smaže starou URLCache z dřívějších verzí aplikace.
     private static func purgeLegacyDiskCache() {
         let legacy = URLCache(
             memoryCapacity: 0,
@@ -419,11 +430,46 @@ final class CollectibleImageCache: @unchecked Sendable {
         "\(url.absoluteString)#\(Int(maxPixelSize.rounded()))"
     }
 
-    func imageIfCached(for url: URL, maxPixelSize: CGFloat = 1200) -> UIImage? {
-        cache.object(forKey: key(for: url, maxPixelSize: maxPixelSize) as NSString)
+    private func diskFile(for cacheKey: String) -> URL {
+        let digest = SHA256.hash(data: Data(cacheKey.utf8))
+        let name = digest.map { String(format: "%02x", $0) }.joined()
+        return diskDir.appendingPathComponent("\(name).png")
     }
 
-    /// Vymaže paměťovou cache (např. po pull-to-refresh sbírky).
+    func imageIfCached(for url: URL, maxPixelSize: CGFloat = 1200) -> UIImage? {
+        let cacheKey = key(for: url, maxPixelSize: maxPixelSize)
+        if let memory = cache.object(forKey: cacheKey as NSString) {
+            return memory
+        }
+        let file = diskFile(for: cacheKey)
+        guard FileManager.default.fileExists(atPath: file.path),
+              let data = try? Data(contentsOf: file),
+              let image = UIImage(data: data) else {
+            return nil
+        }
+        cache.setObject(image, forKey: cacheKey as NSString, cost: data.count)
+        return image
+    }
+
+    /// Nejlepší už stažený náhled – detail karty ho ukáže hned, než dorazí plné rozlišení.
+    func bestCachedImage(for url: URL) -> UIImage? {
+        let sizes: [CGFloat] = [
+            1200,
+            900,
+            Self.collectionThumbMaxPixelSize,
+            420,
+            280,
+            140
+        ]
+        for size in sizes {
+            if let image = imageIfCached(for: url, maxPixelSize: size) {
+                return image
+            }
+        }
+        return nil
+    }
+
+    /// Vymaže paměťovou cache (diskové náhledy nechá).
     func clearMemory() {
         cache.removeAllObjects()
         inFlightLock.lock()
@@ -431,21 +477,23 @@ final class CollectibleImageCache: @unchecked Sendable {
         inFlightLock.unlock()
     }
 
-    /// Kompletní vyčištění včetně legacy diskové cache.
+    /// Kompletní vyčištění včetně diskové cache.
     func clearAll() {
         clearMemory()
+        try? FileManager.default.removeItem(at: diskDir)
+        try? FileManager.default.createDirectory(at: diskDir, withIntermediateDirectories: true)
         Self.purgeLegacyDiskCache()
         URLCache.shared.removeAllCachedResponses()
     }
 
     func remove(for url: URL) {
-        // maxPixelSize se liší podle místa – smažeme typické velikosti + přesný klíč nestačí,
-        // proto mažeme podle prefixu URL přes všechny klíče nejde u NSCache.
-        // Invalidujeme typické thumbnail / detail velikosti.
         for size in [140, 280, 420, 600, 900, 1200, 1600] as [CGFloat] {
-            cache.removeObject(forKey: key(for: url, maxPixelSize: size) as NSString)
-            let retina = size * 3
-            cache.removeObject(forKey: key(for: url, maxPixelSize: retina) as NSString)
+            let sizes = [size, size * UIScreen.main.scale]
+            for candidate in sizes {
+                let cacheKey = key(for: url, maxPixelSize: candidate)
+                cache.removeObject(forKey: cacheKey as NSString)
+                try? FileManager.default.removeItem(at: diskFile(for: cacheKey))
+            }
         }
         let prefix = url.absoluteString
         inFlightLock.lock()
@@ -453,12 +501,34 @@ final class CollectibleImageCache: @unchecked Sendable {
         inFlightLock.unlock()
     }
 
+    func prefetch(urls: [URL], maxPixelSize: CGFloat, forceRefresh: Bool = false) async {
+        var seen = Set<String>()
+        let unique = urls.filter { seen.insert($0.absoluteString).inserted }
+        await withTaskGroup(of: Void.self) { group in
+            var iterator = unique.makeIterator()
+            let limit = min(8, unique.count)
+            func enqueueNext() {
+                guard let url = iterator.next() else { return }
+                group.addTask { [weak self] in
+                    _ = await self?.image(for: url, maxPixelSize: maxPixelSize, forceRefresh: forceRefresh)
+                }
+            }
+            for _ in 0..<limit {
+                enqueueNext()
+            }
+            for await _ in group {
+                enqueueNext()
+            }
+        }
+    }
+
     func image(for url: URL, maxPixelSize: CGFloat, forceRefresh: Bool = false) async -> UIImage? {
         let cacheKey = key(for: url, maxPixelSize: maxPixelSize)
 
         if forceRefresh {
             cache.removeObject(forKey: cacheKey as NSString)
-        } else if let cached = cache.object(forKey: cacheKey as NSString) {
+            try? FileManager.default.removeItem(at: diskFile(for: cacheKey))
+        } else if let cached = imageIfCached(for: url, maxPixelSize: maxPixelSize) {
             return cached
         }
 
@@ -476,26 +546,26 @@ final class CollectibleImageCache: @unchecked Sendable {
             return await existing.value
         }
 
-        let task = Task<UIImage?, Never> {
+        let task = Task<UIImage?, Never> { [weak self] in
+            guard let self else { return nil }
             defer {
-                inFlightLock.lock()
-                inFlight[cacheKey] = nil
-                inFlightLock.unlock()
+                self.inFlightLock.lock()
+                self.inFlight[cacheKey] = nil
+                self.inFlightLock.unlock()
             }
             do {
                 var request = URLRequest(url: url)
                 request.cachePolicy = .reloadIgnoringLocalCacheData
-                request.timeoutInterval = 30
-                // Collectibles obrázky jsou často .webp
+                request.timeoutInterval = 20
                 request.setValue("image/webp,image/*,*/*;q=0.8", forHTTPHeaderField: "Accept")
-                let (data, response) = try await session.data(for: request)
+                let (data, response) = try await self.session.data(for: request)
                 if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
                     return nil
                 }
                 guard !data.isEmpty, let image = Self.decodeImage(data: data, maxPixelSize: maxPixelSize) else {
                     return nil
                 }
-                cache.setObject(image, forKey: cacheKey as NSString, cost: data.count)
+                self.store(image, cacheKey: cacheKey)
                 return image
             } catch {
                 return nil
@@ -507,6 +577,16 @@ final class CollectibleImageCache: @unchecked Sendable {
         inFlightLock.unlock()
 
         return await task.value
+    }
+
+    private func store(_ image: UIImage, cacheKey: String) {
+        let png = image.pngData()
+        cache.setObject(image, forKey: cacheKey as NSString, cost: png?.count ?? 0)
+        guard let png else { return }
+        let file = diskFile(for: cacheKey)
+        ioQueue.async {
+            try? png.write(to: file, options: .atomic)
+        }
     }
 
     /// Dekódování JPEG/PNG/WebP (ImageIO od iOS 14 umí WebP nativně).

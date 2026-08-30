@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UserNotifications
 
 private enum AppearanceMode: String, CaseIterable, Identifiable {
     case system
@@ -25,11 +26,13 @@ private enum AppearanceMode: String, CaseIterable, Identifiable {
 
 struct SettingsView: View {
     @EnvironmentObject private var authState: AuthState
+    @EnvironmentObject private var appDelegate: AppDelegate
+    @Environment(\.scenePhase) private var scenePhase
+
     @AppStorage("settings.appearance.mode") private var appearanceRaw: String = AppearanceMode.system.rawValue
-    @AppStorage("settings.notifications.general") private var notificationsGeneral = true
-    @AppStorage("settings.notifications.orders") private var notificationsOrders = true
-    @AppStorage("settings.notifications.marketing") private var notificationsMarketing = false
     @AppStorage("settings.liveActivity.enabled") private var liveActivityEnabled = true
+    @ObservedObject private var prefs = NotificationPreferencesStore.shared
+
     @State private var showClearCacheConfirm = false
     @State private var showOpenURLAlert = false
     @State private var pendingURL: URL?
@@ -37,67 +40,60 @@ struct SettingsView: View {
     @State private var isDeletingAccount = false
     @State private var deleteAccountError: String?
     @State private var showDeleteError = false
+    @State private var systemAuthStatus: UNAuthorizationStatus = .notDetermined
+    @State private var syncTask: Task<Void, Never>?
 
-    private var appearance: AppearanceMode {
-        get { AppearanceMode(rawValue: appearanceRaw) ?? .system }
-        set { appearanceRaw = newValue.rawValue }
+    private var isManagerRole: Bool {
+        authState.currentRole == .manager
+    }
+
+    private var notificationRole: UserRole {
+        isManagerRole ? .manager : .user
+    }
+
+    private var notificationChannels: [NotificationChannel] {
+        NotificationChannel.channels(for: notificationRole)
     }
 
     private var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"
-        return "Verze \(version) (\(build))"
+        return "\(version) (\(build))"
     }
 
     private var liveActivityToggleTitle: String {
-        authState.currentRole == .manager
+        isManagerRole
             ? "Tým na Lock Screenu a v Dynamic Island"
             : "Provize na Lock Screenu a v Dynamic Island"
     }
 
     private var liveActivityFooter: String {
-        authState.currentRole == .manager
+        isManagerRole
             ? "Když je zapnuto, aplikace zobrazí otevřené problémy týmu a docházku na Lock Screenu a v Dynamic Island."
             : "Když je zapnuto, aplikace zobrazí aktuální provizi a postup k cíli na Lock Screenu a v Dynamic Island."
     }
 
+    private var notificationsFooter: String {
+        isManagerRole
+            ? "Vyberte, které události z týmu vám mají chodit jako push. Oznámení můžete spravovat i v Nastavení systému."
+            : "Vyberte, které události vám mají chodit jako push. Oznámení můžete spravovat i v Nastavení systému."
+    }
+
     var body: some View {
-        Form {
+        List {
             Section {
-                Picker(
-                    selection: Binding(
-                        get: { appearance },
-                        set: { appearanceRaw = $0.rawValue }
-                    ),
-                    content: {
-                        ForEach(AppearanceMode.allCases) { mode in
-                            Text(mode.title).tag(mode as AppearanceMode)
-                        }
-                    },
-                    label: {
-                        Label("Režim vzhledu", systemImage: "circle.lefthalf.filled")
+                Picker("Režim vzhledu", selection: $appearanceRaw) {
+                    ForEach(AppearanceMode.allCases) { mode in
+                        Text(mode.title).tag(mode.rawValue)
                     }
-                )
+                }
+                .pickerStyle(.segmented)
+                .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
             } header: {
                 Text("Vzhled")
             }
 
-            Section {
-                Toggle(isOn: $notificationsGeneral) {
-                    Label("Obecná oznámení", systemImage: "bell")
-                }
-                Toggle(isOn: $notificationsOrders) {
-                    Label("Stav objednávek", systemImage: "shippingbox")
-                }
-                Toggle(isOn: $notificationsMarketing) {
-                    Label("Marketingová oznámení", systemImage: "megaphone")
-                }
-                .tint(.orange)
-            } header: {
-                Text("Oznámení")
-            } footer: {
-                Text("Oznámení můžete spravovat i v Nastavení systému.")
-            }
+            notificationsSection
 
             Section {
                 Toggle(isOn: $liveActivityEnabled) {
@@ -105,7 +101,7 @@ struct SettingsView: View {
                 }
                 .onChange(of: liveActivityEnabled) { _, enabled in
                     if !enabled {
-                        if authState.currentRole == .manager {
+                        if isManagerRole {
                             ManagerTeamLiveActivityManager.endAll()
                         } else {
                             CommissionLiveActivityManager.endAll()
@@ -119,12 +115,7 @@ struct SettingsView: View {
             }
 
             Section {
-                HStack {
-                    Label("Verze", systemImage: "info.circle")
-                    Spacer()
-                    Text(appVersion)
-                        .foregroundStyle(.secondary)
-                }
+                LabeledContent("Verze", value: appVersion)
 
                 Button {
                     openExternal(URL(string: "https://provikart.cz/terms"))
@@ -144,10 +135,8 @@ struct SettingsView: View {
                     Label("Kontakt na podporu", systemImage: "envelope.open")
                 }
 
-                Button(role: .destructive) {
+                Button("Vymazat cache", role: .destructive) {
                     showClearCacheConfirm = true
-                } label: {
-                    Label("Vymazat cache", systemImage: "trash")
                 }
             } header: {
                 Text("O aplikaci")
@@ -158,7 +147,7 @@ struct SettingsView: View {
                     showDeleteAccountConfirm = true
                 } label: {
                     HStack {
-                        Label("Smazat účet", systemImage: "person.crop.circle.badge.minus")
+                        Text("Smazat účet")
                         if isDeletingAccount {
                             Spacer()
                             ProgressView()
@@ -172,8 +161,13 @@ struct SettingsView: View {
                 Text("Trvale smaže váš účet a všechna data z našich serverů.")
             }
         }
+        .listStyle(.insetGrouped)
         .navigationTitle("Nastavení")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear { refreshNotificationStatus() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { refreshNotificationStatus() }
+        }
         .alert("Vymazat cache?", isPresented: $showClearCacheConfirm) {
             Button("Zrušit", role: .cancel) { }
             Button("Vymazat", role: .destructive) { clearAppCache() }
@@ -212,6 +206,106 @@ struct SettingsView: View {
             Button("OK", role: .cancel) { }
         } message: {
             Text(deleteAccountError ?? "Neznámá chyba. Zkuste to prosím později.")
+        }
+    }
+
+    @ViewBuilder
+    private var notificationsSection: some View {
+        if systemAuthStatus == .denied {
+            Section {
+                Button("Otevřít Nastavení") {
+                    openSystemSettings()
+                }
+            } header: {
+                Text("Oznámení")
+            } footer: {
+                Text("Oznámení jsou vypnutá v iOS. Zapněte je v Nastavení systému, aby vám mohla chodit.")
+            }
+        } else if systemAuthStatus == .notDetermined {
+            Section {
+                Button("Povolit oznámení") {
+                    requestNotificationPermission()
+                }
+            } header: {
+                Text("Oznámení")
+            } footer: {
+                Text("Povolte oznámení, abyste si mohli vybrat, které typy vám mají chodit.")
+            }
+        } else {
+            Section {
+                Toggle(isOn: Binding(
+                    get: { prefs.masterEnabled },
+                    set: { newValue in
+                        withAnimation {
+                            prefs.masterEnabled = newValue
+                        }
+                        if newValue, systemAuthStatus == .authorized || systemAuthStatus == .provisional {
+                            UIApplication.shared.registerForRemoteNotifications()
+                        }
+                        schedulePreferenceSync()
+                    }
+                )) {
+                    Label("Push oznámení", systemImage: "bell")
+                }
+
+                if prefs.masterEnabled {
+                    ForEach(notificationChannels) { channel in
+                        Toggle(isOn: Binding(
+                            get: { prefs.isEnabled(channel) },
+                            set: { newValue in
+                                prefs.setEnabled(channel, newValue)
+                                schedulePreferenceSync()
+                            }
+                        )) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(channel.title)
+                                Text(channel.subtitle)
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+            } header: {
+                Text("Oznámení")
+            } footer: {
+                Text(notificationsFooter)
+            }
+        }
+    }
+
+    private func refreshNotificationStatus() {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            DispatchQueue.main.async {
+                systemAuthStatus = settings.authorizationStatus
+            }
+        }
+    }
+
+    private func requestNotificationPermission() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
+            DispatchQueue.main.async {
+                refreshNotificationStatus()
+                if granted {
+                    prefs.masterEnabled = true
+                    UIApplication.shared.registerForRemoteNotifications()
+                    schedulePreferenceSync()
+                }
+            }
+        }
+    }
+
+    private func openSystemSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
+    }
+
+    private func schedulePreferenceSync() {
+        syncTask?.cancel()
+        syncTask = Task {
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard !Task.isCancelled else { return }
+            appDelegate.syncNotificationPreferences(role: notificationRole)
         }
     }
 
@@ -254,4 +348,5 @@ struct SettingsView: View {
             .navigationBarTitleDisplayMode(.inline)
     }
     .environmentObject(AuthState())
+    .environmentObject(AppDelegate())
 }

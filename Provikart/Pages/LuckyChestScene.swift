@@ -435,56 +435,77 @@ struct LuckyChestPlaceholderView: View {
         let wood = Color(red: 0.58, green: 0.34, blue: 0.16)
 
         return ZStack {
-            RoundedRectangle(cornerRadius: w * 0.06, style: .continuous)
+            RoundedRectangle(cornerRadius: w * 0.07, style: .continuous)
                 .fill(wood)
-                .frame(width: w, height: h * 0.48)
-                .offset(y: h * 0.18)
+                .frame(width: w, height: h * 0.52)
+                .offset(y: h * 0.16)
 
-            HStack(spacing: w * 0.42) {
-                RoundedRectangle(cornerRadius: 4).fill(bronze).frame(width: w * 0.16, height: h * 0.16)
-                RoundedRectangle(cornerRadius: 4).fill(bronze).frame(width: w * 0.16, height: h * 0.16)
+            VStack(spacing: h * 0.045) {
+                ForEach(0..<4, id: \.self) { _ in
+                    Capsule().fill(Color.black.opacity(0.18)).frame(width: w * 0.86, height: 2)
+                }
             }
-            .offset(y: h * 0.36)
+            .offset(y: h * 0.16)
+
+            HStack {
+                RoundedRectangle(cornerRadius: 3).fill(bronze).frame(width: w * 0.16, height: h * 0.18)
+                Spacer()
+                RoundedRectangle(cornerRadius: 3).fill(bronze).frame(width: w * 0.16, height: h * 0.18)
+            }
+            .frame(width: w * 1.02)
+            .offset(y: h * 0.34)
 
             UnevenRoundedRectangle(
                 topLeadingRadius: w * 0.48,
-                bottomLeadingRadius: w * 0.06,
-                bottomTrailingRadius: w * 0.06,
+                bottomLeadingRadius: w * 0.05,
+                bottomTrailingRadius: w * 0.05,
                 topTrailingRadius: w * 0.48,
                 style: .continuous
             )
             .fill(crystal)
-            .shadow(color: crystal.opacity(0.7), radius: 8)
-            .frame(width: w * 1.02, height: h * 0.38)
+            .shadow(color: crystal.opacity(0.65), radius: 7)
+            .frame(width: w * 1.02, height: h * 0.36)
+            .offset(y: -h * 0.16)
+
+            HStack(spacing: w * 0.20) {
+                Capsule().fill(bronze).frame(width: w * 0.13)
+                Capsule().fill(bronze).frame(width: w * 0.13)
+                Capsule().fill(bronze).frame(width: w * 0.13)
+            }
+            .frame(height: h * 0.48)
             .offset(y: -h * 0.14)
 
-            HStack(spacing: w * 0.22) {
-                Capsule().fill(bronze).frame(width: w * 0.11)
-                Capsule().fill(bronze).frame(width: w * 0.11)
-                Capsule().fill(bronze).frame(width: w * 0.11)
-            }
-            .frame(height: h * 0.50)
-            .offset(y: -h * 0.12)
-
             RoundedRectangle(cornerRadius: 3)
-                .fill(wood)
-                .frame(width: w * 1.04, height: h * 0.07)
-                .offset(y: h * 0.04)
-
-            RoundedRectangle(cornerRadius: 6)
                 .fill(bronze)
-                .frame(width: w * 0.28, height: h * 0.28)
+                .frame(width: w * 1.06, height: h * 0.07)
+                .offset(y: h * 0.02)
+
+            RoundedRectangle(cornerRadius: 7)
+                .fill(bronze)
+                .frame(width: w * 0.30, height: h * 0.30)
                 .overlay {
-                    Capsule().fill(Color.black.opacity(0.55)).frame(width: 7, height: 16)
+                    VStack(spacing: 0) {
+                        Circle().fill(Color.black.opacity(0.55)).frame(width: 8, height: 8)
+                        Capsule().fill(Color.black.opacity(0.55)).frame(width: 6, height: 11)
+                    }
+                    .offset(y: 2)
                 }
                 .offset(y: h * 0.12)
 
-            HStack(spacing: w * 0.42) {
+            HStack(spacing: w * 0.40) {
                 Rectangle().fill(crystal).rotationEffect(.degrees(45)).frame(width: w * 0.09, height: w * 0.09)
                 Rectangle().fill(crystal).rotationEffect(.degrees(45)).frame(width: w * 0.09, height: w * 0.09)
             }
-            .shadow(color: crystal.opacity(0.8), radius: 4)
+            .shadow(color: crystal.opacity(0.75), radius: 4)
             .offset(y: h * 0.22)
+
+            HStack {
+                Circle().stroke(bronze, lineWidth: 3).frame(width: w * 0.12, height: w * 0.12)
+                Spacer()
+                Circle().stroke(bronze, lineWidth: 3).frame(width: w * 0.12, height: w * 0.12)
+            }
+            .frame(width: w * 1.18)
+            .offset(y: h * 0.16)
         }
     }
 }
@@ -534,7 +555,7 @@ final class LuckyChestScene {
     private let bronzeDark = UIColor(red: 0.38, green: 0.20, blue: 0.08, alpha: 1)
     private let displayScale: Float = 0.31
     private let restY: Float = 0.02
-    private let lidHinge = SCNVector3(0, 0.35, -0.50)
+    private let lidHinge = SCNVector3(0, 0.39, -0.54)
 
     init() {
         buildWorld()
@@ -965,85 +986,87 @@ final class LuckyChestScene {
     private func buildChest() {
         bodyMaterial = woodMaterial()
         darkWoodMaterial = woodMaterial()
-        darkWoodMaterial.diffuse.contents = UIColor(red: 0.32, green: 0.18, blue: 0.08, alpha: 1)
-        darkWoodMaterial.multiply.contents = UIColor(red: 0.32, green: 0.18, blue: 0.08, alpha: 1)
+        darkWoodMaterial.diffuse.contents = UIColor(red: 0.30, green: 0.16, blue: 0.07, alpha: 1)
+        darkWoodMaterial.multiply.contents = UIColor(red: 0.30, green: 0.16, blue: 0.07, alpha: 1)
         barrelMaterial = crystalMaterial(UIColor(LuckyBoxRarity.common.enamel))
         panelMaterial = crystalMaterial(UIColor(LuckyBoxRarity.common.enamel))
         goldMaterial = metalMaterial(bronzeTint)
         lockMaterial = metalMaterial(bronzeDark)
 
-        let bodyW: CGFloat = 1.48
-        let bodyH: CGFloat = 0.70
-        let bodyD: CGFloat = 1.00
-        let barrelR: CGFloat = 0.48
+        let bodyW: CGFloat = 1.58
+        let bodyH: CGFloat = 0.78
+        let bodyD: CGFloat = 1.08
+        let barrelR: CGFloat = 0.52
+        let frontZ = Float(bodyD / 2)
 
-        let body = box(bodyW, bodyH, bodyD, chamfer: 0.05, material: bodyMaterial)
+        let body = box(bodyW, bodyH, bodyD, chamfer: 0.04, material: bodyMaterial)
         body.position = SCNVector3(0, 0, 0)
         chestRoot.addChildNode(body)
 
-        for offset: Float in [-0.20, -0.02, 0.16] {
-            let plank = box(bodyW - 0.12, 0.03, 0.04, chamfer: 0.01, material: darkWoodMaterial)
-            plank.position = SCNVector3(0, offset, Float(bodyD / 2) + 0.01)
-            chestRoot.addChildNode(plank)
+        // Vodorovná prkna – truhla, ne hladký kvádr.
+        let plankYs: [Float] = [-0.28, -0.10, 0.08, 0.26]
+        for y in plankYs {
+            let front = box(bodyW - 0.10, 0.15, 0.05, chamfer: 0.012, material: darkWoodMaterial)
+            front.position = SCNVector3(0, y, frontZ + 0.012)
+            chestRoot.addChildNode(front)
+            let back = box(bodyW - 0.10, 0.15, 0.05, chamfer: 0.012, material: darkWoodMaterial)
+            back.position = SCNVector3(0, y, -frontZ - 0.012)
+            chestRoot.addChildNode(back)
+            for x in [-Float(bodyW / 2) - 0.012, Float(bodyW / 2) + 0.012] as [Float] {
+                let side = box(0.05, 0.15, bodyD - 0.12, chamfer: 0.012, material: darkWoodMaterial)
+                side.position = SCNVector3(x, y, 0)
+                chestRoot.addChildNode(side)
+            }
         }
 
+        // Svislé dřevěné sloupy v rozích.
         for x in [-0.76, 0.76] as [Float] {
-            let wall = box(0.08, bodyH - 0.02, bodyD - 0.08, chamfer: 0.02, material: bodyMaterial)
-            wall.position = SCNVector3(x, 0, 0)
-            chestRoot.addChildNode(wall)
-
-            let frame = box(0.05, bodyH + 0.02, bodyD - 0.02, chamfer: 0.02, material: goldMaterial)
-            frame.position = SCNVector3(x * 1.04, 0, 0)
-            chestRoot.addChildNode(frame)
-
-            for offset: Float in [-0.20, -0.02, 0.16] {
-                let sidePlank = box(0.04, 0.03, bodyD - 0.18, chamfer: 0.01, material: darkWoodMaterial)
-                sidePlank.position = SCNVector3(x * 1.08, offset, 0)
-                chestRoot.addChildNode(sidePlank)
+            for z in [-0.50, 0.50] as [Float] {
+                let post = box(0.12, bodyH + 0.02, 0.12, chamfer: 0.02, material: bodyMaterial)
+                post.position = SCNVector3(x, 0, z)
+                chestRoot.addChildNode(post)
             }
         }
 
-        let seat = box(bodyW + 0.06, 0.08, bodyD + 0.06, chamfer: 0.03, material: goldMaterial)
-        seat.position = SCNVector3(0, Float(bodyH / 2), 0)
-        chestRoot.addChildNode(seat)
+        // Bronzový lem víka – jasný šev, kde se truhla otvírá.
+        let rim = box(bodyW + 0.08, 0.09, bodyD + 0.08, chamfer: 0.03, material: goldMaterial)
+        rim.position = SCNVector3(0, Float(bodyH / 2) + 0.01, 0)
+        chestRoot.addChildNode(rim)
 
-        for x in [-0.66, 0.66] as [Float] {
-            for z in [-0.44, 0.44] as [Float] {
-                let corner = box(0.28, 0.18, 0.28, chamfer: 0.05, material: goldMaterial)
-                corner.position = SCNVector3(x, -0.38, z)
-                chestRoot.addChildNode(corner)
-                addRivet(at: SCNVector3(x, -0.30, z * 1.12))
+        addCornerGuard(x: -0.68, z: frontZ - 0.06, y: -0.22)
+        addCornerGuard(x: 0.68, z: frontZ - 0.06, y: -0.22)
+        addCornerGuard(x: -0.68, z: -frontZ + 0.06, y: -0.22)
+        addCornerGuard(x: 0.68, z: -frontZ + 0.06, y: -0.22)
+
+        addCornerGuard(x: -0.68, z: frontZ - 0.08, y: 0.22, size: 0.28)
+        addCornerGuard(x: 0.68, z: frontZ - 0.08, y: 0.22, size: 0.28)
+
+        for x in [-0.70, 0.70] as [Float] {
+            for z in [-0.48, 0.48] as [Float] {
+                let foot = box(0.26, 0.14, 0.26, chamfer: 0.05, material: goldMaterial)
+                foot.position = SCNVector3(x, -0.44, z)
+                chestRoot.addChildNode(foot)
+                addRivet(at: SCNVector3(x, -0.38, z * 1.18), radius: 0.038)
             }
         }
 
-        for x in [-0.66, 0.66] as [Float] {
-            let shoulder = box(0.30, 0.22, 0.28, chamfer: 0.07, material: goldMaterial)
-            shoulder.position = SCNVector3(x, 0.26, 0.42)
-            chestRoot.addChildNode(shoulder)
-            addRivet(at: SCNVector3(x, 0.30, 0.56))
-        }
+        addGem(at: SCNVector3(-0.38, -0.04, frontZ + 0.04))
+        addGem(at: SCNVector3(0.38, -0.04, frontZ + 0.04))
 
-        for x in [-0.42, 0.42] as [Float] {
-            let latch = box(0.10, 0.36, 0.08, chamfer: 0.02, material: goldMaterial)
-            latch.position = SCNVector3(x, 0.22, 0.54)
-            chestRoot.addChildNode(latch)
-            addRivet(at: SCNVector3(x, 0.32, 0.59))
-            addRivet(at: SCNVector3(x, 0.12, 0.59))
-        }
-
-        addGem(at: SCNVector3(-0.34, -0.08, 0.53))
-        addGem(at: SCNVector3(0.34, -0.08, 0.53))
+        addSideHandle(x: -Float(bodyW / 2) - 0.02)
+        addSideHandle(x: Float(bodyW / 2) + 0.02)
+        addBackHinges()
 
         interiorMaterial = unlitMaterial(UIColor(LuckyBoxRarity.common.enamel))
         interiorMaterial.diffuse.contents = Self.blobImage
         interiorMaterial.multiply.contents = UIColor(LuckyBoxRarity.common.enamel)
         interiorMaterial.blendMode = .add
         interiorMaterial.writesToDepthBuffer = false
-        let well = SCNPlane(width: 1.18, height: 0.78)
+        let well = SCNPlane(width: 1.22, height: 0.82)
         well.firstMaterial = interiorMaterial
         interiorGlowNode.geometry = well
         interiorGlowNode.eulerAngles.x = -.pi / 2
-        interiorGlowNode.position = SCNVector3(0, 0.20, 0.06)
+        interiorGlowNode.position = SCNVector3(0, Float(bodyH / 2) - 0.16, 0.06)
         interiorGlowNode.opacity = 0
         interiorGlowNode.castsShadow = false
         chestRoot.addChildNode(interiorGlowNode)
@@ -1051,33 +1074,78 @@ final class LuckyChestScene {
         lidPivot.position = lidHinge
         chestRoot.addChildNode(lidPivot)
 
-        let vaultWidth: CGFloat = 1.28
-        let vault = SCNShape(path: lidDPath(radius: barrelR, lift: 0, steps: 16), extrusionDepth: vaultWidth)
+        let vaultWidth: CGFloat = 1.38
+        let vault = SCNShape(path: lidDPath(radius: barrelR, lift: 0, steps: 18), extrusionDepth: vaultWidth)
         paintGeometry(vault, with: barrelMaterial)
         let vaultNode = SCNNode(geometry: vault)
         vaultNode.eulerAngles.y = .pi / 2
-        vaultNode.position = SCNVector3(0, 0, 0.50)
+        vaultNode.position = SCNVector3(0, 0, 0.54)
         lidPivot.addChildNode(vaultNode)
 
-        addLidSidePlate(x: -0.72, radius: barrelR)
-        addLidSidePlate(x: 0.72, radius: barrelR)
+        addLidSidePlate(x: -0.78, radius: barrelR)
+        addLidSidePlate(x: 0.78, radius: barrelR)
 
-        let strapXs: [Float] = [-0.40, 0, 0.40]
+        let strapXs: [Float] = [-0.42, 0, 0.42]
         for x in strapXs {
             addLidBand(x: x, radius: barrelR)
         }
 
-        addLidFrontPlate()
-
-        let lidWood = box(bodyW + 0.02, 0.15, bodyD + 0.04, chamfer: 0.03, material: bodyMaterial)
-        lidWood.position = SCNVector3(0, 0.04, 0.50)
+        let lidWood = box(bodyW + 0.04, 0.16, bodyD + 0.06, chamfer: 0.03, material: bodyMaterial)
+        lidWood.position = SCNVector3(0, 0.05, 0.54)
         lidPivot.addChildNode(lidWood)
 
-        let lidLip = box(bodyW + 0.06, 0.055, 0.09, chamfer: 0.02, material: goldMaterial)
-        lidLip.position = SCNVector3(0, 0.01, 1.03)
+        let lidLip = box(bodyW + 0.08, 0.07, 0.11, chamfer: 0.025, material: goldMaterial)
+        lidLip.position = SCNVector3(0, 0.02, 1.08)
         lidPivot.addChildNode(lidLip)
 
-        buildLock()
+        addLidFrontPlate()
+        buildLock(frontZ: frontZ)
+    }
+
+    private func addCornerGuard(x: Float, z: Float, y: Float, size: CGFloat = 0.32) {
+        let corner = box(size, size, size, chamfer: 0.055, material: goldMaterial)
+        corner.position = SCNVector3(x, y, z)
+        chestRoot.addChildNode(corner)
+        let inset: Float = Float(size) * 0.22
+        let faceZ = z + (z > 0 ? Float(size) * 0.42 : -Float(size) * 0.42)
+        addRivet(at: SCNVector3(x - inset, y + inset, faceZ), radius: 0.036)
+        addRivet(at: SCNVector3(x + inset, y + inset, faceZ), radius: 0.036)
+        addRivet(at: SCNVector3(x - inset, y - inset, faceZ), radius: 0.036)
+        addRivet(at: SCNVector3(x + inset, y - inset, faceZ), radius: 0.036)
+    }
+
+    private func addSideHandle(x: Float) {
+        let outward: Float = x > 0 ? 1 : -1
+        let bracket = box(0.08, 0.20, 0.14, chamfer: 0.02, material: goldMaterial)
+        bracket.position = SCNVector3(x, 0.04, 0)
+        chestRoot.addChildNode(bracket)
+
+        let ring = SCNTorus(ringRadius: 0.12, pipeRadius: 0.024)
+        ring.ringSegmentCount = 24
+        ring.pipeSegmentCount = 10
+        ring.firstMaterial = goldMaterial
+        let ringNode = SCNNode(geometry: ring)
+        ringNode.eulerAngles.z = .pi / 2
+        ringNode.position = SCNVector3(x + outward * 0.10, -0.06, 0)
+        chestRoot.addChildNode(ringNode)
+        addRivet(at: SCNVector3(x + outward * 0.03, 0.12, 0.05), radius: 0.03)
+        addRivet(at: SCNVector3(x + outward * 0.03, 0.12, -0.05), radius: 0.03)
+    }
+
+    private func addBackHinges() {
+        for x in [-0.40, 0.40] as [Float] {
+            let knuckle = SCNCylinder(radius: 0.055, height: 0.18)
+            knuckle.radialSegmentCount = 12
+            knuckle.firstMaterial = goldMaterial
+            let node = SCNNode(geometry: knuckle)
+            node.eulerAngles.z = .pi / 2
+            node.position = SCNVector3(x, lidHinge.y, lidHinge.z)
+            chestRoot.addChildNode(node)
+
+            let plate = box(0.16, 0.12, 0.08, chamfer: 0.02, material: goldMaterial)
+            plate.position = SCNVector3(x, lidHinge.y - 0.08, lidHinge.z + 0.04)
+            chestRoot.addChildNode(plate)
+        }
     }
 
     private func lidDPath(radius: CGFloat, lift: CGFloat, steps: Int) -> UIBezierPath {
@@ -1119,70 +1187,66 @@ final class LuckyChestScene {
     }
 
     private func addLidBand(x: Float, radius: CGFloat) {
-        let thickness: CGFloat = 0.085
-        let band = SCNShape(path: lidStrapPath(radius: radius, thickness: thickness), extrusionDepth: 0.16)
+        let thickness: CGFloat = 0.10
+        let band = SCNShape(path: lidStrapPath(radius: radius, thickness: thickness), extrusionDepth: 0.20)
         paintGeometry(band, with: goldMaterial)
         let bandNode = SCNNode(geometry: band)
         bandNode.eulerAngles.y = .pi / 2
-        bandNode.position = SCNVector3(x, 0, 0.50)
+        bandNode.position = SCNVector3(x, 0, 0.54)
         lidPivot.addChildNode(bandNode)
 
-        let rivetR = Float(radius) + Float(thickness) * 0.55
-        let angles: [Float] = [0.22, 0.55, 0.90, 1.25, 1.57, 1.89, 2.24, 2.59, 2.92]
+        let rivetR = Float(radius) + Float(thickness) * 0.45
+        let angles: [Float] = [0.18, 0.52, 0.90, 1.25, 1.57, 1.89, 2.24, 2.62, 2.96]
         for theta in angles {
             addRivet(
-                at: SCNVector3(x, rivetR * sin(theta), 0.50 + rivetR * cos(theta)),
-                parent: lidPivot
+                at: SCNVector3(x, rivetR * sin(theta), 0.54 + rivetR * cos(theta)),
+                parent: lidPivot,
+                radius: 0.042
             )
         }
     }
 
     private func addLidFrontPlate() {
-        let shield = UIBezierPath()
-        shield.move(to: CGPoint(x: 0, y: 0.11))
-        shield.addLine(to: CGPoint(x: 0.08, y: 0.05))
-        shield.addLine(to: CGPoint(x: 0.07, y: -0.04))
-        shield.addLine(to: CGPoint(x: 0, y: -0.10))
-        shield.addLine(to: CGPoint(x: -0.07, y: -0.04))
-        shield.addLine(to: CGPoint(x: -0.08, y: 0.05))
-        shield.close()
+        let hasp = box(0.20, 0.28, 0.08, chamfer: 0.03, material: goldMaterial)
+        hasp.position = SCNVector3(0, -0.02, 1.08)
+        lidPivot.addChildNode(hasp)
+        addRivet(at: SCNVector3(-0.05, 0.08, 1.13), parent: lidPivot, radius: 0.032)
+        addRivet(at: SCNVector3(0.05, 0.08, 1.13), parent: lidPivot, radius: 0.032)
 
-        let plate = SCNShape(path: shield, extrusionDepth: 0.055)
-        paintGeometry(plate, with: goldMaterial)
-        let plateNode = SCNNode(geometry: plate)
-        plateNode.position = SCNVector3(0, 0.18, 0.99)
-        lidPivot.addChildNode(plateNode)
-        addRivet(at: SCNVector3(0, 0.22, 1.03), parent: lidPivot)
+        let lip = box(0.14, 0.10, 0.07, chamfer: 0.02, material: goldMaterial)
+        lip.position = SCNVector3(0, -0.16, 1.08)
+        lidPivot.addChildNode(lip)
     }
 
     private func addLidSidePlate(x: Float, radius: CGFloat) {
-        let outer = radius + 0.05
-        let frame = SCNShape(path: lidDPath(radius: outer, lift: 0, steps: 20), extrusionDepth: 0.12)
+        let outer = radius + 0.04
+        let frame = SCNShape(path: lidDPath(radius: outer, lift: 0, steps: 20), extrusionDepth: 0.11)
         paintGeometry(frame, with: bodyMaterial)
         let frameNode = SCNNode(geometry: frame)
         frameNode.eulerAngles.y = .pi / 2
-        frameNode.position = SCNVector3(x, 0, 0.50)
+        frameNode.position = SCNVector3(x, 0, 0.54)
         lidPivot.addChildNode(frameNode)
 
-        let inner = radius - 0.08
-        let crystal = SCNShape(path: lidDPath(radius: inner, lift: 0.05, steps: 16), extrusionDepth: 0.07)
+        let inner = radius - 0.14
+        let crystal = SCNShape(path: lidDPath(radius: inner, lift: 0.06, steps: 14), extrusionDepth: 0.06)
         paintGeometry(crystal, with: barrelMaterial)
         let crystalNode = SCNNode(geometry: crystal)
         crystalNode.eulerAngles.y = .pi / 2
-        crystalNode.position = SCNVector3(x + (x > 0 ? 0.045 : -0.045), 0, 0.50)
+        crystalNode.position = SCNVector3(x + (x > 0 ? 0.04 : -0.04), 0, 0.54)
         lidPivot.addChildNode(crystalNode)
 
-        let cap = box(0.12, 0.10, 0.14, chamfer: 0.03, material: goldMaterial)
-        cap.position = SCNVector3(x + (x > 0 ? 0.04 : -0.04), Float(outer) + 0.02, 0.50)
+        let cap = box(0.13, 0.11, 0.16, chamfer: 0.03, material: goldMaterial)
+        cap.position = SCNVector3(x + (x > 0 ? 0.04 : -0.04), Float(outer) + 0.01, 0.54)
         lidPivot.addChildNode(cap)
         addRivet(
-            at: SCNVector3(x + (x > 0 ? 0.07 : -0.07), Float(outer) + 0.06, 0.50),
-            parent: lidPivot
+            at: SCNVector3(x + (x > 0 ? 0.07 : -0.07), Float(outer) + 0.05, 0.54),
+            parent: lidPivot,
+            radius: 0.032
         )
     }
 
-    private func addRivet(at position: SCNVector3, parent: SCNNode? = nil) {
-        let sphere = SCNSphere(radius: 0.045)
+    private func addRivet(at position: SCNVector3, parent: SCNNode? = nil, radius: CGFloat = 0.045) {
+        let sphere = SCNSphere(radius: radius)
         sphere.segmentCount = 10
         sphere.firstMaterial = goldMaterial
         let node = SCNNode(geometry: sphere)
@@ -1191,31 +1255,43 @@ final class LuckyChestScene {
     }
 
     private func addGem(at position: SCNVector3) {
-        let gem = box(0.13, 0.13, 0.07, chamfer: 0.01, material: panelMaterial)
+        let gem = box(0.15, 0.15, 0.08, chamfer: 0.012, material: panelMaterial)
         gem.eulerAngles.z = .pi / 4
         gem.position = position
         chestRoot.addChildNode(gem)
     }
 
-    private func buildLock() {
-        let plate = box(0.36, 0.42, 0.12, chamfer: 0.05, material: goldMaterial)
-        plate.position = SCNVector3(0, 0.06, 0.56)
+    private func buildLock(frontZ: Float) {
+        let plate = box(0.42, 0.50, 0.14, chamfer: 0.055, material: goldMaterial)
+        plate.position = SCNVector3(0, 0.08, frontZ + 0.05)
         chestRoot.addChildNode(plate)
-        addRivet(at: SCNVector3(-0.12, 0.20, 0.63))
-        addRivet(at: SCNVector3(0.12, 0.20, 0.63))
-        addRivet(at: SCNVector3(-0.12, -0.08, 0.63))
-        addRivet(at: SCNVector3(0.12, -0.08, 0.63))
+        addRivet(at: SCNVector3(-0.14, 0.24, frontZ + 0.13), radius: 0.04)
+        addRivet(at: SCNVector3(0.14, 0.24, frontZ + 0.13), radius: 0.04)
+        addRivet(at: SCNVector3(-0.14, -0.08, frontZ + 0.13), radius: 0.04)
+        addRivet(at: SCNVector3(0.14, -0.08, frontZ + 0.13), radius: 0.04)
 
-        let hole = SCNCylinder(radius: 0.055, height: 0.08)
+        let bezel = SCNCylinder(radius: 0.09, height: 0.06)
+        bezel.radialSegmentCount = 16
+        bezel.firstMaterial = goldMaterial
+        let bezelNode = SCNNode(geometry: bezel)
+        bezelNode.eulerAngles.x = .pi / 2
+        bezelNode.position = SCNVector3(0, 0.16, frontZ + 0.13)
+        chestRoot.addChildNode(bezelNode)
+
+        let hole = SCNCylinder(radius: 0.048, height: 0.08)
         hole.firstMaterial = lockMaterial
         let holeNode = SCNNode(geometry: hole)
         holeNode.eulerAngles.x = .pi / 2
-        holeNode.position = SCNVector3(0, 0.12, 0.63)
+        holeNode.position = SCNVector3(0, 0.16, frontZ + 0.14)
         chestRoot.addChildNode(holeNode)
 
-        let slot = box(0.06, 0.12, 0.06, chamfer: 0.015, material: lockMaterial)
-        slot.position = SCNVector3(0, 0.02, 0.63)
+        let slot = box(0.055, 0.13, 0.06, chamfer: 0.012, material: lockMaterial)
+        slot.position = SCNVector3(0, 0.05, frontZ + 0.14)
         chestRoot.addChildNode(slot)
+
+        let latch = box(0.18, 0.10, 0.10, chamfer: 0.025, material: goldMaterial)
+        latch.position = SCNVector3(0, -0.14, frontZ + 0.08)
+        chestRoot.addChildNode(latch)
     }
 
     private func buildParticles() {
@@ -1414,9 +1490,11 @@ final class LuckyChestScene {
 
     private func woodMaterial() -> SCNMaterial {
         let m = SCNMaterial()
-        m.lightingModel = .lambert
+        m.lightingModel = .phong
         m.diffuse.contents = Self.woodImage
         m.multiply.contents = UIColor.white
+        m.specular.contents = UIColor(white: 0.18, alpha: 1)
+        m.shininess = 0.12
         m.emission.contents = UIColor.black
         m.locksAmbientWithDiffuse = true
         m.writesToDepthBuffer = true

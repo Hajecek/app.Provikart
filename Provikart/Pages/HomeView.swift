@@ -305,11 +305,11 @@ struct HomeView: View {
                 switch luckyBoxStatus {
                 case .ready(let remaining, let opened):
                     if opened == 0 {
-                        Text(remaining > 1 ? "Denní + bonus za včera · zbývá \(remaining)" : "Připraveno k otevření")
+                        Text(remaining > 1 ? "Dnes \(remaining) \(LuckyBoxQuota.chestsWord(remaining)) · připraveno" : "Připraveno k otevření")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(gold)
                     } else {
-                        Text("Bonus za včerejšek · zbývá \(remaining)")
+                        Text("Otevřeno \(opened) z \(opened + remaining) · zbývá \(remaining)")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(gold)
                     }
@@ -359,10 +359,10 @@ struct HomeView: View {
         case .ready(let remaining, let opened):
             if opened == 0 {
                 return remaining > 1
-                    ? "Lucky Box, denní bedna a bonus za včerejšek, zbývá \(remaining)"
+                    ? "Lucky Box, dnes \(remaining) \(LuckyBoxQuota.chestsWord(remaining)), připraveno"
                     : "Lucky Box, připraveno k otevření"
             }
-            return "Lucky Box, bonus za včerejšek, zbývá \(remaining)"
+            return "Lucky Box, otevřeno \(opened) z \(opened + remaining), zbývá \(remaining)"
         case .waitingForBonus(let hint):
             return "Lucky Box, \(hint)"
         case .doneForToday:

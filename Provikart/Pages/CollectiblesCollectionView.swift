@@ -288,9 +288,16 @@ struct CollectiblesCollectionView: View {
         do {
             let fresh = try await CollectiblesService().fetchInventory(token: authState.authToken)
             inventory = fresh
+            let urls = fresh.items.compactMap(\.resolvedImageURL)
+            let thumbSize = CollectibleImageCache.collectionThumbMaxPixelSize
             if forceImageRefresh {
-                CollectibleImageCache.shared.clearMemory()
                 imageEpoch &+= 1
+            }
+            Task.detached(priority: .utility) {
+                await CollectibleImageCache.shared.prefetch(
+                    urls: urls,
+                    maxPixelSize: thumbSize
+                )
             }
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -676,9 +683,22 @@ private struct CollectibleCachedThumbnail: View {
     @State private var image: UIImage?
     @State private var didFail = false
 
-    private let displaySize: CGFloat = 140
     private var maxPixelSize: CGFloat {
-        displaySize * UIScreen.main.scale
+        CollectibleImageCache.collectionThumbMaxPixelSize
+    }
+
+    init(url: URL?, owned: Bool = true, epoch: Int = 0) {
+        self.url = url
+        self.owned = owned
+        self.epoch = epoch
+        if let url {
+            _image = State(
+                initialValue: CollectibleImageCache.shared.imageIfCached(
+                    for: url,
+                    maxPixelSize: CollectibleImageCache.collectionThumbMaxPixelSize
+                )
+            )
+        }
     }
 
     var body: some View {
@@ -778,7 +798,14 @@ struct CollectibleDetailSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
-                    LuckyRewardCardView(reward: reward, gold: gold, isInteractive: true)
+                    LuckyRewardCardView(
+                        reward: reward,
+                        gold: gold,
+                        isInteractive: true,
+                        preloadedImage: reward.resolvedImageURL.flatMap {
+                            CollectibleImageCache.shared.bestCachedImage(for: $0)
+                        }
+                    )
                         .frame(maxWidth: 320)
                         .frame(height: 430)
                         .padding(.top, 8)

@@ -58,8 +58,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         }
         if let token = token {
           print("[FCM] ✅ FCM token: \(token)")
+          self?.sendFCMTokenToBackend(fcmToken: token)
         }
-        self?.subscribeToAllUsers()
+        self?.syncNotificationTopics()
       }
     }
   }
@@ -72,18 +73,19 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
   }
 
   func subscribeToAllUsers() {
-    Messaging.messaging().subscribe(toTopic: "all_users") { error in
-      if let error = error {
-        print("[FCM] Odběr tématu all_users selhal: \(error.localizedDescription)")
-      } else {
-        print("[FCM] Přihlášení k tématu all_users")
-      }
-    }
+    syncNotificationTopics()
   }
 
   func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
     let userInfo = notification.request.content.userInfo
     print("[FCM] Notifikace při běhu aplikace: \(userInfo)")
+    guard NotificationPreferencesStore.shared.shouldPresent(
+      userInfo: userInfo,
+      role: UserRole(apiValue: currentUserRole)
+    ) else {
+      completionHandler([])
+      return
+    }
     AppIconBadgeSync.increment()
     NotificationCenter.default.post(
       name: Notification.Name("didReceiveRemoteNotification"),
@@ -108,14 +110,20 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
   ) {
     print("[FCM] Remote notification (background/fetch): \(userInfo)")
-    NotificationCenter.default.post(
-      name: Notification.Name("didReceiveRemoteNotification"),
-      object: nil,
-      userInfo: userInfo as? [String: Any]
+    let allowed = NotificationPreferencesStore.shared.shouldPresent(
+      userInfo: userInfo,
+      role: UserRole(apiValue: currentUserRole)
     )
-    // V popředí řeší +1 `willPresent` – tady jen když appka není active.
-    if application.applicationState != .active {
-      AppIconBadgeSync.increment()
+    if allowed {
+      NotificationCenter.default.post(
+        name: Notification.Name("didReceiveRemoteNotification"),
+        object: nil,
+        userInfo: userInfo as? [String: Any]
+      )
+      // V popředí řeší +1 `willPresent` – tady jen když appka není active.
+      if application.applicationState != .active {
+        AppIconBadgeSync.increment()
+      }
     }
     completionHandler(.newData)
   }
@@ -129,7 +137,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     }
   }
 
-  /// Odešle FCM token na API. Vyžaduje přihlášení (authToken v hlavičce), body jen { "token": "<fcm>" }.
+  /// Odešle FCM token na API. Vyžaduje přihlášení (authToken v hlavičce).
+  /// Tělo: { "token": "<fcm>", "token_api": "<api>", "notification_preferences": { ... } }
   func sendFCMTokenToBackend(fcmToken: String) {
     guard let apiToken = authToken, !apiToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       print("[FCM] Přeskočeno – uživatel není přihlášen (chybí API token)")
@@ -138,15 +147,19 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     guard let url = URL(string: updateFCMTokenURL) else { return }
 
     let cleanApiToken = apiToken.trimmingCharacters(in: .whitespacesAndNewlines)
+    let role = UserRole(apiValue: currentUserRole)
+    var body: [String: Any] = [
+      "token": fcmToken,
+      "token_api": cleanApiToken
+    ]
+    body["notification_preferences"] = NotificationPreferencesStore.shared.apiPayload(role: role)
+
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.setValue("Bearer \(cleanApiToken)", forHTTPHeaderField: "Authorization")
     // token_api v těle – PHP často nedostane hlavičku Authorization (Apache/nginx ji nepředá)
-    request.httpBody = try? JSONSerialization.data(withJSONObject: [
-      "token": fcmToken,
-      "token_api": cleanApiToken
-    ])
+    request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
     URLSession.shared.dataTask(with: request) { data, response, error in
       if let error = error {
@@ -170,6 +183,26 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     if authToken != nil, let fcmToken = Messaging.messaging().fcmToken {
       sendFCMTokenToBackend(fcmToken: fcmToken)
     }
+    syncNotificationTopics()
+  }
+
+  /// Synchronizuje FCM témata a pošle výběr notifikací na backend.
+  func syncNotificationPreferences(role: UserRole? = nil) {
+    let resolvedRole = role ?? UserRole(apiValue: currentUserRole)
+    NotificationPreferencesStore.shared.applyTopicSubscriptions(role: resolvedRole)
+    if let fcmToken = Messaging.messaging().fcmToken {
+      sendFCMTokenToBackend(fcmToken: fcmToken)
+    }
+    Task {
+      await NotificationPreferencesService().save(
+        token: authToken,
+        payload: NotificationPreferencesStore.shared.apiPayload(role: resolvedRole)
+      )
+    }
+  }
+
+  private func syncNotificationTopics() {
+    NotificationPreferencesStore.shared.applyTopicSubscriptions(role: UserRole(apiValue: currentUserRole))
   }
 
   func clearUserInfo() {

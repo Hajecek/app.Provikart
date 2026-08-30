@@ -31,15 +31,15 @@ enum LuckyBoxQuota {
         let bonusTomorrow = earnedChests(settledServices: servicesToday) - dailyFree
         if let next = nextBonus(services: servicesToday) {
             if servicesToday <= 0 {
-                return "Zítra +1 bedna za \(next.at) \(servicesWord(next.at))"
+                return "Ještě \(next.at) \(servicesWord(next.at)) a zítra +1 bedna"
             }
             if bonusTomorrow == 0 {
-                return "Dnes \(servicesToday) · zítra +1 za \(next.need) \(servicesWord(next.need))"
+                return "Dnes \(servicesToday) · ještě \(next.need) \(servicesWord(next.need)) a zítra +1 bedna"
             }
-            return "Dnes \(servicesToday) · zítra \(bonusTomorrow) \(bonusWord(bonusTomorrow)), další za \(next.need) \(servicesWord(next.need))"
+            return "Dnes \(servicesToday) · zítra +\(bonusTomorrow) \(chestsWord(bonusTomorrow)), další za \(next.need) \(servicesWord(next.need))"
         }
         guard bonusTomorrow > 0 else { return nil }
-        return "Dnes \(servicesToday) služeb · zítra \(bonusTomorrow) \(bonusWord(bonusTomorrow))"
+        return "Dnes \(servicesToday) služeb · zítra +\(bonusTomorrow) \(chestsWord(bonusTomorrow))"
     }
 
     static func luckMultiplier(settledServices: Int) -> Double {
@@ -52,7 +52,11 @@ enum LuckyBoxQuota {
     }
 
     static func startingStars(settledServices: Int) -> Int {
-        settledServices >= 7 ? 2 : 1
+        switch settledServices {
+        case 7...: return 3
+        case 5...6: return 2
+        default: return 1
+        }
     }
 
     static func luckPercent(settledServices: Int) -> Int {
@@ -145,6 +149,7 @@ final class LuckyBoxQuotaState: ObservableObject {
 
     private var lastTotalServices: Int?
     private var lastOrdersFetchDay = ""
+    private var lastOrdersFetchAt = Date.distantPast
 
     private init() {
         applyLocalOpened()
@@ -162,7 +167,8 @@ final class LuckyBoxQuotaState: ObservableObject {
         applyLocalOpened()
         let day = LuckyBoxLocalStore.todayKey()
         let totalChanged = totalServices.map { $0 != lastTotalServices } ?? false
-        let needOrders = forceOrders || lastOrdersFetchDay != day || totalChanged
+        let stale = Date().timeIntervalSince(lastOrdersFetchAt) > 15
+        let needOrders = forceOrders || lastOrdersFetchDay != day || totalChanged || stale
 
         if needOrders, let token, !token.isEmpty {
             do {
@@ -171,6 +177,7 @@ final class LuckyBoxQuotaState: ObservableObject {
                 servicesYesterday = LuckyBoxQuota.services(in: orders, on: yesterday)
                 servicesToday = LuckyBoxQuota.services(in: orders, on: Date())
                 lastOrdersFetchDay = day
+                lastOrdersFetchAt = Date()
                 if let totalServices {
                     lastTotalServices = totalServices
                 }
