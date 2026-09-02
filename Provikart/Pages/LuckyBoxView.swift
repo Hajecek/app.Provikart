@@ -585,6 +585,8 @@ struct LuckyBoxView: View {
     @State private var openErrorMessage: String?
     @State private var showOpenError = false
     @State private var openTask: Task<Void, Never>?
+    /// Po neúspěšném API otevření lze odejít – jinak by zámek držel uživatele na obrazovce.
+    @State private var allowsLeavingAfterError = false
     /// Pořadové číslo otevření – staré (zrušené) tasky nesmí měnit stav.
     @State private var openGeneration = 0
     @ObservedObject private var quota = LuckyBoxQuotaState.shared
@@ -651,8 +653,10 @@ struct LuckyBoxView: View {
     }
 
     /// Dokud tahle bedna není otevřená, nelze odejít a přerollovat hvězdy.
+    /// Po chybě API zámek uvolníme, ať uživatel není uvězněný na obrazovce.
     private var isChestLocked: Bool {
-        phase == .charging || phase == .readyToOpen || phase == .opening || isBusy
+        if allowsLeavingAfterError { return false }
+        return phase == .charging || phase == .readyToOpen || phase == .opening || isBusy
     }
 
     var body: some View {
@@ -1295,6 +1299,7 @@ struct LuckyBoxView: View {
             let nextSlot = LuckyBoxLocalStore.openedCountToday + 1
             if nextSlot > 1, nextSlot > quota.earned {
                 isBusy = false
+                allowsLeavingAfterError = true
                 openErrorMessage = "Zrušené služby se do Lucky Boxu nepočítají, takže tahle bonusová bedna už neplatí."
                 showOpenError = true
                 UINotificationFeedbackGenerator().notificationOccurred(.warning)
@@ -1511,6 +1516,7 @@ struct LuckyBoxView: View {
         phase = .readyToOpen
         isBusy = false
         if let message, !message.isEmpty {
+            allowsLeavingAfterError = true
             openErrorMessage = message
             showOpenError = true
             UINotificationFeedbackGenerator().notificationOccurred(.error)

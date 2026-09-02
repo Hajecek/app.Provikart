@@ -228,20 +228,16 @@ final class CollectiblesService {
         if let luckStars {
             let clamped = min(5, max(1, luckStars))
             body["stars"] = clamped
-            body["luck"] = clamped
             body["rarity_stars"] = clamped
         }
         if let rarity, !rarity.isEmpty {
             body["rarity"] = rarity
-            body["target_rarity"] = rarity
         }
         if let source, !source.isEmpty {
             body["source"] = source
-            body["chest"] = source
         }
         if let slot {
             body["slot"] = slot
-            body["chest_index"] = slot
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
@@ -249,39 +245,7 @@ final class CollectiblesService {
         guard let http = response as? HTTPURLResponse else {
             throw CollectiblesError.serverError("Neplatná odpověď serveru")
         }
-
-        let envelope = try? JSONDecoder().decode(CollectiblesAPIEnvelope<CollectiblesChestDataDTO>.self, from: data)
-        let serverError = envelope?.error ?? Self.extractError(from: data)
-
-        switch http.statusCode {
-        case 200:
-            guard envelope?.success != false, let dto = envelope?.data, let item = dto.item else {
-                throw CollectiblesError.serverError(serverError ?? "Bednu se nepodařilo otevřít.")
-            }
-            let currency = dto.currency ?? CollectiblesCurrency()
-            let duplicate = dto.duplicate ?? false
-            let powder = dto.powder_gained ?? dto.powderGained ?? 0
-            let qty = dto.qty ?? item.qty
-            let balance = dto.balance ?? 0
-            let message = dto.message ?? (
-                duplicate
-                    ? "Duplicita! +\(powder) \(currency.nameOf), celkem ×\(qty)"
-                    : "Nový předmět ve sbírce: \(item.name)"
-            )
-            return CollectiblesChestOpenResult(
-                duplicate: duplicate,
-                powderGained: powder,
-                balance: balance,
-                qty: qty,
-                currency: currency,
-                item: item,
-                message: message
-            )
-        case 401:
-            throw CollectiblesError.notAuthenticated
-        default:
-            throw CollectiblesError.serverError(serverError ?? "Chyba serveru (\(http.statusCode))")
-        }
+        return try Self.parseChestOpen(data: data, statusCode: http.statusCode)
     }
 
     /// GET /api/collectibles.php – inventář + zásoba prachu.
@@ -376,9 +340,126 @@ final class CollectiblesService {
         guard
             let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return nil }
-        if let error = obj["error"] as? String, !error.isEmpty { return error }
-        if let message = obj["message"] as? String, !message.isEmpty { return message }
+        if let error = stringValue(obj["error"]), !error.isEmpty { return error }
+        if let errorObj = obj["error"] as? [String: Any],
+           let nested = stringValue(errorObj["message"]) ?? stringValue(errorObj["error"]),
+           !nested.isEmpty {
+            return nested
+        }
+        if let message = stringValue(obj["message"]), !message.isEmpty { return message }
         return nil
+    }
+
+    private static func parseChestOpen(data: Data, statusCode: Int) throws -> CollectiblesChestOpenResult {
+        if statusCode == 401 {
+            throw CollectiblesError.notAuthenticated
+        }
+
+        let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        let serverError = extractError(from: data)
+
+        if statusCode != 200 {
+            throw CollectiblesError.serverError(serverError ?? "Chyba serveru (\(statusCode))")
+        }
+
+        if boolValue(root?["success"]) == false {
+            throw CollectiblesError.serverError(serverError ?? "Bednu se nepodařilo otevřít.")
+        }
+
+        let payload = dictValue(root?["data"]) ?? root ?? [:]
+        let itemRaw = payload["item"]
+            ?? payload["collectible"]
+            ?? payload["reward"]
+            ?? payload["card"]
+            ?? root?["item"]
+            ?? root?["collectible"]
+
+        guard let item = decodeCollectibleItem(itemRaw) else {
+            throw CollectiblesError.serverError(serverError ?? "Bednu se nepodařilo otevřít.")
+        }
+
+        let currency: CollectiblesCurrency = {
+            if let raw = payload["currency"] ?? root?["currency"],
+               let data = try? JSONSerialization.data(withJSONObject: raw),
+               let decoded = try? JSONDecoder().decode(CollectiblesCurrency.self, from: data) {
+                return decoded
+            }
+            return CollectiblesCurrency()
+        }()
+
+        let duplicate = boolValue(payload["duplicate"]) ?? boolValue(root?["duplicate"]) ?? false
+        let powder = intValue(payload["powder_gained"])
+            ?? intValue(payload["powderGained"])
+            ?? intValue(root?["powder_gained"])
+            ?? 0
+        let qty = intValue(payload["qty"]) ?? item.qty
+        let balance = intValue(payload["balance"]) ?? intValue(root?["balance"]) ?? 0
+        let message = stringValue(payload["message"]) ?? stringValue(root?["message"]) ?? (
+            duplicate
+                ? "Duplicita! +\(powder) \(currency.nameOf), celkem ×\(qty)"
+                : "Nový předmět ve sbírce: \(item.name)"
+        )
+
+        return CollectiblesChestOpenResult(
+            duplicate: duplicate,
+            powderGained: powder,
+            balance: balance,
+            qty: qty,
+            currency: currency,
+            item: item,
+            message: message
+        )
+    }
+
+    private static func decodeCollectibleItem(_ raw: Any?) -> CollectibleItem? {
+        if let dict = dictValue(raw),
+           let data = try? JSONSerialization.data(withJSONObject: dict),
+           let item = try? JSONDecoder().decode(CollectibleItem.self, from: data) {
+            return item
+        }
+        if let list = raw as? [[String: Any]], let first = list.first,
+           let data = try? JSONSerialization.data(withJSONObject: first),
+           let item = try? JSONDecoder().decode(CollectibleItem.self, from: data) {
+            return item
+        }
+        return nil
+    }
+
+    private static func dictValue(_ any: Any?) -> [String: Any]? {
+        any as? [String: Any]
+    }
+
+    private static func stringValue(_ any: Any?) -> String? {
+        if let s = any as? String {
+            let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            return t.isEmpty ? nil : t
+        }
+        return nil
+    }
+
+    private static func boolValue(_ any: Any?) -> Bool? {
+        switch any {
+        case let b as Bool: return b
+        case let i as Int: return i != 0
+        case let n as NSNumber: return n.boolValue
+        case let s as String:
+            let t = s.lowercased()
+            if ["1", "true", "yes"].contains(t) { return true }
+            if ["0", "false", "no"].contains(t) { return false }
+            return nil
+        default:
+            return nil
+        }
+    }
+
+    private static func intValue(_ any: Any?) -> Int? {
+        switch any {
+        case let i as Int: return i
+        case let n as NSNumber: return n.intValue
+        case let s as String: return Int(s.trimmingCharacters(in: .whitespacesAndNewlines))
+        case let d as Double: return Int(d)
+        default: return nil
+        }
     }
 }
 
