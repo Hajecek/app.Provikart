@@ -193,6 +193,8 @@ final class LuckyChestController: NSObject, ObservableObject {
         stageView.preferredFramesPerSecond = 60
         stageView.rendersContinuously = true
         stageView.isJitteringEnabled = false
+        stageView.showsStatistics = false
+        stageView.debugOptions = []
         stageView.delegate = self
     }
 
