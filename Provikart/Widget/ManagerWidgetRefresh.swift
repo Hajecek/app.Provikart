@@ -10,7 +10,7 @@ import Foundation
 enum ManagerWidgetRefresh {
     private static let attendanceService = ManagerAttendanceService()
     private static let reportsService = ManagerReportsService()
-    private static let teamService = ManagerTeamMembersService()
+    private static let performanceService = ManagerTeamPerformanceService()
 
     private static let dayFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -34,11 +34,11 @@ enum ManagerWidgetRefresh {
 
         async let reportsTask = fetchReports(token: token)
         async let attendanceTask = fetchAttendance(token: token)
-        async let teamTask = fetchTeamSize(token: token)
+        async let servicesTask = fetchTodayServices(token: token)
 
         let reports = await reportsTask
         let attendance = await attendanceTask
-        let teamSize = await teamTask
+        let todayServices = await servicesTask
 
         if let reports {
             let open = reports.filter { !$0.isCompleted }
@@ -50,12 +50,6 @@ enum ManagerWidgetRefresh {
                 )
             }
             WidgetDataStore.saveManagerProblems(openCount: open.count, preview: Array(preview))
-            ManagerTeamLiveActivityManager.update(
-                openProblems: open.count,
-                teamSize: teamSize ?? attendance?.teamSize ?? 0,
-                presentToday: attendance?.presentToday ?? 0,
-                latestProblemLabel: preview.first?.displayLine
-            )
         }
 
         if let attendance {
@@ -64,16 +58,13 @@ enum ManagerWidgetRefresh {
                 presentToday: attendance.presentToday,
                 absentNames: attendance.absentNames
             )
-            if reports == nil {
-                let openCount = WidgetDataStore.managerOpenProblemsCount ?? 0
-                ManagerTeamLiveActivityManager.update(
-                    openProblems: openCount,
-                    teamSize: attendance.teamSize,
-                    presentToday: attendance.presentToday,
-                    latestProblemLabel: nil
-                )
-            }
         }
+
+        if let todayServices {
+            WidgetDataStore.saveManagerTodayServices(todayServices)
+        }
+
+        ManagerTeamLiveActivityManager.refreshRunning()
     }
 
     private struct AttendanceSummary {
@@ -82,13 +73,16 @@ enum ManagerWidgetRefresh {
         let absentNames: [String]
     }
 
-    private static func fetchReports(token: String) async -> [UserReport]? {
-        try? await reportsService.fetchManagerReports(token: token)
+    private static func fetchTodayServices(token: String) async -> Int? {
+        let month = monthFormatter.string(from: Date())
+        guard let payload = try? await performanceService.fetchPerformance(token: token, month: month) else {
+            return nil
+        }
+        return payload.todayServicesCount
     }
 
-    private static func fetchTeamSize(token: String) async -> Int? {
-        guard let members = try? await teamService.fetchMembers(token: token) else { return nil }
-        return members.count
+    private static func fetchReports(token: String) async -> [UserReport]? {
+        try? await reportsService.fetchManagerReports(token: token)
     }
 
     private static func fetchAttendance(token: String) async -> AttendanceSummary? {

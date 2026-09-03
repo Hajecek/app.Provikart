@@ -151,14 +151,7 @@ final class ManagerProblemsViewModel: ObservableObject {
             )
         }
         WidgetDataStore.saveManagerProblems(openCount: open.count, preview: Array(preview))
-        let teamSize = WidgetDataStore.managerTeamSize ?? 0
-        let presentToday = WidgetDataStore.managerPresentTodayCount ?? 0
-        ManagerTeamLiveActivityManager.update(
-            openProblems: open.count,
-            teamSize: teamSize,
-            presentToday: presentToday,
-            latestProblemLabel: preview.first?.displayLine
-        )
+        ManagerTeamLiveActivityManager.refreshRunning()
     }
 
     func loadReports(silent: Bool = false, categories: Set<ManagerReportsFilter>? = nil) async {

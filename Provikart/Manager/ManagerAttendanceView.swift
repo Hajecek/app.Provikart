@@ -294,14 +294,7 @@ final class ManagerAttendanceViewModel: ObservableObject {
             presentToday: present,
             absentNames: Array(absentNames.prefix(6))
         )
-
-        let openProblems = WidgetDataStore.managerOpenProblemsCount ?? 0
-        ManagerTeamLiveActivityManager.update(
-            openProblems: openProblems,
-            teamSize: users.count,
-            presentToday: present,
-            latestProblemLabel: nil
-        )
+        ManagerTeamLiveActivityManager.refreshRunning()
     }
 
     private func normalizedAttendanceStatus(_ raw: String) -> String {

@@ -62,14 +62,12 @@ struct SettingsView: View {
     }
 
     private var liveActivityToggleTitle: String {
-        isManagerRole
-            ? "Tým na Lock Screenu a v Dynamic Island"
-            : "Provize na Lock Screenu a v Dynamic Island"
+        "Provize na Lock Screenu a v Dynamic Island"
     }
 
     private var liveActivityFooter: String {
         isManagerRole
-            ? "Když je zapnuto, aplikace zobrazí otevřené problémy týmu a docházku na Lock Screenu a v Dynamic Island."
+            ? "Vyberte, co chcete vidět na Lock Screenu a v Dynamic Island, a spusťte to přímo z aplikace."
             : "Když je zapnuto, aplikace zobrazí aktuální provizi a postup k cíli na Lock Screenu a v Dynamic Island."
     }
 
@@ -96,14 +94,18 @@ struct SettingsView: View {
             notificationsSection
 
             Section {
-                Toggle(isOn: $liveActivityEnabled) {
-                    Label(liveActivityToggleTitle, systemImage: "livephoto")
-                }
-                .onChange(of: liveActivityEnabled) { _, enabled in
-                    if !enabled {
-                        if isManagerRole {
-                            ManagerTeamLiveActivityManager.endAll()
-                        } else {
+                if isManagerRole {
+                    NavigationLink {
+                        ManagerLiveActivitySetupView()
+                    } label: {
+                        Label("Lock Screen a Dynamic Island", systemImage: "platter.filled.top.and.bottom.iphone")
+                    }
+                } else {
+                    Toggle(isOn: $liveActivityEnabled) {
+                        Label(liveActivityToggleTitle, systemImage: "livephoto")
+                    }
+                    .onChange(of: liveActivityEnabled) { _, enabled in
+                        if !enabled {
                             CommissionLiveActivityManager.endAll()
                         }
                     }

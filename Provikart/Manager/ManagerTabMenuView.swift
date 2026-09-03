@@ -34,6 +34,8 @@ final class ManagerPerformanceBadgeState: ObservableObject {
         do {
             let payload = try await service.fetchPerformance(token: token, month: month)
             todayServicesCount = payload.todayServicesCount
+            WidgetDataStore.saveManagerTodayServices(payload.todayServicesCount)
+            ManagerTeamLiveActivityManager.refreshRunning()
             didLoad = true
         } catch {
             // Badge necháme beze změny – detailní chyba se řeší na stránce Výkon.
@@ -42,6 +44,8 @@ final class ManagerPerformanceBadgeState: ObservableObject {
 
     func update(todayServicesCount: Int) {
         self.todayServicesCount = todayServicesCount
+        WidgetDataStore.saveManagerTodayServices(todayServicesCount)
+        ManagerTeamLiveActivityManager.refreshRunning()
         didLoad = true
     }
 

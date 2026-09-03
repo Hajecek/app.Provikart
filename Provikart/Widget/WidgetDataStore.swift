@@ -41,7 +41,17 @@ enum WidgetDataStore {
         static let managerPresentToday = "widget_manager_present_today"
         static let managerAbsentNames = "widget_manager_absent_names"
         static let managerProblemsPreview = "widget_manager_problems_preview"
+        static let managerTodayServices = "widget_manager_today_services"
+        static let managerTodayServicesDay = "widget_manager_today_services_day"
     }
+
+    private static let dayKeyFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
 
     /// Náhled otevřeného problému týmu pro widget.
     struct ManagerProblemPreview: Codable, Identifiable {
@@ -86,6 +96,27 @@ enum WidgetDataStore {
     static var managerPresentTodayCount: Int? {
         guard let raw = suite?.object(forKey: Keys.managerPresentToday) else { return nil }
         return (raw as? NSNumber)?.intValue ?? raw as? Int
+    }
+
+    static var managerTodayServicesCount: Int {
+        let storedDay = suite?.string(forKey: Keys.managerTodayServicesDay)
+        let today = dayKeyFormatter.string(from: Date())
+        guard storedDay == today else { return 0 }
+        guard let raw = suite?.object(forKey: Keys.managerTodayServices) else { return 0 }
+        return (raw as? NSNumber)?.intValue ?? raw as? Int ?? 0
+    }
+
+    static var managerLatestProblemLabel: String? {
+        guard let data = suite?.data(forKey: Keys.managerProblemsPreview),
+              let items = try? JSONDecoder().decode([ManagerProblemPreview].self, from: data),
+              let first = items.first else { return nil }
+        let line = first.displayLine
+        return line.isEmpty ? nil : line
+    }
+
+    static func saveManagerTodayServices(_ count: Int) {
+        suite?.set(NSNumber(value: count), forKey: Keys.managerTodayServices)
+        suite?.set(dayKeyFormatter.string(from: Date()), forKey: Keys.managerTodayServicesDay)
     }
 
     static func clearUserRole() {
@@ -232,6 +263,8 @@ enum WidgetDataStore {
         suite?.removeObject(forKey: Keys.managerPresentToday)
         suite?.removeObject(forKey: Keys.managerAbsentNames)
         suite?.removeObject(forKey: Keys.managerProblemsPreview)
+        suite?.removeObject(forKey: Keys.managerTodayServices)
+        suite?.removeObject(forKey: Keys.managerTodayServicesDay)
         reloadManagerWidgetTimelines()
     }
 

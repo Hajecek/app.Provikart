@@ -367,6 +367,7 @@ struct ManagerTeamPerformanceView: View {
     @State private var searchText = ""
     @State private var selectedFilter: ManagerPerformanceFilter = .all
     @State private var isLocationsSheetPresented = false
+    @State private var isLiveActivitySetupPresented = false
     @State private var daysScrollToken = UUID()
 
     private var filteredUsers: [ManagerPerformanceUser] {
@@ -458,6 +459,12 @@ struct ManagerTeamPerformanceView: View {
             .sheet(isPresented: $isLocationsSheetPresented) {
                 ManagerLocationsSheetView()
                     .environmentObject(authState)
+            }
+            .sheet(isPresented: $isLiveActivitySetupPresented) {
+                NavigationStack {
+                    ManagerLiveActivitySetupView(showsCloseButton: true)
+                        .environmentObject(authState)
+                }
             }
             .alert(
                 "Chyba",
@@ -614,6 +621,26 @@ struct ManagerTeamPerformanceView: View {
                     color: .teal
                 )
             }
+
+            Button {
+                isLiveActivitySetupPresented = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "platter.filled.top.and.bottom.iphone")
+                    Text("Zobrazit na Lock Screenu")
+                        .fontWeight(.semibold)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .font(.subheadline)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color.indigo.opacity(0.12), in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.indigo)
         }
         .padding(16)
         .background(cardBackground(tint: .orange))
