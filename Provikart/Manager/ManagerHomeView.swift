@@ -2,10 +2,11 @@
 //  ManagerHomeView.swift
 //  Provikart
 //
-//  Manažerský Home – nativní přehled týmu (jako webový dashboard).
+//  Manažerský Home – nativní přehled týmu.
 //
 
 import SwiftUI
+import UIKit
 
 @MainActor
 final class ManagerHomeViewModel: ObservableObject {
@@ -49,12 +50,15 @@ final class ManagerHomeViewModel: ObservableObject {
 
 struct ManagerHomeView: View {
     @EnvironmentObject private var authState: AuthState
-    @EnvironmentObject private var reportIssueSheet: ManagerReportIssueSheetState
     @Binding var selectedTab: ManagerTabs
     @StateObject private var viewModel = ManagerHomeViewModel()
     @State private var selectedPersonID: ManagerHomePersonRoute?
     @State private var showTeamList = false
     @State private var showDealWars = false
+    @Namespace private var periodAnimation
+
+    private let brandOrange = Color(red: 0.93, green: 0.43, blue: 0.08)
+    private let brandGold = Color(red: 1.00, green: 0.70, blue: 0.20)
 
     var body: some View {
         NavigationStack {
@@ -74,7 +78,7 @@ struct ManagerHomeView: View {
                         .buttonStyle(.borderedProminent)
                     }
                 } else {
-                    dashboardScroll
+                    homeList
                 }
             }
             .background { ManagerScreenBackground() }
@@ -115,25 +119,23 @@ struct ManagerHomeView: View {
         }
     }
 
-    private var dashboardScroll: some View {
+    private var homeList: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                headerBlock
-                periodPicker
+            LazyVStack(alignment: .leading, spacing: 24) {
+                welcomeHeader
+                periodSelector
                 alertsBlock
-                kpiGrid
-                commissionHero
-                activitiesBlock
-                quickActions
-                riskBlock
-                servicesBlock
-                teamBlock
-                dealWarsBlock
-                localitiesBlock
+                performanceHero
+                activityBento
+                servicesCard
+                teamCarousel
+                attentionCard
+                dealWarsCard
+                localitiesCard
             }
             .padding(.horizontal, 16)
-            .padding(.top, 4)
-            .padding(.bottom, 28)
+            .padding(.top, 8)
+            .padding(.bottom, 36)
         }
     }
 
@@ -151,32 +153,71 @@ struct ManagerHomeView: View {
         return name.split(separator: " ").first.map(String.init) ?? "manažere"
     }
 
-    private var headerBlock: some View {
-        VStack(alignment: .leading, spacing: 6) {
+    private var roleTitle: String {
+        switch authState.currentUser?.role?.lowercased() {
+        case "admin": return "Administrátor"
+        case "manager": return "Manažer"
+        case "user": return "Obchodník"
+        default: return "Uživatel"
+        }
+    }
+
+    private var welcomeHeader: some View {
+        VStack(alignment: .leading, spacing: 3) {
             Text(greetingText)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
             Text(firstName)
-                .font(.largeTitle.bold())
-                .foregroundStyle(.primary)
-            if let data = viewModel.payload {
-                Text("Tým · \(data.memberCount) \(memberWord(data.memberCount)) · \(viewModel.periodLabel)")
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(.secondary)
+                .font(.system(size: 38, weight: .bold, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+            HStack(spacing: 8) {
+                Label(roleTitle, systemImage: "person.crop.circle.badge.checkmark")
+                    .foregroundStyle(brandOrange)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(brandOrange.opacity(0.11), in: Capsule())
+
+                if let data = viewModel.payload {
+                    Label("\(data.memberCount) \(memberWord(data.memberCount)) v týmu", systemImage: "person.2.fill")
+                        .foregroundStyle(.secondary)
+                }
             }
+            .font(.caption.weight(.semibold))
+            .padding(.top, 3)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 4)
+        .padding(.vertical, 4)
     }
 
-    private var periodPicker: some View {
-        Picker("Období", selection: $viewModel.period) {
+    private var periodSelector: some View {
+        HStack(spacing: 4) {
             ForEach(ManagerOverviewPeriod.allCases) { item in
-                Text(item.title).tag(item)
+                Button {
+                    bump()
+                    withAnimation(.snappy(duration: 0.28)) {
+                        viewModel.period = item
+                    }
+                } label: {
+                    Text(item.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(viewModel.period == item ? .white : .secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 9)
+                        .background {
+                            if viewModel.period == item {
+                                Capsule()
+                                    .fill(brandOrange.gradient)
+                                    .matchedGeometryEffect(id: "period", in: periodAnimation)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
             }
         }
-        .pickerStyle(.segmented)
-        .accessibilityLabel("Období přehledu")
+        .padding(4)
+        .background(.thinMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.06)))
     }
 
     @ViewBuilder
@@ -185,37 +226,33 @@ struct ManagerHomeView: View {
             VStack(spacing: 10) {
                 ForEach(alerts) { alert in
                     Button {
+                        bump()
                         handleAlert(alert)
                     } label: {
-                        HStack(alignment: .top, spacing: 12) {
+                        HStack(spacing: 12) {
                             Image(systemName: alertIcon(alert.tone))
                                 .font(.body.weight(.semibold))
                                 .foregroundStyle(alertTint(alert.tone))
-                                .frame(width: 28, height: 28)
-                                .background(alertTint(alert.tone).opacity(0.14), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .frame(width: 38, height: 38)
+                                .background(alertTint(alert.tone).opacity(0.14), in: Circle())
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(alert.title)
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(.primary)
-                                    .multilineTextAlignment(.leading)
                                 if !alert.text.isEmpty {
                                     Text(alert.text)
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
-                                        .multilineTextAlignment(.leading)
+                                        .lineLimit(2)
                                 }
                             }
-                            Spacer(minLength: 8)
-                            Text(alert.actionLabel)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.tint)
+                            Spacer(minLength: 4)
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.tertiary)
                         }
                         .padding(14)
-                        .background(cardBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .strokeBorder(Color.primary.opacity(0.05), lineWidth: 1)
-                        )
+                        .background(surface(tint: alertTint(alert.tone), radius: 18))
                     }
                     .buttonStyle(.plain)
                 }
@@ -223,146 +260,118 @@ struct ManagerHomeView: View {
         }
     }
 
-    private var kpiGrid: some View {
-        let kpis = viewModel.payload?.kpis ?? []
-        return LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-            ForEach(kpis.prefix(3)) { kpi in
+    @ViewBuilder
+    private var performanceHero: some View {
+        if let summary = viewModel.payload?.summary {
+            VStack(alignment: .leading, spacing: 12) {
+                sectionTitle("Výsledky", trailing: viewModel.periodLabel)
                 Button {
+                    bump()
                     selectedTab = .performance
                 } label: {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Image(systemName: kpiIcon(kpi.key))
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(kpiTint(kpi.tone))
-                                .frame(width: 28, height: 28)
-                                .background(kpiTint(kpi.tone).opacity(0.14), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    VStack(alignment: .leading, spacing: 18) {
+                        HStack(alignment: .top, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Provize týmu")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.white.opacity(0.72))
+                                Text(summary.totalCommission)
+                                    .font(.system(size: 31, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.white)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.65)
+                                deltaChip(summary.commissionDelta, up: summary.commissionDeltaUp, onDark: true)
+                            }
                             Spacer()
-                            deltaChip(kpi.delta, up: kpi.up)
+                            targetRing(summary)
                         }
-                        Text(kpi.label)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.85)
-                        Text(kpi.value)
-                            .font(.headline.bold())
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
+
+                        if summary.hasGoal {
+                            let pct = min(1, max(0, Double(summary.planPct ?? 0) / 100))
+                            VStack(alignment: .leading, spacing: 6) {
+                                ProgressView(value: pct)
+                                    .tint(.white)
+                                HStack {
+                                    Text("\(summary.planPct ?? 0) % z cíle")
+                                    Spacer()
+                                    Text(summary.teamGoalLabel)
+                                }
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.white.opacity(0.72))
+                            }
+                        }
+
+                        HStack(spacing: 8) {
+                            darkMetric("Měsíc", summary.monthEarnedLabel)
+                            darkMetric("Predikce", summary.monthPrediction)
+                            darkMetric("Nejlepší", summary.bestName)
+                        }
                     }
-                    .padding(12)
-                    .frame(maxWidth: .infinity, minHeight: 118, alignment: .topLeading)
-                    .background(cardBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .strokeBorder(Color.primary.opacity(0.05), lineWidth: 1)
-                    )
+                    .padding(18)
+                    .background(heroBackground)
                 }
                 .buttonStyle(.plain)
+
+                if let kpis = viewModel.payload?.kpis, !kpis.isEmpty {
+                    HStack(spacing: 10) {
+                        ForEach(kpis.prefix(3)) { kpi in
+                            kpiTile(kpi)
+                        }
+                    }
+                }
             }
         }
+    }
+
+    private func targetRing(_ summary: ManagerOverviewSummary) -> some View {
+        let value = min(1, max(0, Double(summary.planPct ?? 0) / 100))
+        return ZStack {
+            Circle().stroke(.white.opacity(0.18), lineWidth: 7)
+            Circle()
+                .trim(from: 0, to: value)
+                .stroke(.white, style: StrokeStyle(lineWidth: 7, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            VStack(spacing: 0) {
+                Text(summary.hasGoal ? "\(summary.planPct ?? 0)" : "—")
+                    .font(.headline.bold().monospacedDigit())
+                Text("%")
+                    .font(.caption2.weight(.semibold))
+            }
+            .foregroundStyle(.white)
+        }
+        .frame(width: 68, height: 68)
     }
 
     @ViewBuilder
-    private var commissionHero: some View {
-        if let summary = viewModel.payload?.summary {
-            Button {
-                selectedTab = .performance
-            } label: {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Provize týmu")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            Text(summary.totalCommission)
-                                .font(.title.bold())
-                                .foregroundStyle(.primary)
-                        }
-                        Spacer()
-                        deltaChip(summary.commissionDelta, up: summary.commissionDeltaUp)
-                    }
-
-                    if summary.hasGoal {
-                        let pct = min(1, max(0, Double(summary.planPct ?? 0) / 100))
-                        VStack(alignment: .leading, spacing: 6) {
-                            ProgressView(value: pct)
-                                .tint(.orange)
-                            HStack {
-                                Text("\(summary.planPct ?? 0) % z cíle")
-                                Spacer()
-                                Text(summary.teamGoalLabel)
-                            }
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    HStack(spacing: 16) {
-                        labeledStat("Měsíc zatím", summary.monthEarnedLabel)
-                        labeledStat("Predikce", summary.monthPrediction)
-                        labeledStat("Nejlepší", summary.bestName)
-                    }
-                }
-                .padding(16)
-                .background(cardBackground, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    private var quickActions: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Rychlé akce")
-                .font(.headline)
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                actionTile("Problémy", "exclamationmark.bubble.fill", .orange) { selectedTab = .problems }
-                actionTile("Docházka", "person.badge.clock.fill", .blue) { selectedTab = .attendance }
-                actionTile("Výkon", "chart.bar.fill", .green) { selectedTab = .performance }
-                actionTile("Lokality", "building.2.fill", .teal) { selectedTab = .localities }
-                actionTile("Tým", "person.3.fill", .purple) {
-                    showTeamList = true
-                }
-                actionTile("Nahlásit", "plus.circle.fill", .pink) {
-                    reportIssueSheet.isPresented = true
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var activitiesBlock: some View {
+    private var activityBento: some View {
         if let activities = viewModel.payload?.activities, !activities.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("Aktivita")
-                        .font(.headline)
-                    Spacer()
-                    Button("Výkon") { selectedTab = .performance }
-                        .font(.subheadline.weight(.semibold))
-                }
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                sectionTitle("Aktivita", trailing: "Otevřít výkon")
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible())], spacing: 10) {
                     ForEach(activities.prefix(6)) { item in
                         Button {
+                            bump()
                             selectedTab = .performance
                         } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(item.label)
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(2)
-                                    .minimumScaleFactor(0.85)
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack {
+                                    Image(systemName: activityIcon(item.label))
+                                        .font(.subheadline.weight(.bold))
+                                        .foregroundStyle(brandOrange)
+                                    Spacer()
+                                    deltaChip(item.delta, up: item.up)
+                                }
                                 Text(item.value)
-                                    .font(.headline.bold().monospacedDigit())
+                                    .font(.system(.title2, design: .rounded).weight(.bold))
                                     .foregroundStyle(.primary)
+                                Text(item.label)
+                                    .font(.caption.weight(.medium))
+                                    .foregroundStyle(.secondary)
                                     .lineLimit(1)
-                                    .minimumScaleFactor(0.7)
-                                deltaChip(item.delta, up: item.up)
                             }
-                            .padding(12)
-                            .frame(maxWidth: .infinity, minHeight: 96, alignment: .topLeading)
-                            .background(cardBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .padding(14)
+                            .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
+                            .background(surface(radius: 18))
                         }
                         .buttonStyle(.plain)
                     }
@@ -372,278 +381,296 @@ struct ManagerHomeView: View {
     }
 
     @ViewBuilder
-    private var riskBlock: some View {
-        if let people = viewModel.payload?.riskPeople, !people.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Vyžaduje pozornost")
-                    .font(.headline)
-                VStack(spacing: 0) {
-                    ForEach(Array(people.enumerated()), id: \.element.id) { index, person in
-                        Button {
-                            selectedPersonID = ManagerHomePersonRoute(id: person.id)
-                        } label: {
-                            HStack(spacing: 12) {
-                                avatarView(url: person.avatarURL, initials: person.initials)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(person.name)
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(.primary)
-                                    Text(person.reason)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                    if !person.detail.isEmpty {
-                                        Text(person.detail)
-                                            .font(.caption2)
-                                            .foregroundStyle(.tertiary)
-                                    }
-                                }
-                                Spacer()
-                                if !person.metric.isEmpty {
-                                    Text(person.metric)
-                                        .font(.caption.weight(.bold).monospacedDigit())
-                                        .foregroundStyle(person.level == "risk" ? Color.red : Color.orange)
-                                }
-                                Image(systemName: "chevron.right")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.tertiary)
-                            }
-                            .padding(.vertical, 10)
-                        }
-                        .buttonStyle(.plain)
-                        if index < people.count - 1 {
-                            Divider().padding(.leading, 52)
-                        }
-                    }
-                }
-            }
-            .padding(16)
-            .background(cardBackground, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        }
-    }
-
-    @ViewBuilder
-    private var servicesBlock: some View {
+    private var servicesCard: some View {
         if let slices = viewModel.payload?.servicesBreakdown, !slices.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("Mix služeb")
-                        .font(.headline)
-                    Spacer()
-                    if let meta = viewModel.payload?.servicesMeta {
-                        Text("\(meta.total)")
-                            .font(.subheadline.weight(.bold).monospacedDigit())
-                            .foregroundStyle(.secondary)
-                    }
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                }
-                VStack(spacing: 8) {
+                sectionTitle("Mix služeb", trailing: viewModel.payload?.servicesMeta.map { "\($0.total) celkem" })
+                VStack(spacing: 14) {
+                    stackedServicesBar(slices)
                     ForEach(slices.prefix(5)) { slice in
                         Button {
+                            bump()
                             selectedTab = .performance
                         } label: {
                             HStack(spacing: 10) {
                                 Circle()
                                     .fill(Color(hex: slice.color))
-                                    .frame(width: 8, height: 8)
+                                    .frame(width: 9, height: 9)
                                 Text(slice.label)
                                     .font(.subheadline.weight(.medium))
                                     .foregroundStyle(.primary)
                                 Spacer()
                                 Text("\(slice.count)")
-                                    .font(.subheadline.weight(.semibold).monospacedDigit())
+                                    .font(.subheadline.weight(.bold).monospacedDigit())
                                     .foregroundStyle(.primary)
                                 Text("\(slice.pct) %")
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(.secondary)
-                                    .frame(width: 40, alignment: .trailing)
+                                    .frame(width: 42, alignment: .trailing)
                             }
                         }
                         .buttonStyle(.plain)
-                    }
-                }
-            }
-            .padding(16)
-            .background(cardBackground, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        }
-    }
-
-    @ViewBuilder
-    private var teamBlock: some View {
-        if let people = viewModel.payload?.salespeople, !people.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("Tým")
-                        .font(.headline)
-                    Spacer()
-                    Button("Všichni") { showTeamList = true }
-                        .font(.subheadline.weight(.semibold))
-                }
-                VStack(spacing: 0) {
-                    ForEach(Array(people.enumerated()), id: \.element.id) { index, person in
-                        Button {
-                            selectedPersonID = ManagerHomePersonRoute(id: person.id)
-                        } label: {
-                            HStack(spacing: 12) {
-                                avatarView(url: person.avatarURL, initials: person.initials)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(person.name)
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(.primary)
-                                    Text("\(person.services) služeb · plán \(person.planLabel)")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                Text(person.commission)
-                                    .font(.subheadline.weight(.bold).monospacedDigit())
-                                    .foregroundStyle(.primary)
-                                Image(systemName: "chevron.right")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.tertiary)
-                            }
-                            .padding(.vertical, 10)
-                        }
-                        .buttonStyle(.plain)
-                        if index < people.count - 1 {
-                            Divider().padding(.leading, 52)
-                        }
-                    }
-                }
-            }
-            .padding(16)
-            .background(cardBackground, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        }
-    }
-
-    @ViewBuilder
-    private var dealWarsBlock: some View {
-        if let leaders = viewModel.payload?.leaderboard, !leaders.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                Button {
-                    showDealWars = true
-                } label: {
-                    HStack {
-                        Text("Deal Wars")
-                            .font(.headline)
-                            .foregroundStyle(.primary)
-                        Spacer()
-                        Text("Žebříček")
-                            .font(.subheadline.weight(.semibold))
-                    }
-                }
-                .buttonStyle(.plain)
-                ForEach(leaders) { leader in
-                    Button {
-                        selectedPersonID = ManagerHomePersonRoute(id: leader.id)
-                    } label: {
-                        HStack(spacing: 12) {
-                            Text("\(leader.place)")
-                                .font(.headline.bold().monospacedDigit())
-                                .foregroundStyle(placeColor(leader.place))
-                                .frame(width: 22)
-                            avatarView(url: leader.avatarURL, initials: leader.initials, size: 36)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(leader.name)
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                                if leader.xp > 0 {
-                                    Text("\(leader.xp) XP")
-                                        .font(.caption2.weight(.medium))
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            Spacer()
-                            Text(leader.amount)
-                                .font(.subheadline.weight(.bold).monospacedDigit())
-                                .foregroundStyle(.secondary)
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(16)
-            .background(cardBackground, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        }
-    }
-
-    @ViewBuilder
-    private var localitiesBlock: some View {
-        if let loc = viewModel.payload?.localities, loc.available {
-            Button {
-                selectedTab = .localities
-            } label: {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Text("Lokality")
-                            .font(.headline)
-                            .foregroundStyle(.primary)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.tertiary)
-                    }
-                    HStack(spacing: 10) {
-                        locStat("Celkem", loc.total, .primary)
-                        locStat("Přiřazené", loc.assigned, .blue)
-                        locStat("Volné", loc.unassigned, loc.unassigned > 0 ? .orange : .green)
-                        locStat("Hotovo", loc.done, .green)
                     }
                 }
                 .padding(16)
-                .background(cardBackground, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .background(surface(tint: .blue, radius: 22))
             }
-            .buttonStyle(.plain)
         }
     }
 
-    private var cardBackground: Color {
-        Color(uiColor: .secondarySystemGroupedBackground)
+    @ViewBuilder
+    private var teamCarousel: some View {
+        if let people = viewModel.payload?.salespeople, !people.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Button {
+                    bump()
+                    showTeamList = true
+                } label: {
+                    sectionTitle("Tým", trailing: "Zobrazit všechny")
+                }
+                .buttonStyle(.plain)
+
+                ScrollView(.horizontal) {
+                    LazyHStack(spacing: 10) {
+                        ForEach(people) { person in
+                            Button {
+                                bump()
+                                selectedPersonID = ManagerHomePersonRoute(id: person.id)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    avatarView(url: person.avatarURL, initials: person.initials, size: 46)
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(person.name)
+                                            .font(.subheadline.weight(.bold))
+                                            .foregroundStyle(.primary)
+                                            .lineLimit(1)
+                                        Text(person.commission)
+                                            .font(.headline.weight(.bold).monospacedDigit())
+                                            .foregroundStyle(brandOrange)
+                                        Text("\(person.services) služeb · \(person.planLabel)")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                }
+                                .padding(14)
+                                .frame(width: 168, alignment: .leading)
+                                .background(surface(tint: .purple, radius: 20))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .scrollTargetLayout()
+                }
+                .scrollIndicators(.hidden)
+                .scrollTargetBehavior(.viewAligned)
+            }
+        }
     }
 
-    private func actionTile(_ title: String, _ icon: String, _ tint: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(tint)
-                    .frame(width: 36, height: 36)
-                    .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
-                Spacer(minLength: 0)
+    @ViewBuilder
+    private var attentionCard: some View {
+        if let people = viewModel.payload?.riskPeople, !people.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                sectionTitle("Vyžaduje pozornost")
+                VStack(spacing: 0) {
+                    ForEach(Array(people.enumerated()), id: \.element.id) { index, person in
+                    Button {
+                        bump()
+                        selectedPersonID = ManagerHomePersonRoute(id: person.id)
+                    } label: {
+                        HStack(spacing: 12) {
+                            avatarView(url: person.avatarURL, initials: person.initials, size: 36)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(person.name)
+                                    .foregroundStyle(.primary)
+                                Text(person.reason)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if !person.metric.isEmpty {
+                                Text(person.metric)
+                                    .font(.caption.weight(.bold).monospacedDigit())
+                                    .foregroundStyle(person.level == "risk" ? Color.red : Color.orange)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        (person.level == "risk" ? Color.red : Color.orange).opacity(0.1),
+                                        in: Capsule()
+                                    )
+                            }
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .padding(.vertical, 11)
+                    }
+                    .buttonStyle(.plain)
+                    if index < people.count - 1 {
+                        Divider().padding(.leading, 48)
+                    }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 4)
+                .background(surface(tint: .orange, radius: 22))
             }
-            .padding(14)
-            .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-            .background(cardBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.05), lineWidth: 1)
-            )
+        }
+    }
+
+    @ViewBuilder
+    private var dealWarsCard: some View {
+        if let leaders = viewModel.payload?.leaderboard, !leaders.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Button {
+                    bump()
+                    showDealWars = true
+                } label: {
+                    sectionTitle("Deal Wars", trailing: "Celý žebříček")
+                }
+                .buttonStyle(.plain)
+
+                HStack(alignment: .bottom, spacing: 8) {
+                    ForEach(Array(leaders.prefix(3).enumerated()), id: \.element.id) { index, leader in
+                        let displayed = leaders.count >= 3 ? [leaders[1], leaders[0], leaders[2]][index] : leader
+                        Button {
+                            bump()
+                            selectedPersonID = ManagerHomePersonRoute(id: displayed.id)
+                        } label: {
+                            VStack(spacing: 8) {
+                                ZStack(alignment: .topTrailing) {
+                                    avatarView(
+                                        url: displayed.avatarURL,
+                                        initials: displayed.initials,
+                                        size: displayed.place == 1 ? 58 : 46
+                                    )
+                                    Text("\(displayed.place)")
+                                        .font(.caption2.bold())
+                                        .foregroundStyle(.white)
+                                        .frame(width: 20, height: 20)
+                                        .background(placeColor(displayed.place), in: Circle())
+                                        .offset(x: 3, y: -3)
+                                }
+                                Text(displayed.name)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                Text(displayed.amount)
+                                    .font(.caption2.weight(.bold).monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, displayed.place == 1 ? 16 : 12)
+                            .background(Color.primary.opacity(displayed.place == 1 ? 0.055 : 0.025), in: RoundedRectangle(cornerRadius: 16))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(12)
+                .background(surface(tint: brandGold, radius: 22))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var localitiesCard: some View {
+        if let loc = viewModel.payload?.localities, loc.available {
+            VStack(alignment: .leading, spacing: 12) {
+                sectionTitle("Lokality", trailing: "Spravovat")
+                Button {
+                    bump()
+                    selectedTab = .localities
+                } label: {
+                    HStack(spacing: 8) {
+                        localityMetric("Celkem", loc.total, .primary)
+                        localityMetric("Přiřazené", loc.assigned, .blue)
+                        localityMetric("Volné", loc.unassigned, loc.unassigned > 0 ? .orange : .green)
+                        localityMetric("Hotovo", loc.done, .green)
+                    }
+                    .padding(14)
+                    .background(surface(tint: .teal, radius: 22))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func sectionTitle(_ title: String, trailing: String? = nil) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title)
+                .font(.title3.bold())
+                .foregroundStyle(.primary)
+            Spacer()
+            if let trailing {
+                Text(trailing)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 2)
+    }
+
+    private func kpiTile(_ kpi: ManagerOverviewKPI) -> some View {
+        Button {
+            bump()
+            selectedTab = .performance
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                Image(systemName: kpiIcon(kpi.key))
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(kpiTint(kpi.tone))
+                    .frame(width: 28, height: 28)
+                    .background(kpiTint(kpi.tone).opacity(0.12), in: Circle())
+                Text(kpi.value)
+                    .font(.subheadline.bold().monospacedDigit())
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.65)
+                Text(kpi.label)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
+            .background(surface(radius: 18))
         }
         .buttonStyle(.plain)
     }
 
-    private func labeledStat(_ title: String, _ value: String) -> some View {
+    private func stackedServicesBar(_ slices: [ManagerOverviewServiceSlice]) -> some View {
+        GeometryReader { proxy in
+            HStack(spacing: 2) {
+                ForEach(slices.prefix(5)) { slice in
+                    Color(hex: slice.color)
+                        .frame(width: max(3, proxy.size.width * CGFloat(slice.pct) / 100))
+                }
+            }
+            .clipShape(Capsule())
+        }
+        .frame(height: 10)
+        .background(Color.primary.opacity(0.06), in: Capsule())
+    }
+
+    private func darkMetric(_ title: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.62))
             Text(value)
                 .font(.caption.weight(.bold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(.white)
                 .lineLimit(1)
-                .minimumScaleFactor(0.8)
+                .minimumScaleFactor(0.7)
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white.opacity(0.11), in: RoundedRectangle(cornerRadius: 11))
     }
 
-    private func locStat(_ title: String, _ value: Int, _ color: Color) -> some View {
+    private func localityMetric(_ title: String, _ value: Int, _ color: Color) -> some View {
         VStack(spacing: 4) {
             Text("\(value)")
                 .font(.headline.bold().monospacedDigit())
@@ -651,30 +678,71 @@ struct ManagerHomeView: View {
             Text(title)
                 .font(.caption2.weight(.medium))
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity)
     }
 
-    private func deltaChip(_ text: String, up: Bool?) -> some View {
+    private var heroBackground: some View {
+        RoundedRectangle(cornerRadius: 24, style: .continuous)
+            .fill(
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.94, green: 0.47, blue: 0.08),
+                        Color(red: 0.65, green: 0.20, blue: 0.07),
+                        Color(red: 0.28, green: 0.08, blue: 0.08)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 24)
+                    .strokeBorder(.white.opacity(0.12))
+            }
+            .shadow(color: brandOrange.opacity(0.22), radius: 16, y: 7)
+    }
+
+    private func surface(tint: Color = .clear, radius: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: radius, style: .continuous)
+            .fill(Color(uiColor: .secondarySystemGroupedBackground))
+            .overlay {
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [tint.opacity(0.09), .clear],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.055))
+            }
+            .shadow(color: .black.opacity(0.035), radius: 7, y: 3)
+    }
+
+    private func deltaChip(_ text: String, up: Bool?, onDark: Bool = false) -> some View {
         let color: Color = {
             if up == true { return .green }
             if up == false { return .red }
             return .secondary
         }()
-        let icon = up == true ? "arrow.up" : (up == false ? "arrow.down" : "minus")
         return HStack(spacing: 3) {
-            Image(systemName: icon)
+            Image(systemName: up == true ? "arrow.up" : (up == false ? "arrow.down" : "minus"))
                 .font(.system(size: 8, weight: .bold))
             Text(text)
                 .font(.caption2.weight(.bold))
         }
-        .foregroundStyle(color)
+        .foregroundStyle(onDark ? Color.white : color)
         .padding(.horizontal, 6)
         .padding(.vertical, 3)
-        .background(color.opacity(0.12), in: Capsule())
+        .background((onDark ? Color.white : color).opacity(0.12), in: Capsule())
     }
 
-    private func avatarView(url: URL?, initials: String, size: CGFloat = 40) -> some View {
+    private func avatarView(url: URL?, initials: String, size: CGFloat) -> some View {
         Group {
             if let url {
                 AuthenticatedProfileImageView(url: url, token: authState.authToken, size: size)
@@ -686,6 +754,10 @@ struct ManagerHomeView: View {
                     .background(Color.orange.gradient, in: Circle())
             }
         }
+    }
+
+    private func bump() {
+        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
     }
 
     private func handleAlert(_ alert: ManagerOverviewAlert) {
@@ -714,6 +786,17 @@ struct ManagerHomeView: View {
         case "orange": return .orange
         default: return .blue
         }
+    }
+
+    private func activityIcon(_ label: String) -> String {
+        let key = label.lowercased()
+        if key.contains("navol") { return "phone.fill" }
+        if key.contains("schůz") || key.contains("schuz") { return "person.2.fill" }
+        if key.contains("prodej") { return "cart.fill" }
+        if key.contains("objedn") { return "doc.text.fill" }
+        if key.contains("služ") || key.contains("sluz") { return "wifi" }
+        if key.contains("ček") || key.contains("cek") { return "clock.fill" }
+        return "chart.bar.fill"
     }
 
     private func alertIcon(_ tone: String) -> String {
