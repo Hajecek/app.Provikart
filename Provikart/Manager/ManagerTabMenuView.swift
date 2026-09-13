@@ -8,6 +8,7 @@
 import SwiftUI
 
 enum ManagerTabs: Hashable {
+    case home
     case problems
     case attendance
     case performance
@@ -167,11 +168,19 @@ struct ManagerTabMenuView: View {
     @StateObject private var notificationsSheet = ManagerNotificationsSheetState()
     @StateObject private var performanceBadge = ManagerPerformanceBadgeState()
     @StateObject private var notificationsBadge = ManagerNotificationsBadgeState()
-    @State private var selectedTab: ManagerTabs = .problems
+    @State private var selectedTab: ManagerTabs = .home
     @State private var problemsRefreshToken = UUID()
 
     var body: some View {
         TabView(selection: $selectedTab) {
+            Tab("Domů", systemImage: "house", value: .home) {
+                ManagerHomeView(selectedTab: $selectedTab)
+                    .environmentObject(authState)
+                    .environmentObject(reportIssueSheet)
+                    .environmentObject(notificationsSheet)
+                    .environmentObject(notificationsBadge)
+            }
+
             Tab("Problémy", systemImage: "exclamationmark.bubble", value: .problems) {
                 ManagerProblemsView(refreshToken: problemsRefreshToken)
                     .environmentObject(authState)
