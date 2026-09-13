@@ -7,48 +7,82 @@
 
 import LocalAuthentication
 import SwiftUI
+import UIKit
 
 struct BiometricVerificationView: View {
     var onSuccess: () -> Void
 
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var authState: AuthState
     @State private var errorMessage: String?
     @State private var isAuthenticating = false
     @State private var isUnlockAnimating = false
     @State private var didReportSuccess = false
+    @State private var appeared = false
+    @State private var pulse = false
+    @State private var biometricSymbol = "faceid"
+    @State private var biometricLabel = "Face ID"
     @State private var autoAuthTask: Task<Void, Never>?
 
     var body: some View {
         ZStack {
-            AnimatedStripeBackground()
-                .ignoresSafeArea()
+            UnlockAtmosphereBackground()
 
             VStack(spacing: 0) {
-                Spacer()
+                Image("logo")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 36, height: 36)
+                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .opacity(appeared ? 1 : 0)
+                    .padding(.top, 20)
 
-                VStack(spacing: 18) {
-                    profileAvatar
+                Spacer(minLength: 12)
 
-                    Text("Hezký den, \(displayName)!")
-                        .font(.system(size: 29, weight: .bold, design: .default))
-                        .foregroundStyle(.white)
-                        .multilineTextAlignment(.center)
-                        .minimumScaleFactor(0.8)
-                        .lineLimit(1)
-                        .padding(.horizontal, 24)
+                VStack(spacing: 28) {
+                    avatarBlock
+
+                    VStack(spacing: 8) {
+                        Text(greetingText)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Text(displayName)
+                            .font(.largeTitle.bold())
+                            .foregroundStyle(.primary)
+                            .multilineTextAlignment(.center)
+                            .minimumScaleFactor(0.75)
+                            .lineLimit(1)
+                        Text(statusText)
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 28)
+                    }
                 }
-                .padding(.bottom, 8)
+                .opacity(appeared ? 1 : 0)
+                .offset(y: appeared ? 0 : 18)
 
-                Spacer()
+                Spacer(minLength: 12)
+
+                bottomActions
+                    .padding(.horizontal, 28)
+                    .padding(.bottom, 28)
             }
+            .padding(.top, 8)
         }
         .opacity(isUnlockAnimating ? 0 : 1)
-        .scaleEffect(isUnlockAnimating ? 1.04 : 1)
-        .blur(radius: isUnlockAnimating ? 7 : 0)
+        .scaleEffect(isUnlockAnimating ? 1.03 : 1)
+        .blur(radius: isUnlockAnimating ? 8 : 0)
         .animation(.easeInOut(duration: 0.42), value: isUnlockAnimating)
         .onAppear {
-            // Auto-ověření spouštíme až ve chvíli, kdy je scéna opravdu aktivní.
+            resolveBiometry()
+            withAnimation(.spring(response: 0.72, dampingFraction: 0.86)) {
+                appeared = true
+            }
+            withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
+                pulse = true
+            }
             scheduleAutomaticAuthentication(delay: 0.55)
         }
         .onChange(of: scenePhase) { _, newPhase in
@@ -62,32 +96,100 @@ struct BiometricVerificationView: View {
         }
     }
 
+    private var greetingText: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        if hour < 12 { return "Dobré ráno" }
+        if hour < 18 { return "Dobré odpoledne" }
+        return "Dobrý večer"
+    }
+
+    private var statusText: String {
+        if let errorMessage, !errorMessage.isEmpty {
+            return errorMessage
+        }
+        if isAuthenticating {
+            return "Pokračujte pomocí \(biometricLabel)"
+        }
+        return "Odemkněte aplikaci přes \(biometricLabel)"
+    }
+
+    private var avatarBlock: some View {
+        ZStack {
+            Circle()
+                .stroke(brandOrange.opacity(pulse ? 0.18 : 0.38), lineWidth: 1.5)
+                .frame(width: 168, height: 168)
+                .scaleEffect(pulse && isAuthenticating ? 1.08 : 1)
+
+            Circle()
+                .fill(.ultraThinMaterial)
+                .frame(width: 136, height: 136)
+                .overlay {
+                    Circle()
+                        .strokeBorder(Color.primary.opacity(colorScheme == .dark ? 0.12 : 0.08), lineWidth: 1)
+                }
+                .shadow(color: brandOrange.opacity(0.22), radius: 24, y: 10)
+
+            profileAvatar
+                .offset(y: 0)
+
+            Image(systemName: biometricSymbol)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 34, height: 34)
+                .background(brandOrange.gradient, in: Circle())
+                .overlay {
+                    Circle()
+                        .strokeBorder(Color.white.opacity(0.35), lineWidth: 1)
+                }
+                .shadow(color: brandOrange.opacity(0.45), radius: 8, y: 3)
+                .offset(x: 48, y: 48)
+        }
+        .frame(width: 176, height: 176)
+        .accessibilityHidden(true)
+    }
+
     @ViewBuilder
     private var profileAvatar: some View {
         if let url = authState.currentUser?.profileImageURL {
             AuthenticatedProfileImageView(
                 url: url,
                 token: authState.authToken,
-                size: 82
+                size: 108
             )
-            .overlay {
-                Circle()
-                    .stroke(Color.white.opacity(0.92), lineWidth: 2)
-            }
-            .shadow(color: .black.opacity(0.26), radius: 10, y: 5)
         } else {
-            Image(systemName: "person.crop.circle.fill")
-                .resizable()
-                .scaledToFill()
-                .foregroundStyle(.white.opacity(0.95))
-                .frame(width: 82, height: 82)
-                .background(Color.white.opacity(0.16), in: Circle())
-                .overlay {
-                    Circle()
-                        .stroke(Color.white.opacity(0.92), lineWidth: 2)
-                }
-                .shadow(color: .black.opacity(0.26), radius: 10, y: 5)
+            Text(initials)
+                .font(.system(size: 36, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .frame(width: 108, height: 108)
+                .background(brandOrange.gradient, in: Circle())
         }
+    }
+
+    private var bottomActions: some View {
+        VStack(spacing: 12) {
+            Button {
+                authenticate()
+            } label: {
+                Label("Odemknout", systemImage: biometricSymbol)
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(brandOrange)
+            .controlSize(.large)
+            .disabled(isAuthenticating || didReportSuccess)
+
+            Text("Provikart chrání přístup k citlivým datům.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+        }
+        .opacity(appeared ? 1 : 0)
+    }
+
+    private var brandOrange: Color {
+        Color(red: 0.88, green: 0.42, blue: 0.07)
     }
 
     private var displayName: String {
@@ -101,6 +203,33 @@ struct BiometricVerificationView: View {
             return username
         }
         return "uživateli"
+    }
+
+    private var initials: String {
+        let source = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = source.split(separator: " ")
+        if parts.count >= 2 {
+            return String(parts[0].prefix(1) + parts[1].prefix(1)).uppercased()
+        }
+        return String(source.prefix(2)).uppercased()
+    }
+
+    private func resolveBiometry() {
+        let context = LAContext()
+        var error: NSError?
+        _ = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
+            || context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error)
+        switch context.biometryType {
+        case .touchID:
+            biometricSymbol = "touchid"
+            biometricLabel = "Touch ID"
+        case .opticID:
+            biometricSymbol = "opticid"
+            biometricLabel = "Optic ID"
+        default:
+            biometricSymbol = "faceid"
+            biometricLabel = "Face ID"
+        }
     }
 
     private func authenticate() {
@@ -129,11 +258,9 @@ struct BiometricVerificationView: View {
                 if success {
                     handleSuccessfulAuthentication()
                 } else if let laError = authError as? LAError, laError.code == .notInteractive {
-                    // UI ještě není plně interaktivní, zkusíme to znovu.
                     errorMessage = nil
                     scheduleAutomaticAuthentication(delay: 0.3)
                 } else if let laError = authError as? LAError, laError.code == .userCancel {
-                    // I po zrušení systémové výzvy držíme lockscreen, dokud ověření neproběhne.
                     errorMessage = nil
                     scheduleAutomaticAuthentication(delay: 0.6)
                 } else {
@@ -149,6 +276,7 @@ struct BiometricVerificationView: View {
         didReportSuccess = true
         autoAuthTask?.cancel()
         autoAuthTask = nil
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
         withAnimation(.easeInOut(duration: 0.42)) {
             isUnlockAnimating = true
         }
@@ -170,118 +298,71 @@ struct BiometricVerificationView: View {
     }
 }
 
-private struct AnimatedStripeBackground: View {
+private struct UnlockAtmosphereBackground: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    private let deep = Color(red: 0.72, green: 0.28, blue: 0.04)
+    private let orange = Color(red: 0.88, green: 0.42, blue: 0.07)
+    private let gold = Color(red: 0.94, green: 0.62, blue: 0.18)
+
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-            Canvas { context, size in
-                let t = timeline.date.timeIntervalSinceReferenceDate
-                let background = Path(CGRect(origin: .zero, size: size))
-                context.fill(background, with: .color(Color(red: 0.04, green: 0.05, blue: 0.08)))
+        TimelineView(.animation(minimumInterval: 1.0 / 20.0)) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            let dx = CGFloat(sin(t * 0.28)) * 0.06
+            let dy = CGFloat(cos(t * 0.22)) * 0.05
 
-                drawStripeCluster(
-                    in: context,
-                    size: size,
-                    center: CGPoint(
-                        x: size.width * 0.12 + CGFloat(sin(t * 0.27)) * 26,
-                        y: size.height * 0.32 + CGFloat(cos(t * 0.20)) * 20
-                    ),
-                    baseRadius: min(size.width, size.height) * 0.14,
-                    rings: 22,
-                    tint: Color.white.opacity(0.14),
-                    time: t,
-                    rotationBase: .degrees(-18),
-                    rotationSwing: .degrees(11),
-                    directionalDrift: CGPoint(x: 20, y: -14),
-                    phaseOffset: 0
+            ZStack {
+                Color(uiColor: colorScheme == .dark ? .systemBackground : .systemGroupedBackground)
+
+                MeshGradient(
+                    width: 3,
+                    height: 3,
+                    points: [
+                        .init(0.0, 0.0), .init(0.5, 0.0), .init(1.0, 0.0),
+                        .init(0.0, 0.48), .init(Float(0.50 + dx), Float(0.38 + dy)), .init(1.0, 0.52),
+                        .init(0.0, 1.0), .init(0.5, 1.0), .init(1.0, 1.0)
+                    ],
+                    colors: meshColors
+                )
+                .opacity(colorScheme == .dark ? 0.88 : 0.62)
+                .blur(radius: 18)
+
+                RadialGradient(
+                    colors: [
+                        orange.opacity(colorScheme == .dark ? 0.28 : 0.18),
+                        .clear
+                    ],
+                    center: UnitPoint(x: 0.5, y: 0.18),
+                    startRadius: 10,
+                    endRadius: 280
                 )
 
-                drawStripeCluster(
-                    in: context,
-                    size: size,
-                    center: CGPoint(
-                        x: size.width * 0.88 + CGFloat(cos(t * 0.23)) * 18,
-                        y: size.height * 0.75 + CGFloat(sin(t * 0.21)) * 16
-                    ),
-                    baseRadius: min(size.width, size.height) * 0.10,
-                    rings: 17,
-                    tint: Color.white.opacity(0.10),
-                    time: t,
-                    rotationBase: .degrees(162),
-                    rotationSwing: .degrees(14),
-                    directionalDrift: CGPoint(x: -18, y: 13),
-                    phaseOffset: 1.15
+                LinearGradient(
+                    colors: [
+                        Color(uiColor: .systemBackground).opacity(0.05),
+                        Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.55 : 0.35)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
                 )
-
-                drawStripeCluster(
-                    in: context,
-                    size: size,
-                    center: CGPoint(
-                        x: size.width * 0.60 + CGFloat(cos(t * 0.16)) * 12,
-                        y: size.height * 0.08 + CGFloat(sin(t * 0.25)) * 10
-                    ),
-                    baseRadius: min(size.width, size.height) * 0.08,
-                    rings: 13,
-                    tint: Color.white.opacity(0.08),
-                    time: t,
-                    rotationBase: .degrees(74),
-                    rotationSwing: .degrees(10),
-                    directionalDrift: CGPoint(x: 12, y: 22),
-                    phaseOffset: 2.4
-                )
-
-                context.addFilter(.colorMultiply(.black.opacity(0.42)))
-                context.fill(background, with: .color(.black.opacity(0.32)))
             }
+            .ignoresSafeArea()
         }
     }
 
-    private func drawStripeCluster(
-        in context: GraphicsContext,
-        size: CGSize,
-        center: CGPoint,
-        baseRadius: CGFloat,
-        rings: Int,
-        tint: Color,
-        time: TimeInterval,
-        rotationBase: Angle,
-        rotationSwing: Angle,
-        directionalDrift: CGPoint,
-        phaseOffset: Double
-    ) {
-        for index in 0..<rings {
-            let step = CGFloat(index)
-            let phase = time + phaseOffset
-            let wobble = CGFloat(sin(phase * 1.05 + Double(index) * 0.55)) * 6
-            let radius = baseRadius + step * 21 + wobble
-            let travel = CGFloat(sin(phase * 0.58 + Double(index) * 0.33))
-            let centerX = center.x + directionalDrift.x * travel
-            let centerY = center.y + directionalDrift.y * travel
-            let stretchX = 1.45 + CGFloat(sin(phase * 0.34 + Double(index) * 0.17)) * 0.24
-            let stretchY = 0.88 + CGFloat(cos(phase * 0.40 + Double(index) * 0.13)) * 0.16
-
-            let rect = CGRect(
-                x: centerX - radius * stretchX,
-                y: centerY - radius * stretchY,
-                width: radius * stretchX * 2,
-                height: radius * stretchY * 2
-            )
-            let dynamicRotation = rotationBase.radians
-                + rotationSwing.radians * sin(phase * 0.22 + Double(index) * 0.09)
-            var path = Path(ellipseIn: rect)
-            let rotate = CGAffineTransform(
-                translationX: centerX,
-                y: centerY
-            )
-            .rotated(by: dynamicRotation)
-            .translatedBy(x: -centerX, y: -centerY)
-            path = path.applying(rotate)
-
-            context.stroke(
-                path,
-                with: .color(tint.opacity(0.72 - Double(index) * 0.018)),
-                lineWidth: 1.35
-            )
+    private var meshColors: [Color] {
+        if colorScheme == .dark {
+            return [
+                deep, orange, gold,
+                Color.black, orange.opacity(0.7), deep,
+                Color(red: 0.07, green: 0.05, blue: 0.04), Color.black, gold.opacity(0.35)
+            ]
         }
+        return [
+            gold.opacity(0.9), orange.opacity(0.55), Color.white,
+            Color(red: 1.0, green: 0.94, blue: 0.86), gold.opacity(0.45), Color.white,
+            Color(uiColor: .systemGroupedBackground), Color.white, orange.opacity(0.2)
+        ]
     }
 }
 
