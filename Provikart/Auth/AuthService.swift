@@ -310,8 +310,8 @@ final class AuthService {
             }
             return nil
         case 401:
-            // authAwareData už poslalo invalidaci session → LoginView
-            print("[AuthService] /auth/me – HTTP 401 (neplatný/vypršený token). Tělo: \(bodyPreview)")
+            // Token na serveru neprošel – relaci v appce nenecháváme padnout.
+            print("[AuthService] /auth/me – HTTP 401 (token server nepřijal). Tělo: \(bodyPreview)")
             return nil
         default:
             print("[AuthService] /auth/me – HTTP \(httpResponse.statusCode). Tělo: \(bodyPreview)")

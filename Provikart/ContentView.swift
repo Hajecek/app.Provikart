@@ -25,14 +25,8 @@ struct ContentView: View {
             }
         }
         .onAppear {
-            enforceValidSessionOrLogout()
             if let username = authState.currentUser?.username {
                 appLoginApprovalState.startPolling(username: username, token: authState.authToken, interval: 2)
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .provikartAuthSessionInvalidated)) { _ in
-            Task { @MainActor in
-                authState.invalidateSessionDueToAuthFailure()
             }
         }
         .task(priority: .background) {
@@ -63,36 +57,19 @@ struct ContentView: View {
                 Task { await refreshWidgetsAndLiveActivity(token: token) }
             }
         }
-        .onChange(of: authState.authToken) { _, token in
-            if authState.isLoggedIn, token?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true {
-                authState.invalidateSessionDueToAuthFailure()
-            }
-        }
     }
 
-    private func enforceValidSessionOrLogout() {
-        let token = authState.authToken?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if authState.isLoggedIn, token.isEmpty {
-            authState.invalidateSessionDueToAuthFailure()
-        }
-    }
-
-    /// Periodická kontrola tokenu. Odhlásí jen při 401/Forbidden, ne při výpadku sítě.
+    /// Periodická obnova profilu. Nikdy neodhlašuje.
     private func validateSessionQuietly() async {
         let token = await MainActor.run { authState.authToken ?? "" }
-        if token.isEmpty {
-            await MainActor.run { authState.invalidateSessionDueToAuthFailure() }
-            return
-        }
+        guard !token.isEmpty else { return }
         do {
             if let user = try await authService.fetchCurrentUser(token: token) {
                 await MainActor.run {
                     authState.refreshCurrentUser(user)
                 }
             }
-            // nil bez throw = AuthService už mohl invalidovat přes AuthSession; případně tiše přeskoč.
         } catch {
-            // Síťová chyba – neodhlašovat.
             print("[Profil] Kontrola session: \(error.localizedDescription)")
         }
     }

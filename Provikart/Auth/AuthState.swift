@@ -74,12 +74,8 @@ final class AuthState: ObservableObject {
         if let user = currentUser {
             WidgetDataStore.saveUserRole(UserRole(apiValue: user.role))
         }
-        // Rozbitá session (přihlášen bez tokenu) → rovnou login, ne FreeEntry.
-        if isLoggedIn, authToken?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true {
-            isLoggedIn = false
-            sessionExpiredNotice = Self.sessionExpiredNoticeText
-        } else if isLoggedIn, !UserRole(apiValue: currentUser?.role).isSupportedInApp {
-            // Uložená role, kterou appka neumí (např. national_manager).
+        // Přihlášení držíme trvale. Chybějící token neodhlašuje (host / dočasný výpadek).
+        if isLoggedIn, !UserRole(apiValue: currentUser?.role).isSupportedInApp, currentUser != nil {
             isLoggedIn = false
             sessionExpiredNotice = Self.unsupportedRoleNoticeText
         }
@@ -116,12 +112,9 @@ final class AuthState: ObservableObject {
         setLoggedIn(false)
     }
 
-    /// Odhlásí jen při potvrzené neplatné session (401 / Forbidden), ne při výpadku sítě.
+    /// Dřív odhlašovalo při 401/Forbidden. Teď se relace nechá – odhlásit jde jen ručně.
     func invalidateSessionDueToAuthFailure() {
-        guard isLoggedIn || !(authToken?.isEmpty ?? true) else { return }
-        print("[AuthState] Session neplatná – přesměrování na přihlášení")
-        sessionExpiredNotice = Self.sessionExpiredNoticeText
-        setLoggedIn(false)
+        print("[AuthState] HTTP auth selhání – relace se ponechává, neodhlašuji")
     }
 
     func clearSessionExpiredNotice() {
