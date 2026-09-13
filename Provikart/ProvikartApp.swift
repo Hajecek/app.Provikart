@@ -284,7 +284,6 @@ struct ProvikartApp: App {
                             LuckyChestController.shared.resumeIfNeeded()
                         }
                     })
-                    .ignoresSafeArea()
                     .transition(.opacity)
                     .zIndex(3)
                 }

@@ -32,11 +32,14 @@ struct BiometricVerificationView: View {
             VStack(spacing: 0) {
                 Image("logo")
                     .resizable()
-                    .scaledToFill()
-                    .frame(width: 36, height: 36)
-                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                    .opacity(appeared ? 1 : 0)
-                    .padding(.top, 20)
+                    .scaledToFit()
+                    .frame(width: 48, height: 48)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(5)
+                    .background(.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .shadow(color: .black.opacity(0.16), radius: 10, y: 4)
+                    .accessibilityLabel("Provikart")
+                    .padding(.top, 8)
 
                 Spacer(minLength: 12)
 
@@ -67,9 +70,10 @@ struct BiometricVerificationView: View {
 
                 bottomActions
                     .padding(.horizontal, 28)
-                    .padding(.bottom, 28)
+                    .padding(.bottom, 12)
             }
-            .padding(.top, 8)
+            .safeAreaPadding(.top)
+            .safeAreaPadding(.bottom)
         }
         .opacity(isUnlockAnimating ? 0 : 1)
         .scaleEffect(isUnlockAnimating ? 1.03 : 1)
