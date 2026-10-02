@@ -9,6 +9,7 @@ import Foundation
 
 enum ManagerOverviewPeriod: String, CaseIterable, Identifiable {
     case today
+    case yesterday
     case week
     case month
 
@@ -17,6 +18,7 @@ enum ManagerOverviewPeriod: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .today: return "Dnes"
+        case .yesterday: return "Včera"
         case .week: return "Týden"
         case .month: return "Měsíc"
         }

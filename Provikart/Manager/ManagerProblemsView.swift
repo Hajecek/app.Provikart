@@ -368,9 +368,16 @@ struct ManagerProblemsView: View {
     private var reportsList: some View {
         List {
             Section {
+                reportsOverviewHeader
+            }
+            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+
+            Section {
                 topFilterRow
             }
-            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 4, trailing: 16))
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
 
@@ -381,6 +388,66 @@ struct ManagerProblemsView: View {
         .background {
             managerHomeBackground
         }
+    }
+
+    private var reportsOverviewHeader: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Reporty")
+                    .font(.system(size: 36, weight: .bold, design: .rounded))
+                Text("Požadavky a problémy vašeho týmu")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 8) {
+                overviewMetric(
+                    value: activeReportsSorted.count,
+                    title: "Aktivní",
+                    icon: "tray.full.fill",
+                    tint: .blue
+                )
+                overviewMetric(
+                    value: createdReports.count,
+                    title: "Nové",
+                    icon: "sparkles",
+                    tint: .orange
+                )
+                overviewMetric(
+                    value: openReports.count,
+                    title: "Řeší se",
+                    icon: "arrow.triangle.2.circlepath",
+                    tint: .green
+                )
+            }
+            .padding(6)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.05), lineWidth: 1)
+            }
+        }
+    }
+
+    private func overviewMetric(value: Int, title: String, icon: String, tint: Color) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(tint)
+                .frame(width: 22, height: 22)
+                .background(tint.opacity(0.12), in: Circle())
+            Text("\(value)")
+                .font(.subheadline.weight(.bold).monospacedDigit())
+                .monospacedDigit()
+            Text(title)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .frame(maxWidth: .infinity)
     }
 
     private var managerHomeBackground: some View {
@@ -508,26 +575,34 @@ struct ManagerProblemsView: View {
         } label: {
             HStack(spacing: 7) {
                 Image(systemName: category.icon)
-                    .font(.subheadline.weight(.medium))
+                    .font(.caption.weight(.semibold))
                     .symbolRenderingMode(.hierarchical)
 
                 Text(category.title)
                     .font(.subheadline.weight(.semibold))
 
                 Text("\(count)")
-                    .font(.caption.weight(.bold))
+                    .font(.caption2.weight(.bold))
                     .monospacedDigit()
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(isSelected ? Color.white.opacity(0.22) : Color.primary.opacity(0.08))
-                    .clipShape(Capsule())
+                    .foregroundStyle(isSelected ? Color.white.opacity(0.85) : Color.secondary)
             }
             .foregroundStyle(isSelected ? .white : .primary)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 11)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
             .background {
                 Capsule(style: .continuous)
-                    .fill(isSelected ? Color.accentColor : Color(uiColor: .quaternarySystemFill))
+                    .fill(
+                        isSelected
+                            ? AnyShapeStyle(categoryTint(category).gradient)
+                            : AnyShapeStyle(Color(uiColor: .secondarySystemGroupedBackground))
+                    )
+                    .overlay {
+                        Capsule(style: .continuous)
+                            .strokeBorder(
+                                isSelected ? Color.white.opacity(0.15) : Color.primary.opacity(0.05),
+                                lineWidth: 1
+                            )
+                    }
             }
             .contentShape(Capsule(style: .continuous))
         }
@@ -621,74 +696,69 @@ struct ManagerProblemsView: View {
         let direction = reportDirectionLabel(for: report)
         let status = normalizedStatus(for: report)
         let title = report.managerListTitle
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: rowIcon(for: report))
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(leadingBorderColor(for: report))
-                    .frame(width: 32, height: 32)
-                    .background(leadingBorderColor(for: report).opacity(0.14))
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        let tint = leadingBorderColor(for: report)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.headline)
-                        .foregroundStyle(.primary)
-                        .lineLimit(2)
-                    if let direction, !direction.isEmpty {
-                        Text(direction)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    } else if let badge = report.managerIssueTypeBadge,
-                              !report.is_deferred_sale_issue {
-                        Text(badge)
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(leadingBorderColor(for: report))
-                            .lineLimit(1)
+        return HStack(spacing: 0) {
+            tint.frame(width: 4)
+
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: rowIcon(for: report))
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(tint)
+                        .frame(width: 38, height: 38)
+                        .background(tint.opacity(0.13), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(title)
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                            .lineLimit(2)
+                        if let direction, !direction.isEmpty {
+                            Text(direction)
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        } else if let badge = report.managerIssueTypeBadge,
+                                  !report.is_deferred_sale_issue {
+                            Text(badge)
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(tint)
+                                .lineLimit(1)
+                        }
                     }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                HStack(spacing: 8) {
                     statusBadge(for: status)
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color(uiColor: .tertiaryLabel))
                 }
-                .padding(.top, 2)
-            }
 
-            HStack(spacing: 6) {
-                if let created = report.created_at, !created.isEmpty {
-                    HStack(spacing: 4) {
-                        Image(systemName: "calendar")
-                        Text(formatCzechDate(created))
-                    }
-                    .lineLimit(1)
-                    if let date = parseServerDate(created) {
-                        Text("• \(date.formatted(.relative(presentation: .named).locale(Locale(identifier: "cs_CZ"))))")
+                HStack(spacing: 5) {
+                    if let created = report.created_at, !created.isEmpty {
+                        Label(formatCzechDate(created), systemImage: "clock")
                             .lineLimit(1)
                     }
+                    Spacer()
+                    Text("Otevřít")
+                        .fontWeight(.semibold)
+                        .foregroundStyle(tint)
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(tint)
                 }
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .padding(14)
         }
-        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(uiColor: .secondarySystemBackground))
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemGroupedBackground))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
                         .fill(
                             LinearGradient(
-                                colors: [
-                                    leadingBorderColor(for: report).opacity(0.16),
-                                    leadingBorderColor(for: report).opacity(0.06),
-                                    .clear
-                                ],
+                                colors: [tint.opacity(0.09), .clear],
                                 startPoint: .leading,
                                 endPoint: .trailing
                             )
@@ -696,12 +766,13 @@ struct ManagerProblemsView: View {
                 }
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color(uiColor: .separator).opacity(0.16), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.055), lineWidth: 1)
         )
-        .padding(.horizontal, 8)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(.horizontal, 4)
         .padding(.vertical, 2)
-        .shadow(color: .black.opacity(0.025), radius: 6, x: 0, y: 2)
+        .shadow(color: .black.opacity(0.04), radius: 8, x: 0, y: 3)
     }
 
     private func statusBadge(for status: ManagerReportStatus) -> some View {

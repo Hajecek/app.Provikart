@@ -11,6 +11,19 @@ import Foundation
 
 // MARK: - Modely
 
+struct SalesLocalityPhoto: Decodable, Identifiable, Equatable {
+    let id: String
+    let file: String
+    let url: String
+    let author: String?
+    let createdLabel: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, file, url, author
+        case createdLabel = "created_label"
+    }
+}
+
 struct SalesLocalityItem: Decodable, Identifiable, Equatable {
     let id: Int
     let ropId: String?
@@ -26,6 +39,10 @@ struct SalesLocalityItem: Decodable, Identifiable, Equatable {
     let email: String?
     let telefon: String?
     let note: String?
+    var kind: String
+    var photos: [SalesLocalityPhoto]
+    var photosCount: Int
+    var photosMax: Int
     let hp: Int
     let fiberKs: Int
     let openedCount: Int
@@ -60,6 +77,9 @@ struct SalesLocalityItem: Decodable, Identifiable, Equatable {
         case cislo
         case houseNumber = "house_number"
         case majitel, puvodce, email, telefon, note
+        case kind, photos
+        case photosCount = "photos_count"
+        case photosMax = "photos_max"
         case hp
         case fiberKs = "fiber_ks"
         case openedCount = "opened_count"
@@ -96,6 +116,10 @@ struct SalesLocalityItem: Decodable, Identifiable, Equatable {
         email = c.decodeFlexibleString(forKey: .email)
         telefon = c.decodeFlexibleString(forKey: .telefon)
         note = c.decodeFlexibleString(forKey: .note)
+        kind = c.decodeFlexibleString(forKey: .kind) ?? "standard"
+        photos = (try? c.decode([SalesLocalityPhoto].self, forKey: .photos)) ?? []
+        photosCount = c.decodeFlexibleInt(forKey: .photosCount) ?? photos.count
+        photosMax = c.decodeFlexibleInt(forKey: .photosMax) ?? 3
         hp = c.decodeFlexibleInt(forKey: .hp) ?? 0
         fiberKs = c.decodeFlexibleInt(forKey: .fiberKs) ?? 0
         openedCount = c.decodeFlexibleInt(forKey: .openedCount) ?? 0
@@ -214,6 +238,37 @@ struct SalesLocalityItem: Decodable, Identifiable, Equatable {
         if let penetrationPct { return penetrationPct }
         guard hp > 0 else { return 0 }
         return round(Double(min(fiberKs, openedCount)) / Double(hp) * 1000) / 10
+    }
+
+    var isFamilyHouse: Bool { kind == "rd" }
+
+    var listStreet: String {
+        let street = ulice?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return street.isEmpty ? "Bez názvu ulice" : street
+    }
+
+    /// Ulice a číslo jako jedna adresa. Bez ulice začíná číslem.
+    var listTitle: String {
+        let street = ulice?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let number = houseNumberLabel ?? ""
+        if !street.isEmpty && !number.isEmpty { return "\(street) \(number)" }
+        if !street.isEmpty { return street }
+        if !number.isEmpty { return "č. \(number)" }
+        return "Lokalita #\(id)"
+    }
+
+    /// Část obce a obec. Okres do seznamu nepatří, řádek by se uřízl.
+    var listPlace: String? {
+        let cast = castObce?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let city = obec?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !cast.isEmpty && !city.isEmpty,
+           cast.caseInsensitiveCompare(city) != .orderedSame,
+           cast.range(of: city, options: .caseInsensitive) == nil {
+            return "\(cast) · \(city)"
+        }
+        if !cast.isEmpty { return cast }
+        if !city.isEmpty { return city }
+        return nil
     }
 
     /// Datum komerce ve formátu `d. M. yyyy`, nebo `nil` pokud chybí / nejde parsovat.
@@ -630,6 +685,116 @@ final class UserSalesLocalitiesService {
         default:
             throw UserSalesLocalitiesError.serverError(http.statusCode, message)
         }
+    }
+
+    /// Vyfocený JPEG rodinného domu. POST /api/sales_locality_photo.php
+    func uploadPhoto(token: String?, localityId: Int, jpeg: Data) async throws -> [SalesLocalityPhoto] {
+        guard let token, !token.isEmpty else {
+            throw UserSalesLocalitiesError.notAuthenticated
+        }
+        guard !jpeg.isEmpty else {
+            throw UserSalesLocalitiesError.validation("Fotka je prázdná.")
+        }
+
+        var comp = URLComponents(string: "\(baseURL)/sales_locality_photo.php")
+        comp?.queryItems = [URLQueryItem(name: "token", value: token)]
+        guard let url = comp?.url else {
+            throw UserSalesLocalitiesError.invalidURL
+        }
+
+        let boundary = "Boundary-\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
+        var body = Data()
+        func append(_ string: String) { body.append(Data(string.utf8)) }
+        func appendField(name: String, value: String) {
+            append("--\(boundary)\r\n")
+            append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n")
+            append("\(value)\r\n")
+        }
+        appendField(name: "locality_id", value: "\(localityId)")
+        appendField(name: "token", value: token)
+        append("--\(boundary)\r\n")
+        append("Content-Disposition: form-data; name=\"photo\"; filename=\"house.jpg\"\r\n")
+        append("Content-Type: image/jpeg\r\n\r\n")
+        body.append(jpeg)
+        append("\r\n")
+        append("--\(boundary)--\r\n")
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 90
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue(token, forHTTPHeaderField: "X-Auth-Token")
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = body
+
+        return try await sendPhotoRequest(request)
+    }
+
+    func deletePhoto(token: String?, file: String) async throws -> [SalesLocalityPhoto] {
+        guard let token, !token.isEmpty else {
+            throw UserSalesLocalitiesError.notAuthenticated
+        }
+        var comp = URLComponents(string: "\(baseURL)/sales_locality_photo.php")
+        comp?.queryItems = [URLQueryItem(name: "token", value: token)]
+        guard let url = comp?.url else {
+            throw UserSalesLocalitiesError.invalidURL
+        }
+        let payload: [String: String] = ["action": "delete", "file": file, "token": token]
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 30
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue(token, forHTTPHeaderField: "X-Auth-Token")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        return try await sendPhotoRequest(request)
+    }
+
+    private func sendPhotoRequest(_ request: URLRequest) async throws -> [SalesLocalityPhoto] {
+        let (data, response) = try await URLSession.shared.authAwareData(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw UserSalesLocalitiesError.serverError(-1, "Neplatná odpověď")
+        }
+        let decoded = try? JSONDecoder().decode(SalesLocalityPhotoResponse.self, from: data)
+        let rawBody = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let message = decoded?.error ?? decoded?.message ?? rawBody
+        switch http.statusCode {
+        case 200:
+            guard decoded?.success == true else {
+                throw UserSalesLocalitiesError.serverError(200, message ?? "Fotku se nepodařilo uložit.")
+            }
+            return decoded?.photos ?? []
+        case 400:
+            throw UserSalesLocalitiesError.validation(message ?? "Fotku se nepodařilo uložit.")
+        case 401:
+            throw UserSalesLocalitiesError.notAuthenticated
+        case 403:
+            throw UserSalesLocalitiesError.forbidden(message)
+        default:
+            throw UserSalesLocalitiesError.serverError(http.statusCode, message)
+        }
+    }
+}
+
+private struct SalesLocalityPhotoResponse: Decodable {
+    let success: Bool
+    let message: String?
+    let error: String?
+    let photos: [SalesLocalityPhoto]?
+
+    enum CodingKeys: String, CodingKey {
+        case success, message, error, photos
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        success = c.decodeFlexibleBool(forKey: .success)
+        message = try? c.decodeIfPresent(String.self, forKey: .message)
+        error = try? c.decodeIfPresent(String.self, forKey: .error)
+        photos = try? c.decodeIfPresent([SalesLocalityPhoto].self, forKey: .photos)
     }
 }
 

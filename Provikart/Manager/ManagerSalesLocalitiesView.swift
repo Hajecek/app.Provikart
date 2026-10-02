@@ -474,7 +474,7 @@ struct ManagerSalesLocalitiesView: View {
                     Section {
                         localityListRow(item)
                             .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16))
-                            .listRowBackground(SalesLocalityClosedStyle.rowBackground(isClosed: item.isClosed))
+                            .listRowBackground(SalesLocalityClosedStyle.rowBackground(isClosed: item.isClosed, isFamilyHouse: item.isFamilyHouse))
                     }
                 }
 
@@ -836,44 +836,6 @@ private struct ManagerSalesFilterSheet: View {
 private struct ManagerSalesLocalityRow: View {
     let item: SalesLocalityItem
 
-    private var streetLine: String {
-        let street = item.ulice?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if street.isEmpty { return "Bez názvu ulice" }
-        return street
-    }
-
-    private var cityLine: String? {
-        var parts: [String] = []
-        if let cast = item.castObce?.trimmingCharacters(in: .whitespacesAndNewlines), !cast.isEmpty,
-           cast.caseInsensitiveCompare(item.obec ?? "") != .orderedSame {
-            parts.append(cast)
-        }
-        if let obec = item.obec?.trimmingCharacters(in: .whitespacesAndNewlines), !obec.isEmpty {
-            parts.append(obec)
-        }
-        if let okres = item.okres?.trimmingCharacters(in: .whitespacesAndNewlines), !okres.isEmpty,
-           okres.caseInsensitiveCompare(item.obec ?? "") != .orderedSame {
-            parts.append(okres)
-        }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
-    }
-
-    private var houseNumberSuffix: String? {
-        if let popisne = item.cisloPopisne?.trimmingCharacters(in: .whitespacesAndNewlines), !popisne.isEmpty {
-            if let orientacni = item.cisloOrientacni?.trimmingCharacters(in: .whitespacesAndNewlines), !orientacni.isEmpty {
-                return "č.p. \(popisne)/\(orientacni)"
-            }
-            return "č.p. \(popisne)"
-        }
-        if let orientacni = item.cisloOrientacni?.trimmingCharacters(in: .whitespacesAndNewlines), !orientacni.isEmpty {
-            return "č.o. \(orientacni)"
-        }
-        if let house = item.houseNumberLabel {
-            return "č.p. \(house)"
-        }
-        return nil
-    }
-
     private var salesLabel: String {
         if let name = item.salesName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
             return name
@@ -882,108 +844,7 @@ private struct ManagerSalesLocalityRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 10) {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(streetLine)
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(.primary)
-
-                        if let houseNumberSuffix {
-                            Text("|")
-                                .font(.body.weight(.semibold))
-                                .foregroundStyle(.tertiary)
-
-                            Text(houseNumberSuffix)
-                                .font(.body.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
-                        }
-                    }
-                    .fixedSize(horizontal: false, vertical: true)
-
-                    if let cityLine {
-                        Text(cityLine)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    HStack(spacing: 6) {
-                        Image(systemName: "person.fill")
-                            .font(.caption2)
-                        Text(salesLabel)
-                            .font(.caption.weight(.semibold))
-                    }
-                    .foregroundStyle(item.salesUserId == nil || item.salesUserId == 0 ? Color.orange : Color.secondary)
-                }
-
-                Spacer(minLength: 8)
-                statusBadge
-            }
-
-            VStack(spacing: 6) {
-                metricProgressRow(
-                    title: "Dveře",
-                    value: item.openedCount,
-                    total: item.hp,
-                    percent: item.computedOpenedPct,
-                    progress: item.openedProgress,
-                    tint: Color(red: 0.97, green: 0.58, blue: 0.12)
-                )
-                metricProgressRow(
-                    title: "Penetrace",
-                    value: item.fiberKs,
-                    total: item.hp,
-                    percent: item.computedPenetrationPct,
-                    progress: item.fiberProgress,
-                    tint: Color(red: 0.12, green: 0.62, blue: 0.72)
-                )
-            }
-        }
-        .padding(.vertical, 2)
-    }
-
-    private var statusBadge: some View {
-        SalesLocalityStatusBadge(item: item)
-    }
-
-    private func metricProgressRow(
-        title: String,
-        value: Int,
-        total: Int,
-        percent: Double,
-        progress: Double,
-        tint: Color
-    ) -> some View {
-        HStack(spacing: 6) {
-            Text(title)
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(.secondary)
-
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(tint.opacity(0.12))
-                    Capsule()
-                        .fill(tint.opacity(0.85))
-                        .frame(width: max(3, geo.size.width * progress))
-                }
-            }
-            .frame(height: 4)
-
-            Text("\(value)/\(total)")
-                .font(.caption2.weight(.semibold))
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
-
-            Text(String(format: "%.0f%%", percent))
-                .font(.caption2.weight(.bold))
-                .monospacedDigit()
-                .foregroundStyle(tint)
-                .frame(minWidth: 28, alignment: .trailing)
-        }
+        SalesLocalityListSummary(item: item, salesLabel: salesLabel, salesMissing: item.salesUserId == nil || item.salesUserId == 0)
     }
 }
 
@@ -1155,6 +1016,28 @@ struct ManagerSalesLocalityDetailView: View {
 
     var body: some View {
         Form {
+            Section {
+                SalesLocalityDetailIdentity(item: item)
+            }
+
+            if item.isFamilyHouse {
+                Section {
+                    SalesLocalityPhotosSection(
+                        localityId: item.id,
+                        token: authState.authToken,
+                        photos: item.photos,
+                        photosMax: item.photosMax,
+                        onPhotosChanged: { photos in
+                            item.photos = photos
+                            item.photosCount = photos.count
+                            viewModel.replaceItem(item)
+                        }
+                    )
+                } header: {
+                    Text("Důkaz domu")
+                }
+            }
+
             Section {
                 LocalityVisitActionsCard(
                     opened: $openedValue,

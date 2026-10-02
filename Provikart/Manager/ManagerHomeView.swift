@@ -55,6 +55,7 @@ struct ManagerHomeView: View {
     @State private var selectedPersonID: ManagerHomePersonRoute?
     @State private var showTeamList = false
     @State private var showDealWars = false
+    @State private var showLocations = false
     @Namespace private var periodAnimation
 
     private let brandOrange = Color(red: 0.93, green: 0.43, blue: 0.08)
@@ -90,11 +91,21 @@ struct ManagerHomeView: View {
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     ManagerAddReportToolbarButton()
+                    Button {
+                        showLocations = true
+                    } label: {
+                        Image(systemName: "mappin.and.ellipse")
+                    }
+                    .accessibilityLabel("Lokality týmu")
                     ManagerNotificationsBellButton()
                     ProfileBarButton()
                 }
             }
             .toolbarBackground(.hidden, for: .navigationBar)
+            .sheet(isPresented: $showLocations) {
+                ManagerLocationsSheetView()
+                    .environmentObject(authState)
+            }
             .refreshable {
                 await viewModel.load(token: authState.authToken, silent: true)
             }

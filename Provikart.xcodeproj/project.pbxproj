@@ -916,7 +916,13 @@
 				INFOPLIST_FILE = Provikart/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Provikart;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Provikart potřebuje foťák, aby šlo vyfotit rodinný dům a fotku uložit k lokalitě.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Provikart používá Face ID pro rychlé a bezpečné ověření identity při návratu do aplikace.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Aplikace potřebuje přístup k mikrofonu pro hlasové vyhledávání a nahrávání.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Provikart ukládá obrázek Lucky Box karty do tvé galerie, abys ho mohl sdílet s kamarády.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Aplikace používá rozpoznávání řeči pro přepis diktovaného textu objednávky.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
+				INFOPLIST_KEY_NSSupportsLiveActivitiesFrequentUpdates = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -927,7 +933,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.8.0;
+				MARKETING_VERSION = 1.8.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.hajecek.provikartApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -950,7 +956,13 @@
 				INFOPLIST_FILE = Provikart/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Provikart;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Provikart potřebuje foťák, aby šlo vyfotit rodinný dům a fotku uložit k lokalitě.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Provikart používá Face ID pro rychlé a bezpečné ověření identity při návratu do aplikace.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Aplikace potřebuje přístup k mikrofonu pro hlasové vyhledávání a nahrávání.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Provikart ukládá obrázek Lucky Box karty do tvé galerie, abys ho mohl sdílet s kamarády.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Aplikace používá rozpoznávání řeči pro přepis diktovaného textu objednávky.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
+				INFOPLIST_KEY_NSSupportsLiveActivitiesFrequentUpdates = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -961,7 +973,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.8.0;
+				MARKETING_VERSION = 1.8.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.hajecek.provikartApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

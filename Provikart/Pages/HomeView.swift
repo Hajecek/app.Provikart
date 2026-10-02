@@ -166,7 +166,9 @@ struct HomeView: View {
                             .environmentObject(authState)
                     } label: {
                         Image(systemName: "mappin.and.ellipse")
+                            .foregroundStyle(.primary)
                     }
+                    .accessibilityLabel("Nahlásit lokalitu")
                     NavigationLink {
                         UserAttendanceView()
                             .environmentObject(authState)

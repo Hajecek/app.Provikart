@@ -208,6 +208,7 @@ struct UserAttendanceView: View {
     @State private var selectedStatus = "P"
     @State private var noteText = ""
     @State private var showCalendar = false
+    @State private var showSummary = false
 
     var body: some View {
         NavigationStack {
@@ -230,13 +231,19 @@ struct UserAttendanceView: View {
             .navigationTitle("Moje docházka")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItemGroup(placement: .topBarLeading) {
                     Button {
                         showCalendar = true
                     } label: {
                         Image(systemName: "calendar")
                     }
                     .accessibilityLabel("Otevřít kalendář")
+                    Button {
+                        showSummary = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                    }
+                    .accessibilityLabel("Souhrn docházky")
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     ProfileBarButton()
@@ -262,6 +269,9 @@ struct UserAttendanceView: View {
             .sheet(isPresented: $showCalendar) {
                 CalendarView()
                     .environmentObject(authState)
+            }
+            .sheet(isPresented: $showSummary) {
+                summarySheet
             }
         }
     }
@@ -295,10 +305,8 @@ struct UserAttendanceView: View {
     private func mainContent(user: UserAttendanceUser) -> some View {
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(spacing: 20) {
+                VStack(spacing: 16) {
                     monthNavigationCard
-                    summaryHeroCard
-                    statusLegend
                     daysSection(user: user)
                 }
                 .padding(.horizontal, 16)
@@ -367,73 +375,34 @@ struct UserAttendanceView: View {
         .background(cardBackground(tint: .blue))
     }
 
-    private var summaryHeroCard: some View {
-        let todayStatus = viewModel.todayStatus
-        let todayColor = statusColor(todayStatus)
-
-        return VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 16) {
-                workRateRing
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(viewModel.isCurrentMonth ? "Dnes" : "Souhrn měsíce")
-                        .font(.headline)
-
-                    if viewModel.isCurrentMonth {
-                        HStack(spacing: 8) {
-                            Text(statusLabel(todayStatus))
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(todayColor)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
-                                .background(todayColor.opacity(0.14), in: Capsule())
-
-                            if viewModel.todayNote != nil {
-                                Image(systemName: "text.bubble.fill")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
-                        if let note = viewModel.todayNote {
-                            Text(note)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(2)
-                        } else {
-                            Text("Klepnutím na den upravíte status nebo poznámku.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    } else {
-                        Text("Přehled vaší docházky za vybraný měsíc.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+    private var summarySheet: some View {
+        NavigationStack {
+            ScrollView {
+                summaryHeroCard
+                    .padding(20)
             }
-
-            Divider().opacity(0.35)
-
-            HStack(spacing: 8) {
-                monthMetricChip(status: "P", title: "Práce", count: viewModel.statusCount("P"), color: .green)
-                monthMetricChip(status: "V", title: "Volno", count: viewModel.statusCount("V"), color: .blue)
-                monthMetricChip(status: "N", title: "Nemoc", count: viewModel.statusCount("N"), color: .red)
-            }
-
-            if viewModel.notesCount > 0 {
-                HStack(spacing: 6) {
-                    Image(systemName: "text.bubble.fill")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("\(viewModel.notesCount) \(notesWord(viewModel.notesCount)) v tomto měsíci")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
+            .background(Color(uiColor: .systemGroupedBackground))
+            .navigationTitle("Souhrn")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Hotovo") { showSummary = false }
                 }
             }
         }
-        .padding(16)
-        .background(cardBackground(tint: todayColor == .secondary ? .green : todayColor))
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
+    }
+
+    private var summaryHeroCard: some View {
+        HStack(spacing: 8) {
+            if viewModel.isCurrentMonth {
+                monthMetricChip(status: viewModel.todayStatus, title: "Dnes", count: 0, color: statusColor(viewModel.todayStatus), valueText: statusLabel(viewModel.todayStatus))
+            }
+            monthMetricChip(status: "P", title: "Práce", count: viewModel.statusCount("P"), color: .green)
+            monthMetricChip(status: "V", title: "Volno", count: viewModel.statusCount("V"), color: .blue)
+            monthMetricChip(status: "N", title: "Nemoc", count: viewModel.statusCount("N"), color: .red)
+        }
     }
 
     private var workRateRing: some View {
@@ -466,15 +435,17 @@ struct UserAttendanceView: View {
         .accessibilityLabel("Podíl práce \(percentage) procent")
     }
 
-    private func monthMetricChip(status: String, title: String, count: Int, color: Color) -> some View {
+    private func monthMetricChip(status: String, title: String, count: Int, color: Color, valueText: String? = nil) -> some View {
         VStack(spacing: 6) {
             Text(status)
                 .font(.caption.weight(.bold))
                 .foregroundStyle(color)
                 .frame(width: 28, height: 28)
                 .background(color.opacity(0.14), in: Circle())
-            Text("\(count)")
+            Text(valueText ?? "\(count)")
                 .font(.subheadline.weight(.bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
             Text(title)
                 .font(.caption2.weight(.medium))
                 .foregroundStyle(.secondary)

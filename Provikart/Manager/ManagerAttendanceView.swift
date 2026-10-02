@@ -335,6 +335,7 @@ struct ManagerAttendanceView: View {
     @State private var searchText = ""
     @State private var selectedFilter: ManagerAttendanceFilter = .all
     @State private var isLocationsSheetPresented = false
+    @State private var showSummary = false
 
     private var filteredUsers: [ManagerAttendanceUser] {
         viewModel.filteredUsers(search: searchText, filter: selectedFilter)
@@ -358,6 +359,12 @@ struct ManagerAttendanceView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button {
+                        showSummary = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                    }
+                    .accessibilityLabel("Souhrn docházky")
                     ManagerAddReportToolbarButton()
                     Button {
                         isLocationsSheetPresented = true
@@ -370,6 +377,9 @@ struct ManagerAttendanceView: View {
                 }
             }
             .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Hledat člena týmu")
+            .sheet(isPresented: $showSummary) {
+                summarySheet
+            }
             .refreshable {
                 await viewModel.loadAttendance(token: authState.authToken)
             }
@@ -433,10 +443,8 @@ struct ManagerAttendanceView: View {
 
     private var mainContent: some View {
         ScrollView {
-            VStack(spacing: 20) {
+            VStack(spacing: 16) {
                 monthNavigationCard
-                summaryHeroCard
-                statusLegend
                 filterChips
                 membersSection
             }
@@ -524,65 +532,45 @@ struct ManagerAttendanceView: View {
         .background(cardBackground(tint: .blue))
     }
 
-    private var summaryHeroCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 16) {
-                presentTodayRing
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Dnešní přítomnost")
-                        .font(.headline)
-                    Text("\(viewModel.users.count) členů týmu")
-                        .font(.subheadline)
+    private var summarySheet: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(viewModel.monthTitle)
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
-
-                    VStack(spacing: 8) {
-                        summaryStatRow(
-                            title: "Dnes v práci",
-                            value: viewModel.presentTodayCount,
-                            tint: .green,
-                            icon: "checkmark.circle.fill"
-                        )
-                        summaryStatRow(
-                            title: "Dnes nepřítomni",
-                            value: viewModel.absentTodayCount,
-                            tint: .orange,
-                            icon: "person.crop.circle.badge.minus"
-                        )
-                    }
+                    summaryHeroCard
+                    Text("\(viewModel.users.count) členů týmu")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
+                .padding(20)
             }
-
-            Divider().opacity(0.35)
-
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Souhrn za \(viewModel.monthTitle.lowercased())")
-                    .font(.subheadline.weight(.semibold))
-
-                HStack(spacing: 8) {
-                    monthMetricChip(
-                        status: "P",
-                        title: "Práce",
-                        count: viewModel.teamStatusCount("P"),
-                        color: .green
-                    )
-                    monthMetricChip(
-                        status: "V",
-                        title: "Volno",
-                        count: viewModel.teamStatusCount("V"),
-                        color: .blue
-                    )
-                    monthMetricChip(
-                        status: "N",
-                        title: "Nemoc",
-                        count: viewModel.teamStatusCount("N"),
-                        color: .red
-                    )
+            .background(Color(uiColor: .systemGroupedBackground))
+            .navigationTitle("Souhrn")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Hotovo") { showSummary = false }
                 }
             }
         }
-        .padding(16)
-        .background(cardBackground(tint: .green))
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
+    }
+
+    private var summaryHeroCard: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                monthMetricChip(status: "P", title: "Dnes v práci", count: viewModel.presentTodayCount, color: .green)
+                monthMetricChip(status: "–", title: "Dnes mimo", count: viewModel.absentTodayCount, color: .orange)
+            }
+            HStack(spacing: 8) {
+                monthMetricChip(status: "P", title: "Práce", count: viewModel.teamStatusCount("P"), color: .green)
+                monthMetricChip(status: "V", title: "Volno", count: viewModel.teamStatusCount("V"), color: .blue)
+                monthMetricChip(status: "N", title: "Nemoc", count: viewModel.teamStatusCount("N"), color: .red)
+            }
+        }
     }
 
     private var presentTodayRing: some View {

@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 enum Tabs: Hashable {
     case home
@@ -55,6 +56,9 @@ struct EmployeeTabMenuView: View {
     @State private var showAddSheet = false
     @State private var showAddAIModeSheet = false
     @State private var showReportIssue = false
+    @State private var showLocation = false
+
+    private let menuGold = UIColor(red: 0.969, green: 0.737, blue: 0.329, alpha: 1)
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -85,6 +89,17 @@ struct EmployeeTabMenuView: View {
                     .environment(\.openAddSheet, { showAddSheet = true })
             }
         }
+        .background(TabMenuSelectionColor(color: menuGold))
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showLocation = true
+                } label: {
+                    Image(systemName: "mappin.and.ellipse")
+                }
+                .accessibilityLabel("Nahlásit lokalitu")
+            }
+        }
         .onAppear {
             LuckyChestController.shared.prepareIfNeeded()
         }
@@ -93,6 +108,10 @@ struct EmployeeTabMenuView: View {
                 showAddSheet = true
                 selectedTab = oldValue
             }
+        }
+        .sheet(isPresented: $showLocation) {
+            UserLocationUpdateView()
+                .environmentObject(authState)
         }
         .sheet(isPresented: $showAddSheet) {
             AddTypeSheetView(
@@ -119,6 +138,42 @@ struct EmployeeTabMenuView: View {
             .environmentObject(authState)
         }
         .modifier(LoginApprovalBottomAccessoryModifier(approvalState: appLoginApprovalState))
+    }
+}
+
+/// Vybraná položka ve spodním menu má barvu aplikace. Oddělené plus si nechává systémovou barvu.
+struct TabMenuSelectionColor: UIViewRepresentable {
+    var color: UIColor
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        view.isUserInteractionEnabled = false
+        view.backgroundColor = .clear
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        DispatchQueue.main.async {
+            guard let root = uiView.window?.rootViewController else { return }
+            paint(root)
+        }
+    }
+
+    private func paint(_ vc: UIViewController) {
+        if let tab = vc as? UITabBarController {
+            let appearance = tab.tabBar.standardAppearance
+            for layout in [
+                appearance.stackedLayoutAppearance,
+                appearance.inlineLayoutAppearance,
+                appearance.compactInlineLayoutAppearance,
+            ] {
+                layout.selected.iconColor = color
+                layout.selected.titleTextAttributes = [.foregroundColor: color]
+            }
+            tab.tabBar.standardAppearance = appearance
+            tab.tabBar.scrollEdgeAppearance = appearance
+        }
+        vc.children.forEach(paint)
     }
 }
 

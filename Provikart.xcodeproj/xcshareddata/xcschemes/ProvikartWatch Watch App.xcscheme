@@ -84,7 +84,6 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "0782984F2F5EEA3A005CB0C9"
             BuildableName = "ProvikartWatch Watch App.app"
-            BlueprintName = "ProvikartWatch Watch App"
             ReferencedContainer = "container:Provikart.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -101,7 +100,6 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "0782984F2F5EEA3A005CB0C9"
             BuildableName = "ProvikartWatch Watch App.app"
-            BlueprintName = "ProvikartWatch Watch App"
             ReferencedContainer = "container:Provikart.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>

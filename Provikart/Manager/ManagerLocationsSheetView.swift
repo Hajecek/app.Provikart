@@ -341,6 +341,7 @@ struct ManagerLocationsSheetView: View {
     @StateObject private var viewModel = ManagerLocationsViewModel()
     @State private var searchText = ""
     @State private var selectedFilter: ManagerLocationFilter = .all
+    @State private var showSummary = false
 
     private var filteredMembers: [ManagerTeamMember] {
         viewModel.filteredMembers(search: searchText, filter: selectedFilter)
@@ -368,8 +369,37 @@ struct ManagerLocationsSheetView: View {
                         dismiss()
                     }
                 }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        showSummary = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                    }
+                    .accessibilityLabel("Souhrn hlášení")
+                }
             }
             .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Hledat člena týmu")
+            .sheet(isPresented: $showSummary) {
+                NavigationStack {
+                    VStack(spacing: 12) {
+                        summaryStatRow(title: "Vyplněno", value: viewModel.filledCount, tint: .green, icon: "checkmark.circle.fill")
+                        summaryStatRow(title: "Nezadáno", value: viewModel.missingCount, tint: .orange, icon: "exclamationmark.circle.fill")
+                        summaryStatRow(title: "Nepřítomni", value: viewModel.absentCount, tint: .blue, icon: "calendar.circle.fill")
+                    }
+                    .padding(20)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .background(Color(uiColor: .systemGroupedBackground))
+                    .navigationTitle("Souhrn")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Hotovo") { showSummary = false }
+                        }
+                    }
+                }
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+            }
             .onChange(of: viewModel.selectedDate) { _, _ in
                 Task {
                     await viewModel.load(token: authState.authToken)
@@ -386,9 +416,8 @@ struct ManagerLocationsSheetView: View {
 
     private var mainContent: some View {
         ScrollView {
-            VStack(spacing: 20) {
+            VStack(spacing: 16) {
                 dateNavigationCard
-                summaryHeroCard
                 filterChips
                 membersSection
             }
@@ -629,17 +658,7 @@ struct ManagerLocationsSheetView: View {
     }
 
     private var membersSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Členové týmu")
-                    .font(.headline)
-                Spacer()
-                Text("\(filteredMembers.count) z \(viewModel.members.count)")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 4)
-
+        VStack(alignment: .leading, spacing: 10) {
             if filteredMembers.isEmpty {
                 ContentUnavailableView {
                     Label("Žádné výsledky", systemImage: "magnifyingglass")
@@ -661,69 +680,82 @@ struct ManagerLocationsSheetView: View {
     private func memberCard(_ member: ManagerTeamMember) -> some View {
         let entries = viewModel.userLocations(for: member)
         let status = viewModel.locationStatus(for: member)
+        let places = entries.filter {
+            !$0.locationName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
 
-        return VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .center, spacing: 12) {
-                memberAvatar(member, status: status)
+        return HStack(alignment: .top, spacing: 12) {
+            memberAvatar(member, status: status)
 
-                VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(viewModel.displayName(for: member))
-                        .font(.headline)
+                        .font(.body.weight(.semibold))
                         .lineLimit(1)
-                    Text(status.subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(status.badgeText)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(status.tint)
                         .lineLimit(1)
                 }
 
-                Spacer(minLength: 0)
-                statusBadge(status)
-            }
-
-            locationsContent(entries: entries, status: status)
-
-            if status.showsLocationDetails, let note = firstNote(in: entries) {
-                noteCallout(note)
+                if case .absent = status {
+                    EmptyView()
+                } else if places.isEmpty {
+                    Text("Místo zatím není zadané")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(places) { entry in
+                        HStack(alignment: .firstTextBaseline, spacing: 12) {
+                            Text(entry.locationName)
+                                .font(.subheadline)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            if let arrival = entry.arrivalTime?.trimmingCharacters(in: .whitespacesAndNewlines),
+                               !arrival.isEmpty {
+                                Text(String(arrival.prefix(5)))
+                                    .font(.subheadline.weight(.semibold))
+                                    .monospacedDigit()
+                            }
+                        }
+                        if let note = entry.note?.trimmingCharacters(in: .whitespacesAndNewlines), !note.isEmpty {
+                            Text(note)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                    }
+                }
             }
         }
-        .padding(16)
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(cardBackground(tint: status.tint))
     }
 
     private func memberAvatar(_ member: ManagerTeamMember, status: ManagerLocationReportStatus) -> some View {
-        ZStack(alignment: .bottomTrailing) {
-            Group {
-                if let url = member.profileImageURL {
-                    AuthenticatedProfileImageView(
-                        url: url,
-                        token: authState.authToken,
-                        size: 46
-                    )
-                } else {
-                    Circle()
-                        .fill(status.tint.opacity(0.14))
-                        .frame(width: 46, height: 46)
-                        .overlay {
-                            Text(viewModel.initials(for: member))
-                                .font(.subheadline.weight(.bold))
-                                .foregroundStyle(status.tint)
-                        }
-                }
-            }
-            .overlay {
+        Group {
+            if let url = member.profileImageURL {
+                AuthenticatedProfileImageView(
+                    url: url,
+                    token: authState.authToken,
+                    size: 48
+                )
+            } else {
                 Circle()
-                    .stroke(status.tint.opacity(0.35), lineWidth: 2)
+                    .fill(status.tint.opacity(0.14))
+                    .frame(width: 48, height: 48)
+                    .overlay {
+                        Text(viewModel.initials(for: member))
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(status.tint)
+                    }
             }
-
-            Circle()
-                .fill(status.tint)
-                .frame(width: 18, height: 18)
-                .overlay {
-                    Image(systemName: status.iconName)
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.white)
-                }
-                .offset(x: 2, y: 2)
+        }
+        .frame(width: 48, height: 48)
+        .clipShape(Circle())
+        .overlay {
+            Circle().stroke(status.tint.opacity(0.45), lineWidth: 2)
         }
     }
 

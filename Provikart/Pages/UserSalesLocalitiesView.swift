@@ -242,7 +242,7 @@ struct UserSalesLocalitiesView: View {
                             SalesLocalityRow(item: item)
                         }
                         .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16))
-                        .listRowBackground(SalesLocalityClosedStyle.rowBackground(isClosed: item.isClosed))
+                        .listRowBackground(SalesLocalityClosedStyle.rowBackground(isClosed: item.isClosed, isFamilyHouse: item.isFamilyHouse))
                     }
                 }
 
@@ -750,141 +750,8 @@ struct UserSalesLocalitiesStatsView: View {
 private struct SalesLocalityRow: View {
     let item: SalesLocalityItem
 
-    private var streetLine: String {
-        let street = item.ulice?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if street.isEmpty { return "Bez názvu ulice" }
-        return street
-    }
-
-    private var cityLine: String? {
-        var parts: [String] = []
-        if let cast = item.castObce?.trimmingCharacters(in: .whitespacesAndNewlines), !cast.isEmpty,
-           cast.caseInsensitiveCompare(item.obec ?? "") != .orderedSame {
-            parts.append(cast)
-        }
-        if let obec = item.obec?.trimmingCharacters(in: .whitespacesAndNewlines), !obec.isEmpty {
-            parts.append(obec)
-        }
-        if let okres = item.okres?.trimmingCharacters(in: .whitespacesAndNewlines), !okres.isEmpty,
-           okres.caseInsensitiveCompare(item.obec ?? "") != .orderedSame {
-            parts.append(okres)
-        }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
-    }
-
-    private var houseNumberSuffix: String? {
-        if let popisne = item.cisloPopisne?.trimmingCharacters(in: .whitespacesAndNewlines), !popisne.isEmpty {
-            if let orientacni = item.cisloOrientacni?.trimmingCharacters(in: .whitespacesAndNewlines), !orientacni.isEmpty {
-                return "č.p. \(popisne)/\(orientacni)"
-            }
-            return "č.p. \(popisne)"
-        }
-        if let orientacni = item.cisloOrientacni?.trimmingCharacters(in: .whitespacesAndNewlines), !orientacni.isEmpty {
-            return "č.o. \(orientacni)"
-        }
-        if let house = item.houseNumberLabel {
-            return "č.p. \(house)"
-        }
-        return nil
-    }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 10) {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(streetLine)
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(.primary)
-
-                        if let houseNumberSuffix {
-                            Text("|")
-                                .font(.body.weight(.semibold))
-                                .foregroundStyle(.tertiary)
-
-                            Text(houseNumberSuffix)
-                                .font(.body.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
-                        }
-                    }
-                    .fixedSize(horizontal: false, vertical: true)
-
-                    if let cityLine {
-                        Text(cityLine)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-
-                Spacer(minLength: 8)
-                statusBadge
-            }
-
-            VStack(spacing: 6) {
-                metricProgressRow(
-                    title: "Dveře",
-                    value: item.openedCount,
-                    total: item.hp,
-                    percent: item.computedOpenedPct,
-                    progress: item.openedProgress,
-                    tint: Color(red: 0.97, green: 0.58, blue: 0.12)
-                )
-                metricProgressRow(
-                    title: "Penetrace",
-                    value: item.fiberKs,
-                    total: item.hp,
-                    percent: item.computedPenetrationPct,
-                    progress: item.fiberProgress,
-                    tint: Color(red: 0.12, green: 0.62, blue: 0.72)
-                )
-            }
-        }
-        .padding(.vertical, 2)
-    }
-
-    private var statusBadge: some View {
-        SalesLocalityStatusBadge(item: item)
-    }
-
-    private func metricProgressRow(
-        title: String,
-        value: Int,
-        total: Int,
-        percent: Double,
-        progress: Double,
-        tint: Color
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
-                Text(title)
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.secondary)
-
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule()
-                            .fill(tint.opacity(0.12))
-                        Capsule()
-                            .fill(tint.opacity(0.85))
-                            .frame(width: max(3, geo.size.width * progress))
-                    }
-                }
-                .frame(height: 4)
-
-                Text("\(value)/\(total)")
-                    .font(.caption2.weight(.semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-
-                Text(String(format: "%.0f%%", percent))
-                    .font(.caption2.weight(.bold))
-                    .monospacedDigit()
-                    .foregroundStyle(tint)
-                    .frame(minWidth: 28, alignment: .trailing)
-            }
-        }
+        SalesLocalityListSummary(item: item)
     }
 }
 
@@ -928,6 +795,28 @@ struct UserSalesLocalityDetailView: View {
 
     var body: some View {
         Form {
+            Section {
+                SalesLocalityDetailIdentity(item: item)
+            }
+
+            if item.isFamilyHouse {
+                Section {
+                    SalesLocalityPhotosSection(
+                        localityId: item.id,
+                        token: authState.authToken,
+                        photos: item.photos,
+                        photosMax: item.photosMax,
+                        onPhotosChanged: { photos in
+                            item.photos = photos
+                            item.photosCount = photos.count
+                            viewModel.replaceItem(item)
+                        }
+                    )
+                } header: {
+                    Text("Důkaz domu")
+                }
+            }
+
             Section {
                 LocalityVisitActionsCard(
                     opened: $openedValue,
@@ -1244,13 +1133,157 @@ enum SalesLocalityClosedStyle {
     static let tint = Color(red: 0.82, green: 0.26, blue: 0.28)
 
     @ViewBuilder
-    static func rowBackground(isClosed: Bool) -> some View {
+    static func rowBackground(isClosed: Bool, isFamilyHouse: Bool = false) -> some View {
         ZStack {
             Color(uiColor: .secondarySystemGroupedBackground)
             if isClosed {
                 tint.opacity(0.16)
+            } else if isFamilyHouse {
+                SalesLocalityKindStyle.rd.opacity(0.08)
             }
         }
+    }
+}
+
+enum SalesLocalityKindStyle {
+    static let rd = Color(red: 0.36, green: 0.30, blue: 0.86)
+    static let doors = Color(red: 0.97, green: 0.58, blue: 0.12)
+    static let fiber = Color(red: 0.12, green: 0.62, blue: 0.72)
+}
+
+struct SalesLocalityRdBadge: View {
+    var body: some View {
+        Label("RD", systemImage: "house.fill")
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(SalesLocalityKindStyle.rd)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(SalesLocalityKindStyle.rd.opacity(0.14), in: Capsule())
+    }
+}
+
+struct SalesLocalityPhotoBadge: View {
+    let count: Int
+    let maxCount: Int
+
+    var body: some View {
+        Label("\(count)/\(max(maxCount, 1))", systemImage: count > 0 ? "camera.fill" : "camera")
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(SalesLocalityKindStyle.rd)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(SalesLocalityKindStyle.rd.opacity(0.14), in: Capsule())
+            .accessibilityLabel("Fotky \(count) z \(max(maxCount, 1))")
+    }
+}
+
+struct SalesLocalityListSummary: View {
+    let item: SalesLocalityItem
+    var salesLabel: String? = nil
+    var salesMissing: Bool = false
+
+    private var statusTitle: String {
+        if item.isClosed { return "Zavřeno" }
+        if item.isDone { return "Hotovo" }
+        return "Aktivní"
+    }
+
+    private var statusTint: Color {
+        if item.isClosed { return SalesLocalityClosedStyle.tint }
+        if item.isDone { return .green }
+        return SalesLocalityKindStyle.doors
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(item.listTitle)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if item.isFamilyHouse {
+                    Text("RD")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(SalesLocalityKindStyle.rd)
+                        .lineLimit(1)
+                        .fixedSize()
+                }
+
+                Text(statusTitle)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(statusTint)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+
+            if let place = item.listPlace {
+                Text(place)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            if salesLabel != nil || item.isFamilyHouse {
+                HStack(spacing: 8) {
+                    if let salesLabel {
+                        Text(salesLabel)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(salesMissing ? SalesLocalityKindStyle.doors : .secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 8)
+                    if item.isFamilyHouse {
+                        Text("foto \(item.photosCount)/\(max(item.photosMax, 1))")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(SalesLocalityKindStyle.rd)
+                            .lineLimit(1)
+                            .fixedSize()
+                    }
+                }
+            }
+
+            HStack {
+                Text("Dveře \(item.openedCount)/\(item.hp)")
+                    .foregroundStyle(SalesLocalityKindStyle.doors)
+                Spacer()
+                Text("Fiber \(item.fiberKs)/\(item.hp)")
+                    .foregroundStyle(SalesLocalityKindStyle.fiber)
+            }
+            .font(.caption.weight(.semibold))
+            .monospacedDigit()
+            .padding(.top, 6)
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+struct SalesLocalityDetailIdentity: View {
+    let item: SalesLocalityItem
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(item.listTitle)
+                .font(.title3.weight(.bold))
+            if let place = item.listPlace {
+                Text(place)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            HStack(spacing: 6) {
+                if item.isFamilyHouse {
+                    SalesLocalityRdBadge()
+                }
+                SalesLocalityStatusBadge(item: item)
+                Text("HP \(item.hp)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 4)
     }
 }
 

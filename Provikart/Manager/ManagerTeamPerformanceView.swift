@@ -367,8 +367,10 @@ struct ManagerTeamPerformanceView: View {
     @State private var searchText = ""
     @State private var selectedFilter: ManagerPerformanceFilter = .all
     @State private var isLocationsSheetPresented = false
+    @State private var showSummary = false
     @State private var isLiveActivitySetupPresented = false
     @State private var daysScrollToken = UUID()
+    @Namespace private var filterAnimation
 
     private var filteredUsers: [ManagerPerformanceUser] {
         viewModel.filteredUsers(search: searchText, filter: selectedFilter)
@@ -388,10 +390,19 @@ struct ManagerTeamPerformanceView: View {
                 }
             }
             .background { ManagerScreenBackground() }
-            .navigationTitle("Výkon týmu")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    ProvikartBrandLogoView(style: .large)
+                }
                 ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button {
+                        showSummary = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                    }
+                    .accessibilityLabel("Souhrn výkonu")
                     ManagerAddReportToolbarButton()
                     Button {
                         isLocationsSheetPresented = true
@@ -404,6 +415,9 @@ struct ManagerTeamPerformanceView: View {
                 }
             }
             .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Hledat člena týmu")
+            .sheet(isPresented: $showSummary) {
+                summarySheet
+            }
             .refreshable {
                 await viewModel.loadPerformance(token: authState.authToken)
                 performanceBadge.update(todayServicesCount: viewModel.todayServicesCount)
@@ -482,9 +496,8 @@ struct ManagerTeamPerformanceView: View {
 
     private var mainContent: some View {
         ScrollView {
-            VStack(spacing: 20) {
+            LazyVStack(spacing: 16) {
                 monthNavigationCard
-                summaryHeroCard
                 filterChips
                 membersSection
             }
@@ -500,6 +513,32 @@ struct ManagerTeamPerformanceView: View {
                     .padding(.top, 8)
             }
         }
+    }
+
+    private var pageHeader: some View {
+        HStack(alignment: .bottom) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Výkon")
+                    .font(.system(size: 38, weight: .bold, design: .rounded))
+                Text("Přehled služeb vašeho týmu")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button {
+                isLiveActivitySetupPresented = true
+            } label: {
+                Image(systemName: "platter.filled.top.and.bottom.iphone")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.indigo)
+                    .frame(width: 42, height: 42)
+                    .background(Color.indigo.opacity(0.12), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Zobrazit výkon na Lock Screenu")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 2)
     }
 
     private var loadingView: some View {
@@ -537,16 +576,16 @@ struct ManagerTeamPerformanceView: View {
     }
 
     private var monthNavigationCard: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             monthStepButton(systemName: "chevron.left") {
                 viewModel.moveMonth(by: -1)
             }
 
-            VStack(spacing: 2) {
+            VStack(spacing: 1) {
                 Text(viewModel.monthTitle)
-                    .font(.subheadline.weight(.semibold))
-                Text("\(viewModel.days.count) dní v přehledu")
-                    .font(.caption)
+                    .font(.headline)
+                Text(viewModel.isCurrentMonth ? "Aktuální měsíc" : "\(viewModel.days.count) dní")
+                    .font(.caption2.weight(.medium))
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity)
@@ -559,163 +598,107 @@ struct ManagerTeamPerformanceView: View {
                 Button("Dnes") {
                     viewModel.jumpToCurrentMonth()
                 }
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.accentColor)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(Color.accentColor.opacity(0.12), in: Capsule())
+                .background(Color.orange.gradient, in: Capsule())
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(cardBackground(tint: .blue))
+        .padding(6)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(0.055)))
+    }
+
+    private var summarySheet: some View {
+        NavigationStack {
+            ScrollView {
+                summaryHeroCard
+                    .padding(20)
+            }
+            .background(Color(uiColor: .systemGroupedBackground))
+            .navigationTitle("Souhrn")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Hotovo") { showSummary = false }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
     }
 
     private var summaryHeroCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 16) {
-                todayRing
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Dnešní výkon týmu")
-                        .font(.headline)
-                    Text("\(viewModel.users.count) členů týmu")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-
-                    VStack(spacing: 8) {
-                        summaryStatRow(
-                            title: "Služby dnes",
-                            value: viewModel.todayServicesCount,
-                            tint: .orange,
-                            icon: "chart.bar.fill"
-                        )
-                        summaryStatRow(
-                            title: "Členů s výkonem",
-                            value: viewModel.usersWithTodayPerformanceCount,
-                            tint: .green,
-                            icon: "person.fill.checkmark"
-                        )
-                    }
-                }
-            }
-
-            Divider().opacity(0.35)
-
-            HStack(spacing: 8) {
-                monthMetricChip(
-                    title: "Měsíc celkem",
-                    value: "\(viewModel.monthTotal)",
-                    color: .orange
-                )
-                monthMetricChip(
-                    title: "Ruční zápisy",
-                    value: "\(viewModel.manualEntriesCount)",
-                    color: .indigo
-                )
-                monthMetricChip(
-                    title: "Průměr / člen",
-                    value: viewModel.users.isEmpty
-                        ? "0"
-                        : String(format: "%.1f", Double(viewModel.monthTotal) / Double(viewModel.users.count)),
-                    color: .teal
-                )
-            }
-
-            Button {
-                isLiveActivitySetupPresented = true
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "platter.filled.top.and.bottom.iphone")
-                    Text("Zobrazit na Lock Screenu")
-                        .fontWeight(.semibold)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                }
-                .font(.subheadline)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(Color.indigo.opacity(0.12), in: Capsule())
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.indigo)
-        }
-        .padding(16)
-        .background(cardBackground(tint: .orange))
-    }
-
-    private var todayRing: some View {
-        let count = viewModel.todayServicesCount
-        return ZStack {
-            Circle()
-                .stroke(Color.primary.opacity(0.08), lineWidth: 8)
-            Circle()
-                .trim(from: 0, to: min(CGFloat(count) / 20.0, 1))
-                .stroke(
-                    AngularGradient(
-                        colors: [.orange.opacity(0.7), .orange],
-                        center: .center
-                    ),
-                    style: StrokeStyle(lineWidth: 8, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
-            VStack(spacing: 2) {
-                Text("\(count)")
-                    .font(.title3.weight(.bold))
-                Text("dnes")
-                    .font(.caption2.weight(.medium))
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Souhrn")
+                    .font(.headline)
+                Spacer()
+                Text(viewModel.monthTitle)
+                    .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
             }
+            HStack(spacing: 8) {
+                compactMetric(
+                    title: "Dnes",
+                    value: "\(viewModel.todayServicesCount)",
+                    icon: "sun.max.fill",
+                    color: .orange
+                )
+                compactMetric(
+                    title: "Aktivní",
+                    value: "\(viewModel.usersWithTodayPerformanceCount)/\(viewModel.users.count)",
+                    icon: "person.fill.checkmark",
+                    color: .green
+                )
+                compactMetric(
+                    title: "Měsíc",
+                    value: "\(viewModel.monthTotal)",
+                    icon: "calendar",
+                    color: .blue
+                )
+                compactMetric(
+                    title: "Ruční",
+                    value: "\(viewModel.manualEntriesCount)",
+                    icon: "pencil",
+                    color: .indigo
+                )
+            }
         }
-        .frame(width: 88, height: 88)
-        .accessibilityLabel("Dnes \(count) služeb")
+        .padding(14)
+        .background(compactSummaryBackground)
     }
 
-    private func summaryStatRow(title: String, value: Int, tint: Color, icon: String) -> some View {
-        HStack(spacing: 8) {
+    private func compactMetric(title: String, value: String, icon: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
             Image(systemName: icon)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(tint)
-                .frame(width: 18)
-            Text(title)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 0)
-            Text("\(value)")
                 .font(.caption.weight(.bold))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(tint.opacity(0.14), in: Capsule())
-        }
-    }
-
-    private func monthMetricChip(title: String, value: String, color: Color) -> some View {
-        VStack(spacing: 6) {
+                .foregroundStyle(color)
             Text(value)
-                .font(.subheadline.weight(.bold))
+                .font(.system(.headline, design: .rounded).weight(.bold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
             Text(title)
-                .font(.caption2.weight(.medium))
+                .font(.caption2)
                 .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-                .minimumScaleFactor(0.8)
+                .lineLimit(1)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 10)
-        .background(color.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(10)
+        .frame(maxWidth: .infinity, minHeight: 78, alignment: .topLeading)
+        .background(color.opacity(0.08), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
     }
 
     private var filterChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(ManagerPerformanceFilter.allCases) { filter in
-                    filterChip(filter)
-                }
+        HStack(spacing: 4) {
+            ForEach(ManagerPerformanceFilter.allCases) { filter in
+                filterChip(filter)
             }
-            .padding(.horizontal, 2)
         }
+        .padding(4)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(0.06)))
     }
 
     private func filterChip(_ filter: ManagerPerformanceFilter) -> some View {
@@ -728,28 +711,23 @@ struct ManagerTeamPerformanceView: View {
             }
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: filter.iconName)
-                    .font(.caption.weight(.semibold))
                 Text(filter.rawValue)
                     .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
                 Text("\(count)")
                     .font(.caption2.weight(.bold))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(isSelected ? Color.white.opacity(0.22) : Color.primary.opacity(0.08), in: Capsule())
+                    .foregroundStyle(isSelected ? .white.opacity(0.8) : .secondary)
             }
             .foregroundStyle(isSelected ? Color.white : Color.primary)
-            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 6)
             .padding(.vertical, 9)
             .background {
                 if isSelected {
-                    Capsule().fill(Color.accentColor)
-                } else {
-                    Capsule()
-                        .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                        .overlay {
-                            Capsule().stroke(Color.primary.opacity(0.06), lineWidth: 1)
-                        }
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.orange.gradient)
+                        .matchedGeometryEffect(id: "performanceFilter", in: filterAnimation)
                 }
             }
         }
@@ -773,13 +751,16 @@ struct ManagerTeamPerformanceView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Členové týmu")
-                    .font(.headline)
+                    .font(.title3.bold())
                 Spacer()
                 Text("\(filteredUsers.count) z \(viewModel.users.count)")
-                    .font(.caption.weight(.medium))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(Color.primary.opacity(0.06), in: Capsule())
             }
-            .padding(.horizontal, 4)
+            .padding(.horizontal, 2)
 
             if filteredUsers.isEmpty {
                 ContentUnavailableView {
@@ -790,7 +771,7 @@ struct ManagerTeamPerformanceView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 24)
             } else {
-                LazyVStack(spacing: 12) {
+                LazyVStack(spacing: 14) {
                     ForEach(filteredUsers) { user in
                         memberCard(user)
                     }
@@ -801,14 +782,15 @@ struct ManagerTeamPerformanceView: View {
 
     private func memberCard(_ user: ManagerPerformanceUser) -> some View {
         let todayCount = viewModel.entry(for: user, day: viewModel.todayKey)?.servicesCount ?? 0
+        let hasManual = viewModel.days.contains { viewModel.entry(for: user, day: $0)?.isManual == true }
 
-        return VStack(alignment: .leading, spacing: 14) {
+        return VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .center, spacing: 12) {
                 memberAvatar(user)
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(viewModel.displayName(for: user))
-                        .font(.headline)
+                        .font(.headline.weight(.bold))
                         .lineLimit(1)
                     if let username = user.username, !username.isEmpty {
                         Text("@\(username)")
@@ -820,31 +802,45 @@ struct ManagerTeamPerformanceView: View {
 
                 Spacer(minLength: 0)
 
-                VStack(alignment: .trailing, spacing: 4) {
+                VStack(alignment: .trailing, spacing: 2) {
                     Text("\(user.total)")
-                        .font(.title3.weight(.bold))
+                        .font(.system(.title2, design: .rounded).weight(.bold))
                         .foregroundStyle(Color.orange)
-                    Text("za měsíc")
+                        .contentTransition(.numericText())
+                    Text("služeb za měsíc")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
             }
 
-            userDaysRow(user)
-
-            HStack(spacing: 12) {
-                Label("Dnes \(todayCount)", systemImage: "sun.max.fill")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if viewModel.days.contains(where: { viewModel.entry(for: user, day: $0)?.isManual == true }) {
-                    Label("Ruční zápis", systemImage: "pencil")
-                        .font(.caption)
-                        .foregroundStyle(.indigo)
+            HStack(spacing: 8) {
+                statusPill(
+                    title: todayCount > 0 ? "\(todayCount) dnes" : "Dnes bez výkonu",
+                    icon: todayCount > 0 ? "checkmark.circle.fill" : "clock",
+                    color: todayCount > 0 ? .green : .secondary
+                )
+                if hasManual {
+                    statusPill(title: "Ruční zápis", icon: "pencil", color: .indigo)
                 }
+                Spacer()
+                Text("Klepnutím upravíte den")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             }
+
+            userDaysRow(user)
         }
         .padding(16)
-        .background(cardBackground(tint: todayCount > 0 ? .orange : .secondary))
+        .background(memberCardBackground(active: todayCount > 0))
+    }
+
+    private func statusPill(title: String, icon: String, color: Color) -> some View {
+        Label(title, systemImage: icon)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(color.opacity(0.10), in: Capsule())
     }
 
     private func memberAvatar(_ user: ManagerPerformanceUser) -> some View {
@@ -932,28 +928,20 @@ struct ManagerTeamPerformanceView: View {
         let key = "\(user.userId)_\(day)"
         let tint: Color = isManual ? .indigo : (count != nil && (count ?? 0) > 0 ? .orange : .secondary)
 
-        return VStack(spacing: 5) {
-            Text(dayNumber(day))
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(isToday ? Color.accentColor : Color.primary)
-
+        return VStack(spacing: 4) {
             Text(weekdayShort(day))
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(isToday ? Color.accentColor : Color.secondary)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(isToday ? Color.orange : Color.secondary)
                 .textCase(.uppercase)
 
             Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 selectedCell = PerformanceCellSelection(user: user, day: day, entry: entry)
             } label: {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(tint.opacity(count == nil ? 0.08 : 0.16))
-                        .frame(width: 36, height: 36)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .stroke(isToday ? Color.accentColor : tint.opacity(0.35), lineWidth: isToday ? 2 : 1)
-                        }
-
+                VStack(spacing: 2) {
+                    Text(dayNumber(day))
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(isToday ? Color.orange : Color.primary)
                     if viewModel.savingKey == key {
                         ProgressView()
                             .scaleEffect(0.7)
@@ -967,6 +955,15 @@ struct ManagerTeamPerformanceView: View {
                             .foregroundStyle(Color.secondary.opacity(0.5))
                     }
                 }
+                .frame(width: 38, height: 44)
+                .background(
+                    isToday ? Color.orange.opacity(0.13) : tint.opacity(count == nil ? 0.055 : 0.12),
+                    in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .strokeBorder(isToday ? Color.orange : tint.opacity(0.25), lineWidth: isToday ? 1.5 : 1)
+                }
             }
             .buttonStyle(.plain)
 
@@ -975,18 +972,54 @@ struct ManagerTeamPerformanceView: View {
                 .foregroundStyle(isManual ? Color.indigo : Color.clear)
                 .frame(height: 8)
         }
-        .frame(width: 40)
+        .frame(width: 42)
     }
 
     private func monthStepButton(systemName: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.body.weight(.semibold))
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 40, height: 40)
-                .background(Color.accentColor.opacity(0.12), in: Circle())
+                .foregroundStyle(Color.orange)
+                .frame(width: 38, height: 38)
+                .background(Color.orange.opacity(0.11), in: Circle())
         }
         .buttonStyle(.plain)
+    }
+
+    private var compactSummaryBackground: some View {
+        RoundedRectangle(cornerRadius: 20, style: .continuous)
+            .fill(Color(uiColor: .secondarySystemGroupedBackground))
+            .overlay {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.orange.opacity(0.08), .clear],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.055), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.035), radius: 8, y: 3)
+    }
+
+    private func memberCardBackground(active: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 22, style: .continuous)
+            .fill(Color(uiColor: .secondarySystemGroupedBackground))
+            .overlay(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(active ? Color.orange : Color.clear)
+                    .frame(width: 4)
+                    .padding(.vertical, 18)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.055), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.04), radius: 8, y: 3)
     }
 
     private func cardBackground(tint: Color) -> some View {

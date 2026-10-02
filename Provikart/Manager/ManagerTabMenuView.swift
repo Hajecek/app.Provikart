@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 enum ManagerTabs: Hashable {
     case home
@@ -216,6 +217,7 @@ struct ManagerTabMenuView: View {
             }
 
         }
+        .background(TabMenuSelectionColor(color: UIColor(red: 0.969, green: 0.737, blue: 0.329, alpha: 1)))
         .sheet(isPresented: $reportIssueSheet.isPresented) {
             ManagerReportIssueView(
                 isPresented: $reportIssueSheet.isPresented,
