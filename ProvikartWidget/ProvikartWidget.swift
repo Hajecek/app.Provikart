@@ -156,6 +156,31 @@ struct ProvikartWidgetProvider: TimelineProvider {
     }
 }
 
+// MARK: - Sdílný vzhled podle systémových widgetů
+
+enum ProvikartActivityPalette {
+    static let yellow = Color(red: 251.0 / 255, green: 191.0 / 255, blue: 79.0 / 255)
+    static let ink = Color(red: 0.09, green: 0.08, blue: 0.06)
+}
+
+extension View {
+    func homeWidgetBackground() -> some View {
+        containerBackground(Color(uiColor: .systemBackground), for: .widget)
+    }
+}
+
+struct WidgetAccessoryCircle<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        ZStack {
+            AccessoryWidgetBackground()
+            content()
+        }
+        .widgetAccentable()
+    }
+}
+
 // MARK: - Views
 
 struct ProvikartWidgetEntryView: View {
@@ -188,33 +213,23 @@ struct ProvikartWidgetEntryView: View {
                 mediumView
             }
         }
-        .containerBackground(for: .widget) {
-            Color(uiColor: .secondarySystemGroupedBackground)
-        }
+        .homeWidgetBackground()
         .widgetURL(URL(string: "provikart://"))
     }
 
-    // Zamykací obrazovka – kruh (jen číslo)
     private var accessoryCircularView: some View {
-        ZStack {
+        WidgetAccessoryCircle {
             if entry.hasData, let value = entry.commission {
-                VStack(spacing: 0) {
-                    Text(entry.isHidden ? "– – –" : formatCommission(value))
-                        .font(.system(size: 18, weight: .semibold, design: .rounded))
-                        .minimumScaleFactor(0.5)
-                        .lineLimit(1)
-                    if !entry.isHidden {
-                        Text(entry.currency)
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                Text(entry.isHidden ? "•••" : formatCommission(value))
+                    .font(.system(.body, design: .rounded).weight(.semibold))
+                    .minimumScaleFactor(0.4)
+                    .lineLimit(1)
+                    .padding(6)
             } else {
                 Image(systemName: "creditcard.fill")
-                    .font(.system(size: 20, weight: .medium))
+                    .font(.title3.weight(.semibold))
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // Zamykací obrazovka – obdélník
@@ -248,81 +263,64 @@ struct ProvikartWidgetEntryView: View {
         }
     }
 
-    // Malý widget – styl jako nativní iOS (Peněženka, Akcie)
     private var smallView: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
-                Image(systemName: "creditcard.fill")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Text("PROVIZE")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
-                    .tracking(0.5)
-            }
-            Spacer(minLength: 8)
+        VStack(alignment: .leading, spacing: 2) {
+            Label("Provize", systemImage: "creditcard.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .widgetAccentable()
+            Spacer(minLength: 0)
             if entry.hasData, let value = entry.commission {
-                HStack(alignment: .lastTextBaseline, spacing: 4) {
-                    Text(entry.isHidden ? "– – – –" : formatCommission(value))
-                        .font(.system(size: 22, weight: .semibold, design: .rounded))
-                        .minimumScaleFactor(0.6)
-                        .lineLimit(1)
-                    if !entry.isHidden {
-                        Text(entry.currency)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                Text(entry.isHidden ? "••••" : formatCommission(value))
+                    .font(.system(.title, design: .rounded).weight(.semibold))
+                    .minimumScaleFactor(0.55)
+                    .lineLimit(1)
+                    .widgetAccentable()
+                Text(entry.isHidden ? "Skryto" : (entry.monthLabel ?? entry.currency))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             } else {
                 Text("Přihlaste se")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .padding(16)
     }
 
-    // Střední widget – čistý dvousloupcový layout
     private var mediumView: some View {
-        HStack(alignment: .center, spacing: 0) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Image(systemName: "creditcard.fill")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.secondary)
-                    Text("Provize za měsíc")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-                if let label = entry.monthLabel, !label.isEmpty {
-                    Text(label)
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            Spacer(minLength: 12)
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Provize za měsíc", systemImage: "creditcard.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .widgetAccentable()
+            Spacer(minLength: 0)
             if entry.hasData, let value = entry.commission {
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(entry.isHidden ? "– – – –" : formatCommission(value))
-                        .font(.system(size: 26, weight: .semibold, design: .rounded))
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(entry.isHidden ? "••••" : formatCommission(value))
+                        .font(.system(.largeTitle, design: .rounded).weight(.semibold))
                         .minimumScaleFactor(0.5)
                         .lineLimit(1)
+                        .widgetAccentable()
                     if !entry.isHidden {
                         Text(entry.currency)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.title3.weight(.medium))
                             .foregroundStyle(.secondary)
                     }
                 }
+                if let label = entry.monthLabel, !label.isEmpty {
+                    Text(label)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
             } else {
-                Text("Přihlaste se")
-                    .font(.system(size: 14, weight: .medium))
+                Text("Přihlaste se v aplikaci")
+                    .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 }
 
@@ -476,24 +474,21 @@ struct ProvikartReportsWidgetEntryView: View {
                 reportsMediumView
             }
         }
-        .containerBackground(for: .widget) {
-            Color(uiColor: .secondarySystemGroupedBackground)
-        }
+        .homeWidgetBackground()
         .widgetURL(URL(string: "provikart://"))
     }
 
-    // Zamykací obrazovka – kruh (jen číslo)
     private var reportsAccessoryCircularView: some View {
-        ZStack {
+        WidgetAccessoryCircle {
             if entry.hasData, let count = entry.incompleteCount {
                 Text("\(count)")
-                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+                    .font(.system(.title2, design: .rounded).weight(.semibold))
+                    .minimumScaleFactor(0.5)
             } else {
                 Image(systemName: "exclamationmark.bubble.fill")
-                    .font(.system(size: 20, weight: .medium))
+                    .font(.title3.weight(.semibold))
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // Zamykací obrazovka – obdélník
@@ -527,73 +522,50 @@ struct ProvikartReportsWidgetEntryView: View {
     }
 
     private var reportsSmallView: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
-                Image(systemName: "exclamationmark.bubble.fill")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Text("REPORTY")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
-                    .tracking(0.5)
-            }
-            Spacer(minLength: 8)
+        VStack(alignment: .leading, spacing: 2) {
+            Label("Reporty", systemImage: "exclamationmark.bubble.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .widgetAccentable()
+            Spacer(minLength: 0)
             if entry.hasData, let count = entry.incompleteCount {
-                HStack(alignment: .lastTextBaseline, spacing: 4) {
-                    Text("\(count)")
-                        .font(.system(size: 22, weight: .semibold, design: .rounded))
-                        .minimumScaleFactor(0.6)
-                        .lineLimit(1)
-                    Text(count == 1 ? "nedokončený" : "nedokončených")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
+                Text("\(count)")
+                    .font(.system(.title, design: .rounded).weight(.semibold))
+                    .widgetAccentable()
+                Text(count == 1 ? "nedokončený" : "nedokončených")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             } else {
                 Text("Přihlaste se")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .padding(16)
     }
 
     private var reportsMediumView: some View {
-        HStack(alignment: .center, spacing: 0) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.bubble.fill")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.secondary)
-                    Text("Nedokončené reporty")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-                Text("Problémy k vyřešení")
-                    .font(.system(size: 11, weight: .regular))
-                    .foregroundStyle(.tertiary)
-            }
-            Spacer(minLength: 12)
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Nedokončené reporty", systemImage: "exclamationmark.bubble.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .widgetAccentable()
+            Spacer(minLength: 0)
             if entry.hasData, let count = entry.incompleteCount {
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("\(count)")
-                        .font(.system(size: 26, weight: .semibold, design: .rounded))
-                        .minimumScaleFactor(0.5)
-                        .lineLimit(1)
-                    Text(count == 1 ? "report" : "reportů")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
+                Text("\(count)")
+                    .font(.system(.largeTitle, design: .rounded).weight(.semibold))
+                    .widgetAccentable()
+                Text(count == 1 ? "problém k vyřešení" : "problémů k vyřešení")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
             } else {
-                Text("Přihlaste se")
-                    .font(.system(size: 14, weight: .medium))
+                Text("Přihlaste se v aplikaci")
+                    .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 }
 
@@ -836,159 +808,99 @@ struct ProvikartInstallationsWidgetEntryView: View {
                 installationsMediumView
             }
         }
-        .containerBackground(for: .widget) {
-            installationsWidgetBackground
-        }
+        .homeWidgetBackground()
         .widgetURL(URL(string: "provikart://calendar"))
     }
 
-    /// Tmavé pozadí widgetu instalací (antracit #363332) s jemným světlejším obrysem.
-    private var installationsWidgetBackground: some View {
-        let fill = Color(red: 0.212, green: 0.2, blue: 0.196)
-        let stroke = Color(red: 0.878, green: 0.827, blue: 0.78).opacity(0.15)
-        return RoundedRectangle(cornerRadius: 20)
-            .fill(fill)
-            .overlay(
-                RoundedRectangle(cornerRadius: 20)
-                    .stroke(stroke, lineWidth: 0.5)
-            )
-    }
-
-    /// Světlá barva textu (teplá bílá #E0D3C7).
-    private static let installationsTextColor = Color(red: 0.878, green: 0.827, blue: 0.78)
-
     private var installationsAccessoryInlineView: some View {
-        Group {
-            if !entry.hasData {
-                Text("Instalace – přihlaste se")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(Self.installationsTextColor.opacity(0.8))
-            } else if entry.items.isEmpty {
-                Text("Dnes se nic neinstaluje")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(Self.installationsTextColor)
-            } else {
-                let count = entry.items.count
-                Text(count == 1 ? "1 instalace" : "\(count) instalací")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(Self.installationsTextColor)
-            }
+        let text: String
+        if !entry.hasData {
+            text = "Instalace – přihlaste se"
+        } else if entry.items.isEmpty {
+            text = "Dnes se nic neinstaluje"
+        } else {
+            let count = entry.items.count
+            text = count == 1 ? "1 instalace" : "\(count) instalací"
         }
+        return Text(text)
     }
 
     private var installationsAccessoryRectangularView: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Label("Instalace", systemImage: "calendar.badge.clock")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(Self.installationsTextColor.opacity(0.9))
+        VStack(alignment: .leading, spacing: 2) {
+            Label("Instalace", systemImage: "calendar")
+                .font(.caption.weight(.semibold))
+                .widgetAccentable()
             if !entry.hasData {
                 Text("Přihlaste se")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(Self.installationsTextColor.opacity(0.8))
+                    .font(.caption)
             } else if entry.items.isEmpty {
                 Text("Dnes se nic neinstaluje")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(Self.installationsTextColor)
+                    .font(.caption)
             } else {
                 let total = entry.items.count
                 Text(total == 1 ? "1 instalace v plánu" : "\(total) instalací v plánu")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(Self.installationsTextColor)
+                    .font(.headline)
+                    .lineLimit(2)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 
     private var installationsSmallView: some View {
-        let displayDate = now
-        let dayName = dayOfWeekString(displayDate)
-        let dayNumber = dayOfMonthWithDot(displayDate)
-        let todayItems = itemsForDate(displayDate)
-        let countLabel = countLabelForToday(count: todayItems.count)
-
-        return HStack(alignment: .top, spacing: 10) {
-            VStack(alignment: .leading, spacing: -2) {
-                Text(dayName)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(Self.installationsTextColor)
-                Text(dayNumber)
-                    .font(.system(size: 40, weight: .thin))
-                    .foregroundColor(Self.installationsTextColor)
-                Text(countLabel)
-                    .font(.system(size: 14, weight: .regular))
-                    .foregroundColor(Self.installationsTextColor)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            VStack(alignment: .leading, spacing: 4) {
-                if !entry.hasData {
-                    EmptyView()
-                } else if todayItems.isEmpty {
-                    Text("Dnes se nic neinstaluje")
-                        .font(.system(size: 13, weight: .regular))
-                        .foregroundColor(Self.installationsTextColor.opacity(0.9))
-                        .minimumScaleFactor(0.7)
-                        .lineLimit(2)
-                } else {
-                    ForEach(todayItems.prefix(3)) { item in
-                        Text(installationNameAndTime(item))
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(Self.installationsTextColor)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+        let todayItems = itemsForDate(now)
+        return VStack(alignment: .leading, spacing: 2) {
+            Text(dayOfWeekString(now).capitalized)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.none)
+            Text(dayOfMonthWithDot(now))
+                .font(.system(.largeTitle, design: .rounded).weight(.semibold))
+                .widgetAccentable()
+            Spacer(minLength: 0)
+            Text(countLabelForToday(count: todayItems.count))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 
     private var installationsMediumView: some View {
-        let displayDate = now
-        let dayName = dayOfWeekString(displayDate)
-        let dayNumber = dayOfMonthWithDot(displayDate)
-        let todayItems = itemsForDate(displayDate)
-        let countLabel = countLabelForToday(count: todayItems.count)
-
-        return HStack(alignment: .top, spacing: 14) {
-            VStack(alignment: .leading, spacing: -2) {
-                Text(dayName)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(Self.installationsTextColor)
-                Text(dayNumber)
-                    .font(.system(size: 38, weight: .thin))
-                    .foregroundColor(Self.installationsTextColor)
-                Text(countLabel)
-                    .font(.system(size: 15, weight: .regular))
-                    .foregroundColor(Self.installationsTextColor)
+        let todayItems = itemsForDate(now)
+        return HStack(alignment: .top, spacing: 16) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(dayOfWeekString(now).capitalized)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(dayOfMonthWithDot(now))
+                    .font(.system(.largeTitle, design: .rounded).weight(.semibold))
+                    .widgetAccentable()
+                Text(countLabelForToday(count: todayItems.count))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
                 if !entry.hasData {
-                    EmptyView()
+                    Text("Přihlaste se")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 } else if todayItems.isEmpty {
                     Text("Dnes se nic neinstaluje")
-                        .font(.system(size: 14, weight: .regular))
-                        .foregroundColor(Self.installationsTextColor.opacity(0.9))
-                        .minimumScaleFactor(0.8)
-                        .lineLimit(2)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 } else {
-                    ForEach(todayItems.prefix(6)) { item in
+                    ForEach(todayItems.prefix(4)) { item in
                         Text(installationNameAndTime(item))
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(Self.installationsTextColor)
+                            .font(.subheadline)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.75)
                     }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(16)
     }
 
     private func dayLabelString(_ date: Date) -> String {

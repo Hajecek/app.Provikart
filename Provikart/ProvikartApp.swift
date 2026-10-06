@@ -224,6 +224,9 @@ struct ProvikartApp: App {
     @AppStorage(onboardingCompletedKey) private var hasCompletedOnboarding = false
     @AppStorage(appearanceModeKey) private var appearanceModeRaw: String = "system"
     @State private var showLaunchScreen = true
+    @State private var isHandingOffToLogin = false
+    @State private var didFinishLaunch = false
+    @State private var loginLogoFrame: CGRect = .zero
     @State private var showBiometricVerification = false
     @State private var hasVerifiedBiometricThisSession = false
     @State private var backgroundedAt: Date?
@@ -239,6 +242,45 @@ struct ProvikartApp: App {
         if showBiometricVerification || needsImmediateBiometricOnResume { return true }
         if !showLaunchScreen, hasCompletedOnboarding, !hasVerifiedBiometricThisSession { return true }
         return false
+    }
+
+    private var launchesIntoLogin: Bool {
+        hasCompletedOnboarding && !authState.isLoggedIn
+    }
+
+    @ViewBuilder
+    private var rootContent: some View {
+        if !hasCompletedOnboarding {
+            OnboardingView(onFinish: { hasCompletedOnboarding = true })
+        } else if authState.isLoggedIn {
+            ContentView()
+        } else {
+            LoginView(showsBrandLogo: !showLaunchScreen)
+        }
+    }
+
+    private func finishLaunch() {
+        guard !didFinishLaunch else { return }
+        didFinishLaunch = true
+
+        guard launchesIntoLogin, loginLogoFrame.width > 0 else {
+            withAnimation(.easeInOut(duration: 0.45)) {
+                showLaunchScreen = false
+            }
+            return
+        }
+
+        withAnimation(.spring(response: 0.62, dampingFraction: 0.86)) {
+            isHandingOffToLogin = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.68) {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                showLaunchScreen = false
+                isHandingOffToLogin = false
+            }
+        }
     }
 
     private var preferredColorScheme: ColorScheme? {
@@ -257,14 +299,19 @@ struct ProvikartApp: App {
     var body: some Scene {
         WindowGroup {
             ZStack {
+                if !showLaunchScreen || launchesIntoLogin {
+                    rootContent
+                        .opacity(showLaunchScreen && !isHandingOffToLogin ? 0 : 1)
+                        .allowsHitTesting(!showLaunchScreen)
+                }
                 if showLaunchScreen {
-                    LaunchView(onFinish: { showLaunchScreen = false })
-                } else if !hasCompletedOnboarding {
-                    OnboardingView(onFinish: { hasCompletedOnboarding = true })
-                } else if authState.isLoggedIn {
-                    ContentView()
-                } else {
-                    LoginView()
+                    LaunchView(
+                        isHandingOff: isHandingOffToLogin,
+                        targetFrame: loginLogoFrame,
+                        onFinish: finishLaunch
+                    )
+                    .transition(.opacity)
+                    .zIndex(1)
                 }
                 // Pouze když je aplikace v pozadí (uživatel odešel / app switcher), ne při .inactive (ovládací centrum, notifikace).
                 if scenePhase == .background {
@@ -288,6 +335,7 @@ struct ProvikartApp: App {
                     .zIndex(3)
                 }
             }
+            .onPreferenceChange(LoginLogoFrameKey.self) { loginLogoFrame = $0 }
             .preferredColorScheme(preferredColorScheme)
             .environmentObject(authState)
             .environmentObject(appDelegate)

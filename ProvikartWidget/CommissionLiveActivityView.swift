@@ -9,76 +9,10 @@ import ActivityKit
 import SwiftUI
 import WidgetKit
 
-// MARK: - Compact (Dynamic Island – zúžený)
-
-struct CommissionLiveActivityCompactView: View {
-    let context: ActivityViewContext<CommissionLiveActivityAttributes>
-    let state: CommissionLiveActivityAttributes.ContentState
-
-    private func formatCommission(_ value: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.groupingSeparator = " "
-        formatter.maximumFractionDigits = 0
-        formatter.minimumFractionDigits = 0
-        return formatter.string(from: NSNumber(value: value)) ?? "\(Int(value))"
-    }
-
-    private var progress: Double {
-        guard state.goal > 0 else { return 0 }
-        return min(state.commission / state.goal, 1.0)
-    }
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "creditcard.fill")
-                .font(.system(size: 14))
-                .foregroundStyle(.orange)
-            if state.isHidden {
-                Text("– – –")
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-            } else {
-                Text(formatCommission(state.commission) + " " + state.currency)
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-            }
-            Spacer(minLength: 6)
-            ProgressView(value: progress)
-                .tint(.orange)
-                .frame(maxWidth: 50)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-    }
-}
-
-// MARK: - Minimal (Dynamic Island – při dvou aktivitách; malá kruhová plocha)
-
-struct CommissionLiveActivityMinimalView: View {
-    let context: ActivityViewContext<CommissionLiveActivityAttributes>
-    let state: CommissionLiveActivityAttributes.ContentState
-
-    private var progress: Double {
-        guard state.goal > 0 else { return 0 }
-        return min(state.commission / state.goal, 1.0)
-    }
-
-    var body: some View {
-        ZStack {
-            Image(systemName: "creditcard.fill")
-                .font(.system(size: 14))
-                .foregroundStyle(.orange)
-            ProgressView(value: progress)
-                .tint(.orange)
-                .progressViewStyle(.circular)
-                .scaleEffect(0.7)
-        }
-        .frame(width: 28, height: 28)
-    }
-}
-
-// MARK: - Banner (Lock Screen – rozšířený pruh)
+// MARK: - Zámek a malá rodina
 
 struct CommissionLiveActivityBannerView: View {
+    @Environment(\.activityFamily) private var family
     let context: ActivityViewContext<CommissionLiveActivityAttributes>
     let state: CommissionLiveActivityAttributes.ContentState
 
@@ -105,18 +39,45 @@ struct CommissionLiveActivityBannerView: View {
     }
 
     var body: some View {
+        Group {
+            if family == .small {
+                watchCard
+            } else {
+                lockCard
+            }
+        }
+        .widgetURL(URL(string: "provikart://"))
+    }
+
+    private var watchCard: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "creditcard.fill")
+                .font(.caption.weight(.bold))
+            Text("Provize")
+                .font(.caption.weight(.bold))
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            Text(amountText)
+                .font(.caption.weight(.bold))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .padding(.horizontal, 8)
+        .foregroundStyle(ProvikartActivityPalette.ink)
+    }
+
+    private var lockCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Image(systemName: "creditcard.fill")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.orange)
+                    .font(.subheadline.weight(.bold))
                 Text("Provize za měsíc")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .font(.subheadline.weight(.bold))
                 if let label = state.monthLabel, !label.isEmpty {
                     Text("· \(label)")
-                        .font(.system(size: 12, weight: .regular))
-                        .foregroundStyle(.tertiary)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(ProvikartActivityPalette.ink.opacity(0.62))
                 }
                 Spacer()
             }
@@ -129,141 +90,34 @@ struct CommissionLiveActivityBannerView: View {
                     Text(formatCommission(state.commission))
                         .font(.system(size: 22, weight: .semibold, design: .rounded))
                     Text(state.currency)
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.secondary)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(ProvikartActivityPalette.ink.opacity(0.62))
                 }
             }
 
-            // Progress bar (oranžová → zelená)
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.primary.opacity(0.12))
-                        .frame(height: 6)
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(
-                            LinearGradient(
-                                colors: [.orange, .yellow, .green],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .frame(width: max(0, geo.size.width * progress), height: 6)
-                }
-            }
-            .frame(height: 6)
+            ProgressView(value: progress)
+                .tint(ProvikartActivityPalette.ink)
 
             HStack {
                 Text("0")
                 Spacer()
                 Text(scaleLabel(state.goal / 2))
-                    .foregroundStyle(.secondary)
                 Spacer()
                 Text(scaleLabel(state.goal))
             }
-            .font(.system(size: 10, weight: .medium, design: .rounded))
-            .foregroundStyle(.secondary)
+            .font(.caption2.weight(.semibold))
+            .monospacedDigit()
+            .foregroundStyle(ProvikartActivityPalette.ink.opacity(0.62))
         }
         .padding(16)
-    }
-}
-
-// MARK: - Expanded Dynamic Island (vycentrovaný obsah v celé ploše)
-
-struct CommissionLiveActivityExpandedView: View {
-    let context: ActivityViewContext<CommissionLiveActivityAttributes>
-    let state: CommissionLiveActivityAttributes.ContentState
-
-    private func formatCommission(_ value: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.groupingSeparator = " "
-        formatter.maximumFractionDigits = 0
-        formatter.minimumFractionDigits = 0
-        return formatter.string(from: NSNumber(value: value)) ?? "\(Int(value))"
+        .foregroundStyle(ProvikartActivityPalette.ink)
+        .activityBackgroundTint(ProvikartActivityPalette.yellow)
+        .accessibilityElement(children: .combine)
     }
 
-    private func scaleLabel(_ value: Double) -> String {
-        if value >= 1000 {
-            let k = value / 1000.0
-            return k == floor(k) ? "\(Int(k))k" : String(format: "%.1fk", k)
-        }
-        return String(format: "%.0f", value)
-    }
-
-    private var progress: Double {
-        guard state.goal > 0 else { return 0 }
-        return min(state.commission / state.goal, 1.0)
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Spacer(minLength: 0)
-            VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 6) {
-                Image(systemName: "creditcard.fill")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.orange)
-                Text("Provize za měsíc")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.secondary)
-                if let label = state.monthLabel, !label.isEmpty {
-                    Text("· \(label)")
-                        .font(.system(size: 12, weight: .regular))
-                        .foregroundStyle(.tertiary)
-                }
-                Spacer(minLength: 0)
-            }
-
-            if state.isHidden {
-                Text("– – – –")
-                    .font(.system(size: 20, weight: .semibold, design: .rounded))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(formatCommission(state.commission))
-                        .font(.system(size: 20, weight: .semibold, design: .rounded))
-                    Text(state.currency)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.secondary)
-                    Spacer(minLength: 0)
-                }
-            }
-
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.primary.opacity(0.12))
-                        .frame(height: 6)
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(
-                            LinearGradient(
-                                colors: [.orange, .yellow, .green],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .frame(width: max(0, geo.size.width * progress), height: 6)
-                }
-            }
-            .frame(height: 6)
-
-            HStack {
-                Text("0")
-                Spacer()
-                Text(scaleLabel(state.goal / 2))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(scaleLabel(state.goal))
-            }
-            .font(.system(size: 10, weight: .medium, design: .rounded))
-            .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    private var amountText: String {
+        if state.isHidden { return "••••" }
+        return formatCommission(state.commission) + " " + state.currency
     }
 }
 
@@ -274,23 +128,61 @@ struct CommissionLiveActivityWidget: Widget {
         ActivityConfiguration(for: CommissionLiveActivityAttributes.self) { context in
             CommissionLiveActivityBannerView(context: context, state: context.state)
         } dynamicIsland: { context in
-            DynamicIsland {
+            let state = context.state
+            let progress = state.goal > 0 ? min(state.commission / state.goal, 1.0) : 0.0
+            let percent = state.isHidden ? "–" : "\(Int(progress * 100))%"
+            return DynamicIsland {
+                DynamicIslandExpandedRegion(.leading) {
+                    Image(systemName: "creditcard.fill")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(ProvikartActivityPalette.yellow)
+                }
+                DynamicIslandExpandedRegion(.trailing) {
+                    Text(percent)
+                        .font(.system(size: 18, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(ProvikartActivityPalette.yellow)
+                        .lineLimit(1)
+                }
                 DynamicIslandExpandedRegion(.center) {
-                    CommissionLiveActivityExpandedView(context: context, state: context.state)
+                    Text("Provize")
+                        .font(.headline)
+                        .lineLimit(1)
+                }
+                DynamicIslandExpandedRegion(.bottom) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        if let label = state.monthLabel, !label.isEmpty {
+                            Text(label)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.85))
+                                .lineLimit(1)
+                        }
+                        ProgressView(value: progress)
+                            .tint(ProvikartActivityPalette.yellow)
+                    }
                 }
             } compactLeading: {
                 Image(systemName: "creditcard.fill")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.orange)
-                    .frame(width: 24, height: 24)
+                    .foregroundStyle(ProvikartActivityPalette.yellow)
             } compactTrailing: {
-                let progress = context.state.goal > 0 ? min(context.state.commission / context.state.goal, 1.0) : 0.0
-                Text(context.state.isHidden ? "–" : "\(Int(progress * 100))%")
+                Text("100%")
+                    .monospacedDigit()
+                    .hidden()
+                    .overlay(alignment: .trailing) {
+                        Text(percent)
+                            .monospacedDigit()
+                            .lineLimit(1)
+                    }
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .frame(minWidth: 24, alignment: .trailing)
+                    .foregroundStyle(ProvikartActivityPalette.yellow)
+                    .lineLimit(1)
             } minimal: {
-                CommissionLiveActivityMinimalView(context: context, state: context.state)
+                Image(systemName: "creditcard.fill")
+                    .foregroundStyle(ProvikartActivityPalette.yellow)
             }
+            .widgetURL(URL(string: "provikart://"))
+            .keylineTint(ProvikartActivityPalette.yellow)
         }
+        .supplementalActivityFamilies([.small])
     }
 }

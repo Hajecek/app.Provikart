@@ -11,7 +11,7 @@ import SwiftUI
 private let appGroupIdentifier = "group.com.hajecek.provikartApp"
 private let timelineRefreshInterval: TimeInterval = 30 * 60
 private let networkRequestTimeout: TimeInterval = 10
-private let managerAccent = Color.indigo
+private let managerAccent = Color.accentColor
 
 private enum ManagerWidgetKeys {
     static let authToken = "widget_auth_token"
@@ -21,6 +21,8 @@ private enum ManagerWidgetKeys {
     static let managerPresentToday = "widget_manager_present_today"
     static let managerAbsentNames = "widget_manager_absent_names"
     static let managerProblemsPreview = "widget_manager_problems_preview"
+    static let managerTodayServices = "widget_manager_today_services"
+    static let managerTodayServicesDay = "widget_manager_today_services_day"
 }
 
 // Changed this from fileprivate to internal (default)
@@ -193,25 +195,20 @@ struct ProvikartManagerProblemsWidgetEntryView: View {
             default: problemsMediumView
             }
         }
-        .containerBackground(for: .widget) {
-            Color(uiColor: .secondarySystemGroupedBackground)
-        }
+        .homeWidgetBackground()
         .widgetURL(URL(string: "provikart://manager/problems"))
     }
 
     private var problemsCircularView: some View {
-        ZStack {
+        WidgetAccessoryCircle {
             if entry.hasData, let count = entry.openCount {
                 Text("\(count)")
-                    .font(.system(size: 22, weight: .semibold, design: .rounded))
-                    .foregroundStyle(managerAccent)
+                    .font(.system(.title2, design: .rounded).weight(.semibold))
             } else {
                 Image(systemName: "person.3.fill")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(managerAccent)
+                    .font(.title3.weight(.semibold))
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var problemsRectangularView: some View {
@@ -246,19 +243,18 @@ struct ProvikartManagerProblemsWidgetEntryView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
                 Image(systemName: "person.3.fill")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(managerAccent)
-                Text("TÝM")
-                    .font(.system(size: 11, weight: .semibold))
+                    .widgetAccentable()
+                Text("Tým")
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
-                    .tracking(0.5)
             }
             Spacer(minLength: 8)
             if entry.hasData, let count = entry.openCount {
                 Text("\(count)")
-                    .font(.system(size: 28, weight: .semibold, design: .rounded))
-                    .foregroundStyle(managerAccent)
+                    .font(.system(.title, design: .rounded).weight(.semibold))
+                    .widgetAccentable()
                 Text(count == 1 ? "otevřený problém" : "otevřených problémů")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.secondary)
@@ -269,7 +265,6 @@ struct ProvikartManagerProblemsWidgetEntryView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .padding(16)
     }
 
     private var problemsMediumView: some View {
@@ -311,7 +306,6 @@ struct ProvikartManagerProblemsWidgetEntryView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(16)
     }
 }
 
@@ -517,26 +511,23 @@ struct ProvikartManagerAttendanceWidgetEntryView: View {
             default: attendanceMediumView
             }
         }
-        .containerBackground(for: .widget) {
-            Color(uiColor: .secondarySystemGroupedBackground)
-        }
+        .homeWidgetBackground()
         .widgetURL(URL(string: "provikart://manager/attendance"))
     }
 
     private var attendanceCircularView: some View {
-        ZStack {
+        WidgetAccessoryCircle {
             if entry.hasData {
                 Text(presentLabel)
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .minimumScaleFactor(0.6)
+                    .font(.system(.body, design: .rounded).weight(.semibold))
+                    .minimumScaleFactor(0.5)
                     .lineLimit(1)
+                    .padding(4)
             } else {
                 Image(systemName: "person.badge.clock.fill")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(managerAccent)
+                    .font(.title3.weight(.semibold))
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var attendanceRectangularView: some View {
@@ -571,19 +562,18 @@ struct ProvikartManagerAttendanceWidgetEntryView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
                 Image(systemName: "person.badge.clock.fill")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(managerAccent)
-                Text("DOCHÁZKA")
-                    .font(.system(size: 11, weight: .semibold))
+                    .widgetAccentable()
+                Text("Docházka")
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
-                    .tracking(0.5)
             }
             Spacer(minLength: 8)
             if entry.hasData {
                 Text(presentLabel)
-                    .font(.system(size: 28, weight: .semibold, design: .rounded))
-                    .foregroundStyle(managerAccent)
+                    .font(.system(.title, design: .rounded).weight(.semibold))
+                    .widgetAccentable()
                 Text("v práci dnes")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.secondary)
@@ -594,7 +584,6 @@ struct ProvikartManagerAttendanceWidgetEntryView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .padding(16)
     }
 
     private var attendanceMediumView: some View {
@@ -622,10 +611,9 @@ struct ProvikartManagerAttendanceWidgetEntryView: View {
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(.secondary)
             } else {
-                Text("Nepřítomní:")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.tertiary)
-                    .textCase(.uppercase)
+                Text("Nepřítomní")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
                 ForEach(entry.absentNames.prefix(4), id: \.self) { name in
                     Text(name)
                         .font(.system(size: 13, weight: .medium))
@@ -634,7 +622,6 @@ struct ProvikartManagerAttendanceWidgetEntryView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(16)
     }
 }
 
@@ -658,6 +645,7 @@ struct ProvikartManagerAttendanceWidget: Widget {
 
 struct ManagerTeamEntry: TimelineEntry {
     let date: Date
+    let todayServices: Int?
     let openProblems: Int?
     let teamSize: Int?
     let presentToday: Int?
@@ -666,7 +654,7 @@ struct ManagerTeamEntry: TimelineEntry {
 
 struct ProvikartManagerTeamWidgetProvider: TimelineProvider {
     func placeholder(in context: Context) -> ManagerTeamEntry {
-        ManagerTeamEntry(date: Date(), openProblems: 3, teamSize: 8, presentToday: 6, hasData: true)
+        ManagerTeamEntry(date: Date(), todayServices: 12, openProblems: 3, teamSize: 8, presentToday: 6, hasData: true)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (ManagerTeamEntry) -> Void) {
@@ -684,9 +672,28 @@ struct ProvikartManagerTeamWidgetProvider: TimelineProvider {
         let open = (suite?.object(forKey: ManagerWidgetKeys.managerOpenProblems) as? NSNumber)?.intValue
         let team = (suite?.object(forKey: ManagerWidgetKeys.managerTeamSize) as? NSNumber)?.intValue
         let present = (suite?.object(forKey: ManagerWidgetKeys.managerPresentToday) as? NSNumber)?.intValue
-        let hasData = suite?.object(forKey: ManagerWidgetKeys.managerTeamSize) != nil
-            || suite?.object(forKey: ManagerWidgetKeys.managerOpenProblems) != nil
-        return ManagerTeamEntry(date: Date(), openProblems: open, teamSize: team, presentToday: present, hasData: hasData)
+        let services = todayServicesCount(in: suite)
+        let hasData = team != nil || open != nil || services != nil
+        return ManagerTeamEntry(
+            date: Date(),
+            todayServices: services,
+            openProblems: open,
+            teamSize: team,
+            presentToday: present,
+            hasData: hasData
+        )
+    }
+
+    private func todayServicesCount(in suite: UserDefaults?) -> Int? {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard suite?.string(forKey: ManagerWidgetKeys.managerTodayServicesDay) == formatter.string(from: Date()) else {
+            return nil
+        }
+        guard let raw = suite?.object(forKey: ManagerWidgetKeys.managerTodayServices) else { return nil }
+        return (raw as? NSNumber)?.intValue ?? raw as? Int
     }
 }
 
@@ -705,38 +712,25 @@ struct ProvikartManagerTeamWidgetEntryView: View {
             default: teamMediumView
             }
         }
-        .containerBackground(for: .widget) {
-            LinearGradient(
-                colors: [Color.indigo.opacity(0.15), Color(uiColor: .secondarySystemGroupedBackground)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
+        .homeWidgetBackground()
         .widgetURL(URL(string: "provikart://"))
     }
 
     private var teamCircularView: some View {
-        ZStack {
-            if entry.hasData, let open = entry.openProblems {
-                VStack(spacing: 0) {
-                    Text("\(open)")
-                        .font(.system(size: 18, weight: .semibold, design: .rounded))
-                    Text("prob.")
-                        .font(.system(size: 8, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
+        WidgetAccessoryCircle {
+            if entry.hasData {
+                Text("\(entry.todayServices ?? 0)")
+                    .font(.system(.title2, design: .rounded).weight(.semibold))
             } else {
-                Image(systemName: "person.3.fill")
-                    .font(.system(size: 20))
-                    .foregroundStyle(managerAccent)
+                Image(systemName: "chart.bar.fill")
+                    .font(.title3.weight(.semibold))
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var teamRectangularView: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Label("Manažerský přehled", systemImage: "person.3.fill")
+            Label("Služby dnes", systemImage: "chart.bar.fill")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.secondary)
             if entry.hasData {
@@ -753,70 +747,65 @@ struct ProvikartManagerTeamWidgetEntryView: View {
     }
 
     private var teamInlineView: some View {
-        if entry.hasData {
-            Text(teamSummaryLine)
-                .font(.system(size: 14, weight: .medium))
-        } else {
-            Text("Provikart Manažer – přihlaste se")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.secondary)
-        }
+        Text(entry.hasData ? teamSummaryLine : "Provikart Manažer – přihlaste se")
     }
 
     private var teamSummaryLine: String {
+        let services = entry.todayServices ?? 0
         let open = entry.openProblems ?? 0
         let present = entry.presentToday ?? 0
         let total = entry.teamSize ?? present
-        return "\(open) problémů · \(present)/\(total) v práci"
+        return "\(services) služeb · \(open) problémů · \(present)/\(total)"
     }
 
     private var teamSmallView: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 6) {
-                Image(systemName: "person.3.fill")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(managerAccent)
-                Text("MANAŽER")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
-            }
+        VStack(alignment: .leading, spacing: 2) {
+            Label("Služby dnes", systemImage: "chart.bar.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .widgetAccentable()
+            Spacer(minLength: 0)
             if entry.hasData {
-                HStack(spacing: 16) {
-                    miniStat(value: "\(entry.openProblems ?? 0)", label: "problémů")
-                    miniStat(
-                        value: "\(entry.presentToday ?? 0)/\(entry.teamSize ?? 0)",
-                        label: "v práci"
-                    )
-                }
+                Text("\(entry.todayServices ?? 0)")
+                    .font(.system(.title, design: .rounded).weight(.semibold))
+                    .widgetAccentable()
+                Text("\(entry.openProblems ?? 0) problémů · \(entry.presentToday ?? 0)/\(entry.teamSize ?? 0) v práci")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
             } else {
                 Text("Přihlaste se")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .padding(16)
     }
 
     private var teamMediumView: some View {
         HStack(spacing: 0) {
             teamStatColumn(
+                icon: "chart.bar.fill",
+                value: "\(entry.todayServices ?? 0)",
+                title: "Služby dnes",
+                subtitle: "uzavřené"
+            )
+            Divider().padding(.vertical, 8)
+            teamStatColumn(
                 icon: "exclamationmark.bubble.fill",
                 value: "\(entry.openProblems ?? 0)",
-                title: "Otevřené problémy",
-                subtitle: "k vyřešení"
+                title: "Problémy",
+                subtitle: "otevřené"
             )
             Divider().padding(.vertical, 8)
             teamStatColumn(
                 icon: "person.badge.clock.fill",
                 value: "\(entry.presentToday ?? 0)/\(entry.teamSize ?? 0)",
-                title: "Docházka dnes",
+                title: "Docházka",
                 subtitle: "v práci"
             )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(16)
         .opacity(entry.hasData ? 1 : 0.6)
         .overlay {
             if !entry.hasData {
@@ -827,25 +816,16 @@ struct ProvikartManagerTeamWidgetEntryView: View {
         }
     }
 
-    private func miniStat(value: String, label: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(value)
-                .font(.system(size: 22, weight: .semibold, design: .rounded))
-                .foregroundStyle(managerAccent)
-            Text(label)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
-        }
-    }
-
     private func teamStatColumn(icon: String, value: String, title: String, subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Image(systemName: icon)
                 .font(.system(size: 14))
                 .foregroundStyle(managerAccent)
             Text(value)
-                .font(.system(size: 26, weight: .semibold, design: .rounded))
-                .foregroundStyle(managerAccent)
+                .font(.system(.title, design: .rounded).weight(.semibold))
+                .minimumScaleFactor(0.6)
+                .lineLimit(1)
+                .widgetAccentable()
             Text(title)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.secondary)
@@ -865,7 +845,7 @@ struct ProvikartManagerTeamWidget: Widget {
             ProvikartManagerTeamWidgetEntryView(entry: entry)
         }
         .configurationDisplayName("Manažerský přehled")
-        .description("Problémy týmu a docházka na jednom místě.")
+        .description("Dnešní služby, problémy týmu a docházka.")
         .supportedFamilies([
             .systemSmall, .systemMedium,
             .accessoryCircular, .accessoryRectangular, .accessoryInline
