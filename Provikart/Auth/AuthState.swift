@@ -74,7 +74,7 @@ final class AuthState: ObservableObject {
         if let user = currentUser {
             WidgetDataStore.saveUserRole(UserRole(apiValue: user.role))
         }
-        // Přihlášení držíme trvale. Chybějící token neodhlašuje (host / dočasný výpadek).
+        // Přihlášení držíme trvale. Chybějící token ani HTTP 401 uživatele neodhlásí.
         if isLoggedIn, !UserRole(apiValue: currentUser?.role).isSupportedInApp, currentUser != nil {
             isLoggedIn = false
             sessionExpiredNotice = Self.unsupportedRoleNoticeText
@@ -112,7 +112,7 @@ final class AuthState: ObservableObject {
         setLoggedIn(false)
     }
 
-    /// Dřív odhlašovalo při 401/Forbidden. Teď se relace nechá – odhlásit jde jen ručně.
+    /// Úmyslně neodhlašuje. Dřív HTTP 401/403 shazovalo přihlášení uprostřed používání.
     func invalidateSessionDueToAuthFailure() {
         print("[AuthState] HTTP auth selhání – relace se ponechává, neodhlašuji")
     }

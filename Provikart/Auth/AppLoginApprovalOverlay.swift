@@ -319,48 +319,159 @@ struct AppLoginApprovalAccessoryView: View {
         Button {
             approvalState.openSheetFromAccessory()
         } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "globe.badge.chevron.backward")
-                    .font(.body)
-                Text("Přihlášení na webu čeká")
-                    .font(.subheadline)
-                if let first = approvalState.pendingRequests.first, let expires = approvalState.effectiveExpiresAt(for: first) {
+            TabAccessoryLabel(inlineSymbol: "globe.badge.chevron.backward") {
+                HStack(spacing: 10) {
+                    Image(systemName: "globe.badge.chevron.backward")
+                        .font(.body)
+                    Text("Přihlášení na webu čeká")
+                        .font(.subheadline)
+                    if let first = approvalState.pendingRequests.first, let expires = approvalState.effectiveExpiresAt(for: first) {
+                        Spacer()
+                        LoginRequestCountdownView(expiresAt: expires)
+                            .font(.caption)
+                    }
                     Spacer()
-                    LoginRequestCountdownView(expiresAt: expires)
-                        .font(.caption)
+                    Image(systemName: "chevron.up")
+                        .font(.caption.weight(.semibold))
                 }
-                Spacer()
-                Image(systemName: "chevron.up")
-                    .font(.caption.weight(.semibold))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
         }
         .buttonStyle(.plain)
     }
 }
 
-/// Modifier: nativní tabViewBottomAccessory (iOS 26+) – zobrazí se jen při čekajícím požadavku.
+/// Spodní doplněk menu. Foťák jen v detailu RD, čekající přihlášení na webu má přednost.
 struct LoginApprovalBottomAccessoryModifier: ViewModifier {
     @ObservedObject var approvalState: AppLoginApprovalState
+    var showsPhoto: Bool
+    var photoEnabled: Bool
+    var onTakePhoto: () -> Void
 
-    private var showAccessory: Bool {
+    private var showLogin: Bool {
         approvalState.showAsBottomAccessory && !approvalState.pendingRequests.isEmpty
     }
 
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            if showAccessory {
+        if #available(iOS 26.1, *) {
+            // Modifier zůstává pořád, ať se při otevření detailu nesloží navigace.
+            // isEnabled ho schová, dokud nejsme v detailu konkrétního RD.
+            content
+                .tabBarMinimizeBehavior((showLogin || showsPhoto) ? .onScrollDown : .automatic)
+                .tabViewBottomAccessory(isEnabled: showLogin || showsPhoto) {
+                    if showLogin {
+                        AppLoginApprovalAccessoryView(approvalState: approvalState)
+                    } else if showsPhoto {
+                        LocalityPhotoAccessoryButton(action: onTakePhoto, isEnabled: photoEnabled)
+                    }
+                }
+        } else if #available(iOS 26.0, *) {
+            if showLogin {
                 content
                     .tabBarMinimizeBehavior(.onScrollDown)
                     .tabViewBottomAccessory {
                         AppLoginApprovalAccessoryView(approvalState: approvalState)
                     }
+            } else if showsPhoto {
+                content
+                    .tabBarMinimizeBehavior(.onScrollDown)
+                    .tabViewBottomAccessory {
+                        LocalityPhotoAccessoryButton(action: onTakePhoto, isEnabled: photoEnabled)
+                    }
             } else {
                 content
             }
+        } else if showLogin || showsPhoto {
+            content.safeAreaInset(edge: .bottom, spacing: 0) {
+                if showLogin {
+                    AppLoginApprovalAccessoryView(approvalState: approvalState)
+                        .background(.bar)
+                } else {
+                    LocalityPhotoAccessoryButton(action: onTakePhoto, isEnabled: photoEnabled)
+                        .background(.bar)
+                }
+            }
         } else {
             content
+        }
+    }
+}
+
+struct LocalityPhotoAccessoryButton: View {
+    var action: () -> Void
+    var isEnabled: Bool = true
+
+    var body: some View {
+        Button(action: action) {
+            TabAccessoryLabel(
+                inlineSymbol: "camera.fill",
+                inlineTitle: isEnabled ? "Vyfotit dům" : "Dům má 3 fotky",
+                inlineTint: SalesLocalityKindStyle.rd
+            ) {
+                HStack(spacing: 10) {
+                    Image(systemName: "camera.fill")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(SalesLocalityKindStyle.rd)
+                    Text(isEnabled ? "Vyfotit dům" : "Dům má 3 fotky")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer(minLength: 8)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .accessibilityLabel("Vyfotit rodinný dům")
+    }
+}
+
+/// Ve sbalené liště je ikona a krátký text. Bez Spaceru, ten by řádek roztáhl a lištu zase rozhodil.
+private struct TabAccessoryLabel<Expanded: View>: View {
+    var inlineSymbol: String
+    var inlineTitle: String? = nil
+    var inlineTint: Color = .primary
+    @ViewBuilder var expanded: () -> Expanded
+
+    var body: some View {
+        if #available(iOS 26.0, *) {
+            TabAccessoryPlacementLabel(
+                inlineSymbol: inlineSymbol,
+                inlineTitle: inlineTitle,
+                inlineTint: inlineTint,
+                expanded: expanded
+            )
+        } else {
+            expanded()
+        }
+    }
+}
+
+@available(iOS 26.0, *)
+private struct TabAccessoryPlacementLabel<Expanded: View>: View {
+    var inlineSymbol: String
+    var inlineTitle: String?
+    var inlineTint: Color
+    @ViewBuilder var expanded: () -> Expanded
+    @Environment(\.tabViewBottomAccessoryPlacement) private var placement
+
+    var body: some View {
+        if placement == .inline {
+            HStack(spacing: 6) {
+                Image(systemName: inlineSymbol)
+                    .font(.body.weight(.semibold))
+                if let inlineTitle {
+                    Text(inlineTitle)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                }
+            }
+            .foregroundStyle(inlineTint)
+            .fixedSize(horizontal: true, vertical: false)
+        } else {
+            expanded()
         }
     }
 }

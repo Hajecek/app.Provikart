@@ -57,6 +57,7 @@ struct EmployeeTabMenuView: View {
     @State private var showAddAIModeSheet = false
     @State private var showReportIssue = false
     @State private var showLocation = false
+    @StateObject private var rdPhotoShortcut = RdPhotoShortcut()
 
     private let menuGold = UIColor(red: 0.969, green: 0.737, blue: 0.329, alpha: 1)
 
@@ -137,7 +138,13 @@ struct EmployeeTabMenuView: View {
             )
             .environmentObject(authState)
         }
-        .modifier(LoginApprovalBottomAccessoryModifier(approvalState: appLoginApprovalState))
+        .environmentObject(rdPhotoShortcut)
+        .modifier(LoginApprovalBottomAccessoryModifier(
+            approvalState: appLoginApprovalState,
+            showsPhoto: selectedTab == .localities && rdPhotoShortcut.localityId != nil,
+            photoEnabled: rdPhotoShortcut.canAdd,
+            onTakePhoto: { rdPhotoShortcut.requestCamera() }
+        ))
     }
 }
 

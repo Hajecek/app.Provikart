@@ -336,6 +336,89 @@ struct ManagerOverviewServicesMeta: Decodable, Equatable {
     }
 }
 
+struct ManagerOverviewProgress: Decodable, Equatable {
+    let mode: String
+    let labels: [String]
+    let tips: [String]
+    let current: [Int?]
+    let previous: [Int?]
+    let currentLabel: String
+    let previousLabel: String
+    let subtitle: String
+    let currentTotal: Int
+    let previousSame: Int
+    let previousTotal: Int
+    let sameDay: Int
+    let compact: Bool
+    let todayIndex: Int?
+    let verdict: String
+    let tone: String
+    let story: String
+    let nowCaption: String
+    let sameCaption: String
+    let prevCaption: String
+
+    enum CodingKeys: String, CodingKey {
+        case mode, labels, tips, current, previous, subtitle, compact, verdict, tone, story
+        case currentLabel = "current_label"
+        case previousLabel = "previous_label"
+        case currentTotal = "current_total"
+        case previousSame = "previous_same"
+        case previousTotal = "previous_total"
+        case sameDay = "same_day"
+        case todayIndex = "today_index"
+        case nowCaption = "now_caption"
+        case sameCaption = "same_caption"
+        case prevCaption = "prev_caption"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        mode = (try? c.decode(String.self, forKey: .mode)) ?? "range"
+        labels = (try? c.decode([String].self, forKey: .labels)) ?? []
+        tips = (try? c.decode([String].self, forKey: .tips)) ?? []
+        current = c.decodeNullableInts(forKey: .current)
+        previous = c.decodeNullableInts(forKey: .previous)
+        currentLabel = (try? c.decode(String.self, forKey: .currentLabel)) ?? "Aktuální"
+        previousLabel = (try? c.decode(String.self, forKey: .previousLabel)) ?? "Předchozí"
+        subtitle = (try? c.decode(String.self, forKey: .subtitle)) ?? ""
+        currentTotal = c.decodeFlexibleInt(forKey: .currentTotal) ?? 0
+        previousSame = c.decodeFlexibleInt(forKey: .previousSame) ?? 0
+        previousTotal = c.decodeFlexibleInt(forKey: .previousTotal) ?? 0
+        sameDay = c.decodeFlexibleInt(forKey: .sameDay) ?? 0
+        compact = c.decodeFlexibleOptionalBool(forKey: .compact) ?? false
+        todayIndex = c.decodeFlexibleInt(forKey: .todayIndex)
+        verdict = (try? c.decode(String.self, forKey: .verdict)) ?? ""
+        tone = (try? c.decode(String.self, forKey: .tone)) ?? "flat"
+        story = (try? c.decode(String.self, forKey: .story)) ?? ""
+        nowCaption = (try? c.decode(String.self, forKey: .nowCaption)) ?? ""
+        sameCaption = (try? c.decode(String.self, forKey: .sameCaption)) ?? ""
+        prevCaption = (try? c.decode(String.self, forKey: .prevCaption)) ?? ""
+    }
+
+    var points: [ManagerOverviewProgressPoint] {
+        let count = max(labels.count, max(current.count, previous.count))
+        return (0..<count).map { index in
+            ManagerOverviewProgressPoint(
+                index: index,
+                label: index < labels.count ? labels[index] : "\(index + 1)",
+                tip: index < tips.count ? tips[index] : "",
+                current: index < current.count ? current[index] : nil,
+                previous: index < previous.count ? previous[index] : nil
+            )
+        }
+    }
+}
+
+struct ManagerOverviewProgressPoint: Identifiable, Equatable {
+    var id: Int { index }
+    let index: Int
+    let label: String
+    let tip: String
+    let current: Int?
+    let previous: Int?
+}
+
 struct ManagerOverviewPayload: Decodable {
     let memberCount: Int
     let kpis: [ManagerOverviewKPI]
@@ -349,10 +432,11 @@ struct ManagerOverviewPayload: Decodable {
     let servicesMeta: ManagerOverviewServicesMeta?
     let alerts: [ManagerOverviewAlert]
     let tasksDueTodayCount: Int
+    let progress: ManagerOverviewProgress?
 
     enum CodingKeys: String, CodingKey {
         case memberCount = "member_count"
-        case kpis, activities, salespeople, leaderboard, localities, summary, alerts
+        case kpis, activities, salespeople, leaderboard, localities, summary, alerts, progress
         case riskPeople = "risk_people"
         case servicesBreakdown = "services_breakdown"
         case servicesMeta = "services_meta"
@@ -373,6 +457,7 @@ struct ManagerOverviewPayload: Decodable {
         servicesMeta = try? c.decodeIfPresent(ManagerOverviewServicesMeta.self, forKey: .servicesMeta)
         alerts = (try? c.decode([ManagerOverviewAlert].self, forKey: .alerts)) ?? []
         tasksDueTodayCount = c.decodeFlexibleInt(forKey: .tasksDueTodayCount) ?? 0
+        progress = try? c.decodeIfPresent(ManagerOverviewProgress.self, forKey: .progress)
     }
 }
 
@@ -458,6 +543,31 @@ private extension KeyedDecodingContainer {
             if let v = Double(normalized) { return v }
         }
         return nil
+    }
+
+    func decodeNullableInts(forKey key: Key) -> [Int?] {
+        guard var nested = try? nestedUnkeyedContainer(forKey: key) else { return [] }
+        var out: [Int?] = []
+        while !nested.isAtEnd {
+            if (try? nested.decodeNil()) == true {
+                out.append(nil)
+                continue
+            }
+            if let value = try? nested.decode(Int.self) {
+                out.append(value)
+                continue
+            }
+            if let value = try? nested.decode(Double.self) {
+                out.append(Int(value.rounded()))
+                continue
+            }
+            if let text = try? nested.decode(String.self) {
+                out.append(Int(text))
+                continue
+            }
+            break
+        }
+        return out
     }
 
     func decodeFlexibleOptionalBool(forKey key: Key) -> Bool? {

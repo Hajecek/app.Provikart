@@ -12,15 +12,10 @@ extension Notification.Name {
 }
 
 enum AuthSession {
-    /// Dřív odhlašovalo při 401/Forbidden. Teď se relace nechá být.
+    /// Automatické odhlášení je vypnuté. Token v aplikaci platí, dokud se uživatel neodhlásí sám.
     static func handle(http: HTTPURLResponse, data: Data?) {
-        guard shouldInvalidate(statusCode: http.statusCode, data: data) else { return }
+        guard http.statusCode == 401 || http.statusCode == 403 else { return }
         print("[AuthSession] HTTP \(http.statusCode) – relace se ponechává, neodhlašuji")
-    }
-
-    static func shouldInvalidate(statusCode: Int, data: Data?) -> Bool {
-        // Automatické odhlášení je vypnuté – token platí, dokud se uživatel neodhlásí sám.
-        return false
     }
 }
 

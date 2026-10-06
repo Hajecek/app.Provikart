@@ -34,6 +34,7 @@ final class ManagerSalesLocalitiesViewModel: ObservableObject {
     @Published var permissions: ManagerSalesLocalityPermissions = .default
     @Published var searchText = ""
     @Published var doneFilter: SalesLocalityDoneFilter = .all
+    @Published var kindFilter: SalesLocalityKindFilter = .localities
     @Published var assignmentFilter: ManagerSalesAssignmentFilter = .all
     @Published var selectedSalesFilterId: Int? = nil
     @Published var teamMembers: [ManagerTeamMember] = []
@@ -184,25 +185,40 @@ final class ManagerSalesLocalitiesViewModel: ObservableObject {
         }
 
         do {
-            let result = try await service.fetchLocalities(
-                token: token,
-                query: .init(
-                    q: searchText,
-                    done: doneFilter.doneValue,
-                    assignment: assignmentFilter.apiFilter,
-                    salesId: selectedSalesFilterId,
-                    page: page,
-                    limit: 50
-                )
-            )
-            guard generation == loadGeneration else { return }
+            let collectEveryPage = reset && kindFilter == .rd
+            var pageToLoad = page
+            var pagesLeft = collectEveryPage ? 40 : 1
+            var accumulated = reset ? [SalesLocalityItem]() : items
+            var result: ManagerSalesLocalityListResult?
 
+            while pagesLeft > 0 {
+                let loaded = try await service.fetchLocalities(
+                    token: token,
+                    query: .init(
+                        q: searchText,
+                        done: doneFilter.doneValue,
+                        kind: kindFilter.apiValue,
+                        assignment: assignmentFilter.apiFilter,
+                        salesId: selectedSalesFilterId,
+                        page: pageToLoad,
+                        limit: collectEveryPage ? 100 : 50
+                    )
+                )
+                guard generation == loadGeneration else { return }
+                let existing = Set(accumulated.map(\.id))
+                accumulated.append(contentsOf: loaded.items.filter { !existing.contains($0.id) })
+                result = loaded
+                pagesLeft -= 1
+                if !collectEveryPage || pageToLoad >= loaded.pagination.totalPages {
+                    break
+                }
+                pageToLoad += 1
+            }
+
+            guard let result else { return }
+            items = accumulated
             if reset {
-                items = result.items
-                selectedIds = selectedIds.intersection(Set(result.items.map(\.id)))
-            } else {
-                let existing = Set(items.map(\.id))
-                items.append(contentsOf: result.items.filter { !existing.contains($0.id) })
+                selectedIds = selectedIds.intersection(Set(accumulated.map(\.id)))
             }
             stats = result.stats
             facets = result.facets
@@ -330,6 +346,7 @@ struct ManagerSalesLocalitiesView: View {
     @State private var isLocationsSheetPresented = false
     @State private var showAssignPicker = false
     @State private var showSalesFilterSheet = false
+    @State private var expandedRd: Set<String> = []
 
     var body: some View {
         NavigationStack {
@@ -340,6 +357,9 @@ struct ManagerSalesLocalitiesView: View {
                 .toolbar { toolbarContent }
                 .searchable(text: $viewModel.searchText, prompt: "Ulice, obec, majitel…")
                 .modifier(ManagerSalesLocalitiesLifecycleModifier(viewModel: viewModel, authToken: authState.authToken))
+                .onChange(of: viewModel.kindFilter) { _, _ in
+                    expandedRd.removeAll()
+                }
                 .sheet(isPresented: $isLocationsSheetPresented) {
                     ManagerLocationsSheetView()
                         .environmentObject(authState)
@@ -454,23 +474,70 @@ struct ManagerSalesLocalitiesView: View {
         List {
             filtersSection
 
-            if viewModel.items.isEmpty {
+            if SalesLocalityRdGrouping.visible(viewModel.items, kind: viewModel.kindFilter).isEmpty {
                 Section {
                     ContentUnavailableView(
-                        "Žádné lokality",
-                        systemImage: "building.2",
+                        viewModel.kindFilter == .rd ? "Žádné rodinné domy" : "Žádné lokality",
+                        systemImage: viewModel.kindFilter == .rd ? "house" : "building.2",
                         description: Text(
-                            viewModel.hasActiveFilters
-                                ? "Zkuste upravit filtry nebo hledání."
-                                : "Nemáte zatím žádné lokality."
+                            viewModel.kindFilter == .rd
+                                ? "V tomhle filtru nejsou žádné rodinné domy."
+                                : (viewModel.hasActiveFilters
+                                    ? "Zkuste upravit filtry nebo hledání."
+                                    : "Nemáte zatím žádné lokality.")
                         )
                     )
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 24)
                 }
                 .listRowBackground(Color.clear)
+            } else if viewModel.kindFilter == .rd {
+                ForEach(SalesLocalityRdGrouping.groups(in: viewModel.items)) { group in
+                    Section {
+                        Button {
+                            withAnimation(.snappy(duration: 0.2)) {
+                                if expandedRd.contains(group.id) {
+                                    expandedRd.remove(group.id)
+                                } else {
+                                    expandedRd.insert(group.id)
+                                }
+                            }
+                        } label: {
+                            SalesLocalityRdGroupHeader(group: group, expanded: expandedRd.contains(group.id))
+                        }
+                        .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16))
+                        .listRowBackground(SalesLocalityClosedStyle.rowBackground(isClosed: false, isFamilyHouse: true))
+
+                        if expandedRd.contains(group.id) {
+                            ForEach(group.houses) { item in
+                                localityListRow(item)
+                                    .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+                                    .listRowBackground(SalesLocalityClosedStyle.rowBackground(isClosed: item.isClosed, isFamilyHouse: true))
+                            }
+                        }
+                    }
+                }
+
+                if viewModel.hasMorePages {
+                    Section {
+                        HStack {
+                            Spacer()
+                            if viewModel.isLoadingMore {
+                                ProgressView()
+                            } else {
+                                Button("Načíst další") {
+                                    Task { await viewModel.load(token: authState.authToken, reset: false) }
+                                }
+                                .font(.subheadline.weight(.semibold))
+                            }
+                            Spacer()
+                        }
+                    }
+                    .listRowBackground(Color.clear)
+                }
             } else {
-                ForEach(viewModel.items) { item in
+                ForEach(SalesLocalityRdGrouping.visible(viewModel.items, kind: .localities)) { item in
                     Section {
                         localityListRow(item)
                             .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16))
@@ -504,19 +571,26 @@ struct ManagerSalesLocalitiesView: View {
 
     private var filtersSection: some View {
         Section {
-            Picker(
-                "Stav",
-                selection: Binding(
-                    get: { viewModel.doneFilter },
-                    set: { viewModel.setDoneFilter($0) }
-                )
-            ) {
+            SalesLocalityFilterStrip {
                 ForEach(SalesLocalityDoneFilter.allCases) { filter in
-                    Text(filter.rawValue).tag(filter)
+                    SalesLocalityFilterChip(
+                        title: filter.rawValue,
+                        isSelected: viewModel.doneFilter == filter
+                    ) {
+                        viewModel.setDoneFilter(filter)
+                    }
+                }
+                SalesLocalityFilterDivider()
+                ForEach(SalesLocalityKindFilter.allCases) { filter in
+                    SalesLocalityFilterChip(
+                        title: filter.rawValue,
+                        isSelected: viewModel.kindFilter == filter
+                    ) {
+                        viewModel.kindFilter = filter
+                    }
                 }
             }
-            .pickerStyle(.segmented)
-            .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
             .listRowSeparator(.hidden)
 
             Picker(
@@ -672,6 +746,9 @@ private struct ManagerSalesLocalitiesLifecycleModifier: ViewModifier {
                 viewModel.scheduleSearchReload(token: authToken)
             }
             .onChange(of: viewModel.doneFilter) { _, _ in
+                viewModel.scheduleFilterReload(token: authToken)
+            }
+            .onChange(of: viewModel.kindFilter) { _, _ in
                 viewModel.scheduleFilterReload(token: authToken)
             }
             .onChange(of: viewModel.assignmentFilter) { _, _ in
@@ -1017,7 +1094,12 @@ struct ManagerSalesLocalityDetailView: View {
     var body: some View {
         Form {
             Section {
-                SalesLocalityDetailIdentity(item: item)
+                SalesLocalityDetailIdentity(
+                    item: item,
+                    opened: openedValue,
+                    fiber: fiberValue,
+                    hp: hpValue
+                )
             }
 
             if item.isFamilyHouse {
@@ -1097,34 +1179,22 @@ struct ManagerSalesLocalityDetailView: View {
                 }
             }
 
-            Section {
-                if let ulice = item.ulice, !ulice.isEmpty {
-                    LabeledContent("Ulice", value: ulice)
+            if SalesLocalityContextCard.hasContent(item, showsContact: false) {
+                Section {
+                    SalesLocalityContextCard(item: item, showsContact: false)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+                        .listRowBackground(Color.clear)
+                } header: {
+                    Text("Místo")
                 }
-                if let popisne = item.cisloPopisne, !popisne.isEmpty {
-                    LabeledContent("Číslo popisné", value: popisne)
-                }
-                if let orientacni = item.cisloOrientacni, !orientacni.isEmpty {
-                    LabeledContent("Číslo orientační", value: orientacni)
-                }
-                if let cast = item.castObce, !cast.isEmpty {
-                    LabeledContent("Část obce", value: cast)
-                }
-                if let obec = item.obec, !obec.isEmpty {
-                    LabeledContent("Obec", value: obec)
-                }
-                if let okres = item.okres, !okres.isEmpty {
-                    LabeledContent("Okres", value: okres)
-                }
-                if viewModel.canEditHp {
+            }
+
+            if viewModel.canEditHp {
+                Section {
                     Stepper(value: $hpValue, in: 0...9999) {
                         LabeledContent("HP", value: "\(hpValue)")
                     }
-                } else {
-                    LabeledContent("HP", value: "\(item.hp)")
                 }
-            } header: {
-                Text("Lokalita")
             }
 
             if viewModel.canEditMajitel || viewModel.canEditTelefon || viewModel.canEditEmail {
@@ -1150,20 +1220,21 @@ struct ManagerSalesLocalityDetailView: View {
                 }
             }
 
-            if viewModel.canEditDone {
+            if viewModel.canEditDone || viewModel.canEditD2d {
                 Section {
-                    Toggle(isOn: $isDone) {
-                        Label("Hotovo", systemImage: "checkmark.circle.fill")
+                    if viewModel.canEditDone {
+                        Toggle(isOn: $isDone) {
+                            Label("Hotovo", systemImage: "checkmark.circle.fill")
+                        }
+                        .tint(.green)
                     }
-                    .tint(.green)
-                }
-            }
-
-            if viewModel.canEditD2d {
-                Section {
-                    Toggle(isOn: $d2d) {
-                        Label("D2D", systemImage: "figure.walk")
+                    if viewModel.canEditD2d {
+                        Toggle(isOn: $d2d) {
+                            Label("D2D", systemImage: "figure.walk")
+                        }
                     }
+                } header: {
+                    Text("Stav")
                 }
             }
 
@@ -1176,6 +1247,18 @@ struct ManagerSalesLocalityDetailView: View {
         }
         .navigationTitle("Detail lokality")
         .navigationBarTitleDisplayMode(.inline)
+        .modifier(RdPhotoDetailAccessory(
+            localityId: item.id,
+            token: authState.authToken,
+            photosCount: item.photosCount,
+            photosMax: item.photosMax,
+            isFamilyHouse: item.isFamilyHouse,
+            onPhotosChanged: { photos in
+                item.photos = photos
+                item.photosCount = photos.count
+                viewModel.replaceItem(item)
+            }
+        ))
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 syncStatusView

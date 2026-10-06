@@ -40,6 +40,7 @@ struct SalesLocalityItem: Decodable, Identifiable, Equatable {
     let telefon: String?
     let note: String?
     var kind: String
+    var rdGroupKey: String
     var photos: [SalesLocalityPhoto]
     var photosCount: Int
     var photosMax: Int
@@ -78,6 +79,7 @@ struct SalesLocalityItem: Decodable, Identifiable, Equatable {
         case houseNumber = "house_number"
         case majitel, puvodce, email, telefon, note
         case kind, photos
+        case rdGroupKey = "rd_group_key"
         case photosCount = "photos_count"
         case photosMax = "photos_max"
         case hp
@@ -117,6 +119,7 @@ struct SalesLocalityItem: Decodable, Identifiable, Equatable {
         telefon = c.decodeFlexibleString(forKey: .telefon)
         note = c.decodeFlexibleString(forKey: .note)
         kind = c.decodeFlexibleString(forKey: .kind) ?? "standard"
+        rdGroupKey = c.decodeFlexibleString(forKey: .rdGroupKey) ?? ""
         photos = (try? c.decode([SalesLocalityPhoto].self, forKey: .photos)) ?? []
         photosCount = c.decodeFlexibleInt(forKey: .photosCount) ?? photos.count
         photosMax = c.decodeFlexibleInt(forKey: .photosMax) ?? 3
@@ -241,6 +244,19 @@ struct SalesLocalityItem: Decodable, Identifiable, Equatable {
     }
 
     var isFamilyHouse: Bool { kind == "rd" }
+
+    /// Část obce (obec), stejně jako seskupení RD na webu.
+    var rdGroupTitle: String {
+        let cast = castObce?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let city = obec?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !cast.isEmpty && !city.isEmpty && cast.caseInsensitiveCompare(city) != .orderedSame {
+            return "\(cast) (\(city))"
+        }
+        if !cast.isEmpty { return cast }
+        if !city.isEmpty { return city }
+        let key = rdGroupKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        return key.isEmpty ? "Rodinné domy" : key
+    }
 
     var listStreet: String {
         let street = ulice?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -544,6 +560,7 @@ final class UserSalesLocalitiesService {
         var okres: String? = nil
         var obec: String? = nil
         var done: Bool? = nil
+        var kind: String? = nil
         var page: Int = 1
         var limit: Int = 50
     }
@@ -571,6 +588,9 @@ final class UserSalesLocalitiesService {
         }
         if let done = query.done {
             items.append(URLQueryItem(name: "done", value: done ? "1" : "0"))
+        }
+        if let kind = query.kind?.trimmingCharacters(in: .whitespacesAndNewlines), !kind.isEmpty {
+            items.append(URLQueryItem(name: "kind", value: kind))
         }
 
         var comp = URLComponents(string: "\(baseURL)/user_sales_localities.php")

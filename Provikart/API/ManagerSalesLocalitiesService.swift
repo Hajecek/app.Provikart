@@ -214,6 +214,7 @@ final class ManagerSalesLocalitiesService {
         var okres: String? = nil
         var obec: String? = nil
         var done: Bool? = nil
+        var kind: String? = nil
         var assignment: AssignmentFilter = .all
         var salesId: Int? = nil
         var page: Int = 1
@@ -243,6 +244,9 @@ final class ManagerSalesLocalitiesService {
         }
         if let done = query.done {
             items.append(URLQueryItem(name: "done", value: done ? "1" : "0"))
+        }
+        if let kind = query.kind?.trimmingCharacters(in: .whitespacesAndNewlines), !kind.isEmpty {
+            items.append(URLQueryItem(name: "kind", value: kind))
         }
         if let salesId = query.salesId, salesId > 0 {
             items.append(URLQueryItem(name: "sales_id", value: "\(salesId)"))

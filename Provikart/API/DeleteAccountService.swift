@@ -30,9 +30,13 @@ enum DeleteAccountError: LocalizedError {
 final class DeleteAccountService {
     private let baseURL = "https://provikart.cz/api"
 
-    func deleteAccount(token: String?) async throws -> DeleteAccountResponse {
+    func deleteAccount(token: String?, password: String) async throws -> DeleteAccountResponse {
         guard let token = token, !token.isEmpty else {
             throw DeleteAccountError.notAuthenticated
+        }
+        let trimmedPassword = password.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedPassword.isEmpty else {
+            throw DeleteAccountError.serverError(400, "Pro smazání účtu zadejte současné heslo.")
         }
 
         guard let url = URL(string: "\(baseURL)/auth/delete_account.php") else {
@@ -46,7 +50,7 @@ final class DeleteAccountService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
-        let body: [String: String] = ["token_api": token]
+        let body: [String: String] = ["token_api": token, "password": trimmedPassword]
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, response) = try await URLSession.shared.authAwareData(for: request)

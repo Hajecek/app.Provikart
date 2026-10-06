@@ -8,6 +8,29 @@
 import SwiftUI
 import UIKit
 
+@MainActor
+final class RdPhotoShortcut: ObservableObject {
+    @Published var localityId: Int?
+    @Published var canAdd = false
+    @Published private(set) var request = 0
+
+    func bind(localityId: Int, canAdd: Bool) {
+        self.localityId = localityId
+        self.canAdd = canAdd
+    }
+
+    func clear(localityId: Int) {
+        guard self.localityId == localityId else { return }
+        self.localityId = nil
+        self.canAdd = false
+    }
+
+    func requestCamera() {
+        guard localityId != nil, canAdd else { return }
+        request += 1
+    }
+}
+
 struct SalesLocalityPhotosSection: View {
     let localityId: Int
     let token: String?
@@ -184,7 +207,77 @@ struct SalesLocalityPhotosSection: View {
     }
 }
 
-private struct CameraCapturePicker: UIViewControllerRepresentable {
+/// Foťák v liště drží celý detail, ne jen řádek s fotkou. Ten při scrollu z Formu zmizí
+/// a dřív s ním zmizel i doplněk lišty.
+struct RdPhotoDetailAccessory: ViewModifier {
+    let localityId: Int
+    let token: String?
+    let photosCount: Int
+    let photosMax: Int
+    let isFamilyHouse: Bool
+    let onPhotosChanged: ([SalesLocalityPhoto]) -> Void
+
+    @EnvironmentObject private var shortcut: RdPhotoShortcut
+    @State private var showCamera = false
+    @State private var isUploading = false
+
+    private var canAdd: Bool {
+        photosCount < max(photosMax, 1) && !isUploading
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear { publish() }
+            .onChange(of: photosCount) { _, _ in publish() }
+            .onChange(of: isUploading) { _, _ in publish() }
+            .onChange(of: shortcut.request) { _, _ in
+                guard isFamilyHouse, shortcut.localityId == localityId else { return }
+                openCamera()
+            }
+            .onDisappear {
+                guard isFamilyHouse else { return }
+                shortcut.clear(localityId: localityId)
+            }
+            .sheet(isPresented: $showCamera) {
+                CameraCapturePicker(
+                    onImage: { image in
+                        showCamera = false
+                        Task { await upload(image) }
+                    },
+                    onCancel: { showCamera = false }
+                )
+                .ignoresSafeArea()
+            }
+    }
+
+    private func publish() {
+        guard isFamilyHouse else { return }
+        shortcut.bind(localityId: localityId, canAdd: canAdd)
+    }
+
+    private func openCamera() {
+        guard canAdd, UIImagePickerController.isSourceTypeAvailable(.camera) else { return }
+        showCamera = true
+    }
+
+    private func upload(_ image: UIImage) async {
+        guard let jpeg = image.jpegDataFitting(maxBytes: 1_400_000) else { return }
+        isUploading = true
+        defer { isUploading = false }
+        do {
+            let updated = try await UserSalesLocalitiesService().uploadPhoto(
+                token: token,
+                localityId: localityId,
+                jpeg: jpeg
+            )
+            onPhotosChanged(updated)
+        } catch {
+            showCamera = false
+        }
+    }
+}
+
+struct CameraCapturePicker: UIViewControllerRepresentable {
     var onImage: (UIImage) -> Void
     var onCancel: () -> Void
 

@@ -37,6 +37,7 @@ struct SettingsView: View {
     @State private var showOpenURLAlert = false
     @State private var pendingURL: URL?
     @State private var showDeleteAccountConfirm = false
+    @State private var deleteAccountPassword = ""
     @State private var isDeletingAccount = false
     @State private var deleteAccountError: String?
     @State private var showDeleteError = false
@@ -160,7 +161,7 @@ struct SettingsView: View {
             } header: {
                 Text("Účet")
             } footer: {
-                Text("Trvale smaže váš účet a všechna data z našich serverů.")
+                Text("Trvale smaže váš účet a všechna data z našich serverů. Server si vyžádá současné heslo.")
             }
         }
         .listStyle(.insetGrouped)
@@ -187,22 +188,36 @@ struct SettingsView: View {
         } message: {
             Text("Otevřít tento odkaz v prohlížeči?")
         }
-        .alert("Opravdu smazat účet?", isPresented: $showDeleteAccountConfirm) {
-            Button("Zrušit", role: .cancel) { }
-            Button("Smazat účet", role: .destructive) {
-                Task { await performDeleteAccount() }
+        .sheet(isPresented: $showDeleteAccountConfirm) {
+            NavigationStack {
+                Form {
+                    Section {
+                        SecureField("Současné heslo", text: $deleteAccountPassword)
+                            .textContentType(.password)
+                    } footer: {
+                        Text("""
+                        Tato akce je nevratná. Smažou se objednávky, nahlášené problémy, přihlášení a účet. Data nelze obnovit.
+                        """)
+                    }
+                }
+                .navigationTitle("Smazat účet")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Zrušit") {
+                            deleteAccountPassword = ""
+                            showDeleteAccountConfirm = false
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Smazat", role: .destructive) {
+                            Task { await performDeleteAccount() }
+                        }
+                        .disabled(deleteAccountPassword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isDeletingAccount)
+                    }
+                }
             }
-        } message: {
-            Text("""
-            Tato akce je nevratná. Budou trvale smazány:
-
-            • Všechny vaše objednávky a jejich položky
-            • Všechny nahlášené problémy
-            • Přihlašovací tokeny a push notifikace
-            • Váš uživatelský účet
-
-            Po smazání se nebudete moci přihlásit a data nelze obnovit.
-            """)
+            .presentationDetents([.medium])
         }
         .alert("Chyba při mazání účtu", isPresented: $showDeleteError) {
             Button("OK", role: .cancel) { }
@@ -316,9 +331,14 @@ struct SettingsView: View {
         defer { isDeletingAccount = false }
 
         do {
-            let response = try await DeleteAccountService().deleteAccount(token: authState.authToken)
+            let response = try await DeleteAccountService().deleteAccount(
+                token: authState.authToken,
+                password: deleteAccountPassword
+            )
             if response.success {
                 await MainActor.run {
+                    deleteAccountPassword = ""
+                    showDeleteAccountConfirm = false
                     authState.logOut()
                 }
             } else {

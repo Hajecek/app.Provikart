@@ -24,6 +24,130 @@ enum SalesLocalityDoneFilter: String, CaseIterable, Identifiable {
     }
 }
 
+struct SalesLocalityFilterChip: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .foregroundStyle(isSelected ? Color.white : Color.primary)
+                .background(isSelected ? Color.accentColor : Color.primary.opacity(0.08), in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct SalesLocalityFilterDivider: View {
+    var body: some View {
+        Capsule()
+            .fill(Color.primary.opacity(0.16))
+            .frame(width: 1, height: 14)
+            .padding(.horizontal, 2)
+    }
+}
+
+struct SalesLocalityFilterStrip<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                content()
+            }
+            .padding(.vertical, 2)
+        }
+    }
+}
+
+enum SalesLocalityKindFilter: String, CaseIterable, Identifiable {
+    case localities = "Lokality"
+    case rd = "RD"
+
+    var id: String { rawValue }
+
+    var apiValue: String { self == .rd ? "rd" : "standard" }
+}
+
+struct SalesLocalityRdGroup: Identifiable {
+    let key: String
+    let title: String
+    let houses: [SalesLocalityItem]
+
+    var id: String { key }
+    var hp: Int { houses.reduce(0) { $0 + $1.hp } }
+}
+
+enum SalesLocalityRdGrouping {
+    static func visible(_ items: [SalesLocalityItem], kind: SalesLocalityKindFilter) -> [SalesLocalityItem] {
+        items.filter { kind == .rd ? $0.isFamilyHouse : !$0.isFamilyHouse }
+    }
+
+    static func groups(in items: [SalesLocalityItem]) -> [SalesLocalityRdGroup] {
+        var order: [String] = []
+        var buckets: [String: [SalesLocalityItem]] = [:]
+        for item in items where item.isFamilyHouse {
+            let raw = item.rdGroupKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            let key = raw.isEmpty ? "id:\(item.id)" : raw
+            if buckets[key] == nil {
+                order.append(key)
+            }
+            buckets[key, default: []].append(item)
+        }
+        return order.map { key in
+            let houses = buckets[key] ?? []
+            return SalesLocalityRdGroup(
+                key: key,
+                title: houses.first?.rdGroupTitle ?? "Rodinné domy",
+                houses: houses
+            )
+        }
+    }
+
+    static func houseCountLabel(_ count: Int) -> String {
+        if count == 1 { return "1 dům" }
+        if count >= 2 && count <= 4 { return "\(count) domy" }
+        return "\(count) domů"
+    }
+}
+
+struct SalesLocalityRdGroupHeader: View {
+    let group: SalesLocalityRdGroup
+    let expanded: Bool
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "house.fill")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(SalesLocalityKindStyle.rd)
+                .frame(width: 36, height: 36)
+                .background(SalesLocalityKindStyle.rd.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(group.title)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                Text("\(SalesLocalityRdGrouping.houseCountLabel(group.houses.count)) · \(group.hp) HP")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .rotationEffect(.degrees(expanded ? 90 : 0))
+        }
+        .contentShape(Rectangle())
+    }
+}
+
 // MARK: - ViewModel
 
 @MainActor
@@ -33,6 +157,7 @@ final class UserSalesLocalitiesViewModel: ObservableObject {
     @Published var editableFields: [String] = []
     @Published var searchText = ""
     @Published var doneFilter: SalesLocalityDoneFilter = .all
+    @Published var kindFilter: SalesLocalityKindFilter = .localities
     @Published var isLoading = false
     @Published var isLoadingMore = false
     @Published var errorMessage: String?
@@ -92,6 +217,7 @@ final class UserSalesLocalitiesViewModel: ObservableObject {
                 query: .init(
                     q: searchText,
                     done: doneFilter.doneValue,
+                    kind: kindFilter.apiValue,
                     page: page,
                     limit: 50
                 )
@@ -156,6 +282,7 @@ final class UserSalesLocalitiesViewModel: ObservableObject {
 struct UserSalesLocalitiesView: View {
     @EnvironmentObject private var authState: AuthState
     @StateObject private var viewModel = UserSalesLocalitiesViewModel()
+    @State private var expandedRd: Set<String> = []
 
     var body: some View {
         Group {
@@ -189,6 +316,10 @@ struct UserSalesLocalitiesView: View {
         .onChange(of: viewModel.doneFilter) { _, _ in
             Task { await viewModel.load(token: authState.authToken, reset: true) }
         }
+        .onChange(of: viewModel.kindFilter) { _, _ in
+            expandedRd.removeAll()
+            Task { await viewModel.load(token: authState.authToken, reset: true) }
+        }
         .refreshable {
             await viewModel.load(token: authState.authToken, reset: true)
         }
@@ -210,18 +341,20 @@ struct UserSalesLocalitiesView: View {
             Section {
                 filterPicker
             }
-            .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
+            .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 16))
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
 
-            if viewModel.items.isEmpty {
+            if SalesLocalityRdGrouping.visible(viewModel.items, kind: viewModel.kindFilter).isEmpty {
                 Section {
                     ContentUnavailableView(
-                        "Žádné lokality",
-                        systemImage: "building.2",
+                        viewModel.kindFilter == .rd ? "Žádné rodinné domy" : "Žádné lokality",
+                        systemImage: viewModel.kindFilter == .rd ? "house" : "building.2",
                         description: Text(
                             viewModel.searchText.isEmpty
-                                ? "Nemáte přiřazené žádné lokality v tomto filtru."
+                                ? (viewModel.kindFilter == .rd
+                                    ? "V tomhle filtru nemáte žádné rodinné domy."
+                                    : "Nemáte přiřazené žádné lokality v tomto filtru.")
                                 : "Zkuste upravit hledání."
                         )
                     )
@@ -229,8 +362,43 @@ struct UserSalesLocalitiesView: View {
                     .padding(.vertical, 24)
                 }
                 .listRowBackground(Color.clear)
+            } else if viewModel.kindFilter == .rd {
+                ForEach(SalesLocalityRdGrouping.groups(in: viewModel.items)) { group in
+                    Section {
+                        Button {
+                            withAnimation(.snappy(duration: 0.2)) {
+                                if expandedRd.contains(group.id) {
+                                    expandedRd.remove(group.id)
+                                } else {
+                                    expandedRd.insert(group.id)
+                                }
+                            }
+                        } label: {
+                            SalesLocalityRdGroupHeader(group: group, expanded: expandedRd.contains(group.id))
+                        }
+                        .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16))
+                        .listRowBackground(SalesLocalityClosedStyle.rowBackground(isClosed: false, isFamilyHouse: true))
+
+                        if expandedRd.contains(group.id) {
+                            ForEach(group.houses) { item in
+                                NavigationLink {
+                                    UserSalesLocalityDetailView(
+                                        item: item,
+                                        viewModel: viewModel
+                                    )
+                                    .environmentObject(authState)
+                                } label: {
+                                    SalesLocalityRow(item: item)
+                                }
+                                .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+                                .listRowBackground(SalesLocalityClosedStyle.rowBackground(isClosed: item.isClosed, isFamilyHouse: true))
+                            }
+                        }
+                    }
+                }
             } else {
-                ForEach(viewModel.items) { item in
+                ForEach(SalesLocalityRdGrouping.visible(viewModel.items, kind: .localities)) { item in
                     Section {
                         NavigationLink {
                             UserSalesLocalityDetailView(
@@ -270,12 +438,25 @@ struct UserSalesLocalitiesView: View {
     }
 
     private var filterPicker: some View {
-        Picker("Stav", selection: $viewModel.doneFilter) {
+        SalesLocalityFilterStrip {
             ForEach(SalesLocalityDoneFilter.allCases) { filter in
-                Text(filter.rawValue).tag(filter)
+                SalesLocalityFilterChip(
+                    title: filter.rawValue,
+                    isSelected: viewModel.doneFilter == filter
+                ) {
+                    viewModel.doneFilter = filter
+                }
+            }
+            SalesLocalityFilterDivider()
+            ForEach(SalesLocalityKindFilter.allCases) { filter in
+                SalesLocalityFilterChip(
+                    title: filter.rawValue,
+                    isSelected: viewModel.kindFilter == filter
+                ) {
+                    viewModel.kindFilter = filter
+                }
             }
         }
-        .pickerStyle(.segmented)
     }
 
     private func errorState(_ message: String) -> some View {
@@ -796,7 +977,12 @@ struct UserSalesLocalityDetailView: View {
     var body: some View {
         Form {
             Section {
-                SalesLocalityDetailIdentity(item: item)
+                SalesLocalityDetailIdentity(
+                    item: item,
+                    opened: openedValue,
+                    fiber: fiberValue,
+                    hp: item.hp
+                )
             }
 
             if item.isFamilyHouse {
@@ -846,61 +1032,31 @@ struct UserSalesLocalityDetailView: View {
                 }
             }
 
-            Section {
-                if let ulice = item.ulice, !ulice.isEmpty {
-                    LabeledContent("Ulice", value: ulice)
-                }
-                if let popisne = item.cisloPopisne, !popisne.isEmpty {
-                    LabeledContent("Číslo popisné", value: popisne)
-                }
-                if let orientacni = item.cisloOrientacni, !orientacni.isEmpty {
-                    LabeledContent("Číslo orientační", value: orientacni)
-                }
-                if let house = item.houseNumberLabel,
-                   (item.cisloPopisne == nil || item.cisloPopisne?.isEmpty == true)
-                    && (item.cisloOrientacni == nil || item.cisloOrientacni?.isEmpty == true) {
-                    LabeledContent("Číslo", value: house)
-                }
-                if let cast = item.castObce, !cast.isEmpty {
-                    LabeledContent("Část obce", value: cast)
-                }
-                if let obec = item.obec, !obec.isEmpty {
-                    LabeledContent("Obec", value: obec)
-                }
-                if let okres = item.okres, !okres.isEmpty {
-                    LabeledContent("Okres", value: okres)
-                }
-                if let majitel = item.majitel, !majitel.isEmpty {
-                    LabeledContent("Majitel", value: majitel)
-                }
-                if let telefon = item.telefon, !telefon.isEmpty {
-                    LabeledContent("Telefon", value: telefon)
-                }
-                if let email = item.email, !email.isEmpty {
-                    LabeledContent("E-mail", value: email)
-                }
-                LabeledContent("HP", value: "\(item.hp)")
-                if let komerce = item.komerceDateLabel {
-                    LabeledContent("Datum komerce", value: komerce)
-                }
-            } header: {
-                Text("Lokalita")
-            }
-
-            if viewModel.canEditDone {
+            if SalesLocalityContextCard.hasContent(item) {
                 Section {
-                    Toggle(isOn: $isDone) {
-                        Label("Hotovo", systemImage: "checkmark.circle.fill")
-                    }
-                    .tint(.green)
+                    SalesLocalityContextCard(item: item)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+                        .listRowBackground(Color.clear)
+                } header: {
+                    Text("Místo a kontakt")
                 }
             }
 
-            if viewModel.canEditD2d {
+            if viewModel.canEditDone || viewModel.canEditD2d {
                 Section {
-                    Toggle(isOn: $d2d) {
-                        Label("D2D", systemImage: "figure.walk")
+                    if viewModel.canEditDone {
+                        Toggle(isOn: $isDone) {
+                            Label("Hotovo", systemImage: "checkmark.circle.fill")
+                        }
+                        .tint(.green)
                     }
+                    if viewModel.canEditD2d {
+                        Toggle(isOn: $d2d) {
+                            Label("D2D", systemImage: "figure.walk")
+                        }
+                    }
+                } header: {
+                    Text("Stav")
                 }
             }
 
@@ -929,6 +1085,18 @@ struct UserSalesLocalityDetailView: View {
             debounceTask?.cancel()
             Task { await saveNow() }
         }
+        .modifier(RdPhotoDetailAccessory(
+            localityId: item.id,
+            token: authState.authToken,
+            photosCount: item.photosCount,
+            photosMax: item.photosMax,
+            isFamilyHouse: item.isFamilyHouse,
+            onPhotosChanged: { photos in
+                item.photos = photos
+                item.photosCount = photos.count
+                viewModel.replaceItem(item)
+            }
+        ))
     }
 
     @ViewBuilder
@@ -1261,11 +1429,27 @@ struct SalesLocalityListSummary: View {
 
 struct SalesLocalityDetailIdentity: View {
     let item: SalesLocalityItem
+    var opened: Int
+    var fiber: Int
+    var hp: Int
+
+    init(item: SalesLocalityItem, opened: Int? = nil, fiber: Int? = nil, hp: Int? = nil) {
+        self.item = item
+        self.opened = opened ?? item.openedCount
+        self.fiber = fiber ?? item.fiberKs
+        self.hp = hp ?? item.hp
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
+            if item.isFamilyHouse {
+                Label(item.rdGroupTitle, systemImage: "house.fill")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(SalesLocalityKindStyle.rd)
+            }
             Text(item.listTitle)
-                .font(.title3.weight(.bold))
+                .font(.title2.weight(.bold))
+                .fixedSize(horizontal: false, vertical: true)
             if let place = item.listPlace {
                 Text(place)
                     .font(.subheadline)
@@ -1277,13 +1461,152 @@ struct SalesLocalityDetailIdentity: View {
                     SalesLocalityRdBadge()
                 }
                 SalesLocalityStatusBadge(item: item)
-                Text("HP \(item.hp)")
+                Text("HP \(hp)")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
+            VStack(spacing: 8) {
+                detailMeter(title: "Dveře", value: opened, tint: SalesLocalityKindStyle.doors)
+                detailMeter(title: "Fiber", value: fiber, tint: SalesLocalityKindStyle.fiber)
+            }
+            .padding(.top, 2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 4)
+    }
+
+    private func detailMeter(title: String, value: Int, tint: Color) -> some View {
+        let progress = hp > 0 ? min(1, max(0, Double(value) / Double(hp))) : 0
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(tint)
+                Spacer()
+                Text("\(value)/\(hp)")
+                    .font(.caption.weight(.bold))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(tint.opacity(0.16))
+                    Capsule()
+                        .fill(tint)
+                        .frame(width: max(value > 0 ? 6 : 0, geo.size.width * progress))
+                }
+            }
+            .frame(height: 6)
+        }
+    }
+}
+
+struct SalesLocalityContextCard: View {
+    let item: SalesLocalityItem
+    var showsContact: Bool = true
+
+    static func hasContent(_ item: SalesLocalityItem, showsContact: Bool = true) -> Bool {
+        if item.isFamilyHouse { return true }
+        if nonempty(item.okres) != nil { return true }
+        guard showsContact else { return false }
+        return nonempty(item.majitel) != nil
+            || nonempty(item.telefon) != nil
+            || nonempty(item.email) != nil
+            || item.komerceDateLabel != nil
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if item.isFamilyHouse {
+                contextRow(icon: "house.fill", title: "Vesnice", value: item.rdGroupTitle, tint: SalesLocalityKindStyle.rd)
+            }
+            if let okres = Self.nonempty(item.okres) {
+                contextRow(icon: "map", title: "Okres", value: okres, tint: .secondary)
+            }
+            if showsContact, let majitel = Self.nonempty(item.majitel) {
+                contextRow(icon: "person", title: "Majitel", value: majitel, tint: .secondary)
+            }
+            if showsContact, let telefon = Self.nonempty(item.telefon) {
+                contactLink(
+                    icon: "phone.fill",
+                    title: "Telefon",
+                    value: telefon,
+                    url: URL(string: "tel:\(Self.dialable(telefon))")
+                )
+            }
+            if showsContact, let email = Self.nonempty(item.email) {
+                contactLink(
+                    icon: "envelope.fill",
+                    title: "E-mail",
+                    value: email,
+                    url: URL(string: "mailto:\(email)")
+                )
+            }
+            if showsContact, let komerce = item.komerceDateLabel {
+                contextRow(icon: "calendar", title: "Komerce", value: komerce, tint: .secondary)
+            }
+        }
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func contextRow(icon: String, title: String, value: String, tint: Color) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(tint)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(value)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+    }
+
+    private func contactLink(icon: String, title: String, value: String, url: URL?) -> some View {
+        Group {
+            if let url {
+                Link(destination: url) {
+                    HStack(spacing: 12) {
+                        Image(systemName: icon)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Color.accentColor)
+                            .frame(width: 28)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(title)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(value)
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(Color.accentColor)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "arrow.up.right")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                }
+            } else {
+                contextRow(icon: icon, title: title, value: value, tint: .secondary)
+            }
+        }
+    }
+
+    private static func nonempty(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func dialable(_ value: String) -> String {
+        value.filter { $0.isNumber || $0 == "+" }
     }
 }
 

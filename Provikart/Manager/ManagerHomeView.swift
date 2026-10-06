@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Charts
 import UIKit
 
 @MainActor
@@ -56,6 +57,7 @@ struct ManagerHomeView: View {
     @State private var showTeamList = false
     @State private var showDealWars = false
     @State private var showLocations = false
+    @State private var chartReveal: CGFloat = 0
     @Namespace private var periodAnimation
 
     private let brandOrange = Color(red: 0.93, green: 0.43, blue: 0.08)
@@ -115,6 +117,9 @@ struct ManagerHomeView: View {
             .onChange(of: viewModel.period) { _, _ in
                 Task { await viewModel.load(token: authState.authToken, silent: true) }
             }
+            .onChange(of: progressSignature) { _, _ in
+                playProgressDraw()
+            }
             .navigationDestination(item: $selectedPersonID) { route in
                 ManagerTeamProfileDetailView(profileID: route.id, preview: nil)
                     .environmentObject(authState)
@@ -135,10 +140,11 @@ struct ManagerHomeView: View {
             LazyVStack(alignment: .leading, spacing: 24) {
                 welcomeHeader
                 periodSelector
+                progressCard
+                servicesCard
                 alertsBlock
                 performanceHero
                 activityBento
-                servicesCard
                 teamCarousel
                 attentionCard
                 dealWarsCard
@@ -229,6 +235,221 @@ struct ManagerHomeView: View {
         .padding(4)
         .background(.thinMaterial, in: Capsule())
         .overlay(Capsule().strokeBorder(Color.primary.opacity(0.06)))
+    }
+
+    private let progressBlue = Color(red: 0, green: 0.48, blue: 1)
+
+    @ViewBuilder
+    private var progressCard: some View {
+        if let progress = viewModel.payload?.progress, !progress.labels.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Postup služeb")
+                            .font(.title3.bold())
+                        if !progress.subtitle.isEmpty {
+                            Text(progress.subtitle)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    Spacer(minLength: 8)
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(progress.verdict)
+                            .font(.headline.bold())
+                            .foregroundStyle(progressTone(progress.tone))
+                            .multilineTextAlignment(.trailing)
+                        if progress.sameDay > 0 {
+                            Text("ke \(progress.sameDay). dni")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    progressStat(progress.currentTotal, progress.nowCaption, progressBlue)
+                    progressStat(progress.previousSame, progress.sameCaption, .secondary)
+                    progressStat(progress.previousTotal, progress.prevCaption, .secondary)
+                }
+
+                if !progress.compact {
+                    HStack(spacing: 14) {
+                        progressLegend(progress.currentLabel, progressBlue, dashed: false)
+                        progressLegend(progress.previousLabel, .secondary, dashed: true)
+                    }
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                    progressChart(progress)
+                        .frame(height: 196)
+                        .mask(alignment: .leading) {
+                            GeometryReader { geo in
+                                Rectangle()
+                                    .frame(width: max(0, geo.size.width * chartReveal))
+                            }
+                        }
+                }
+
+                if !progress.story.isEmpty {
+                    Text(progress.story)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(16)
+            .background(surface(tint: .blue, radius: 22))
+        }
+    }
+
+    private func progressStat(_ value: Int, _ caption: String, _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("\(value)")
+                .font(.title3.bold().monospacedDigit())
+                .foregroundStyle(color)
+            Text(caption)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func progressLegend(_ title: String, _ color: Color, dashed: Bool) -> some View {
+        HStack(spacing: 6) {
+            Capsule()
+                .stroke(color, style: StrokeStyle(lineWidth: 2, dash: dashed ? [4, 3] : []))
+                .frame(width: 16, height: 3)
+                .background(Capsule().fill(dashed ? .clear : color))
+            Text(title)
+                .lineLimit(1)
+        }
+    }
+
+    private func progressChart(_ progress: ManagerOverviewProgress) -> some View {
+        let points = progress.points
+        let peak = points.map { max($0.current ?? 0, $0.previous ?? 0) }.max() ?? 0
+        let top = max(1, peak)
+        let axisIndexes = progressAxisIndexes(count: points.count, today: progress.todayIndex)
+        return Chart {
+            ForEach(points) { point in
+                if let value = point.previous {
+                    LineMark(
+                        x: .value("Den", point.index),
+                        y: .value("Služby", value),
+                        series: .value("Řada", "previous")
+                    )
+                    .foregroundStyle(Color.secondary.opacity(0.9))
+                    .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 4]))
+                    .interpolationMethod(.catmullRom)
+                }
+            }
+            ForEach(points) { point in
+                if let value = point.current {
+                    AreaMark(
+                        x: .value("Den", point.index),
+                        y: .value("Služby", value),
+                        series: .value("Řada", "current")
+                    )
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [progressBlue.opacity(0.22), progressBlue.opacity(0.02)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .interpolationMethod(.catmullRom)
+                    LineMark(
+                        x: .value("Den", point.index),
+                        y: .value("Služby", value),
+                        series: .value("Řada", "current")
+                    )
+                    .foregroundStyle(progressBlue)
+                    .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+                    .interpolationMethod(.catmullRom)
+                    PointMark(
+                        x: .value("Den", point.index),
+                        y: .value("Služby", value)
+                    )
+                    .foregroundStyle(progressBlue)
+                    .symbolSize(42)
+                }
+            }
+            if let today = progress.todayIndex, points.indices.contains(today) {
+                RuleMark(x: .value("Den", today))
+                    .foregroundStyle(progressBlue.opacity(0.35))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+            }
+        }
+        .chartYScale(domain: 0...Double(top))
+        .chartXScale(domain: 0...Double(max(0, points.count - 1)))
+        .chartXAxis {
+            AxisMarks(values: axisIndexes) { value in
+                AxisValueLabel {
+                    if let index = value.as(Int.self), points.indices.contains(index) {
+                        Text(points[index].label)
+                            .font(.caption2.weight(.semibold))
+                    }
+                }
+            }
+        }
+        .chartYAxis {
+            AxisMarks(position: .leading) { value in
+                AxisGridLine()
+                AxisValueLabel {
+                    if let number = value.as(Int.self) {
+                        Text("\(number)")
+                            .font(.caption2.monospacedDigit())
+                    }
+                }
+            }
+        }
+        .chartLegend(.hidden)
+        .chartPlotStyle { plot in
+            plot.padding(.top, 6)
+        }
+    }
+
+    private func progressAxisIndexes(count: Int, today: Int?) -> [Int] {
+        guard count > 0 else { return [] }
+        if count <= 8 {
+            return Array(0..<count)
+        }
+        let step = max(1, Int((Double(count) / 6).rounded(.up)))
+        var indexes = Set(stride(from: 0, to: count, by: step))
+        indexes.insert(0)
+        indexes.insert(count - 1)
+        if let today, today >= 0, today < count {
+            indexes.insert(today)
+        }
+        return indexes.sorted()
+    }
+
+    private var progressSignature: String {
+        guard let progress = viewModel.payload?.progress else { return "" }
+        let current = progress.current.map { $0.map(String.init) ?? "n" }.joined(separator: ",")
+        let previous = progress.previous.map { $0.map(String.init) ?? "n" }.joined(separator: ",")
+        return progress.labels.joined(separator: ",") + "|" + current + "|" + previous
+    }
+
+    private func playProgressDraw() {
+        chartReveal = 0
+        withAnimation(.easeOut(duration: 1.05)) {
+            chartReveal = 1
+        }
+    }
+
+    private func progressTone(_ tone: String) -> Color {
+        switch tone {
+        case "up": return .green
+        case "down": return .red
+        default: return .secondary
+        }
     }
 
     @ViewBuilder
@@ -651,16 +872,26 @@ struct ManagerHomeView: View {
     }
 
     private func stackedServicesBar(_ slices: [ManagerOverviewServiceSlice]) -> some View {
-        GeometryReader { proxy in
-            HStack(spacing: 2) {
-                ForEach(slices.prefix(5)) { slice in
-                    Color(hex: slice.color)
-                        .frame(width: max(3, proxy.size.width * CGFloat(slice.pct) / 100))
+        let parts = slices.filter { $0.count > 0 }
+        let total = parts.reduce(0) { $0 + $1.count }
+        return GeometryReader { proxy in
+            let gaps = CGFloat(max(0, parts.count - 1)) * 3
+            let usable = max(0, proxy.size.width - gaps)
+            HStack(spacing: 3) {
+                if total <= 0 {
+                    Capsule().fill(Color.primary.opacity(0.08))
+                } else {
+                    ForEach(parts) { slice in
+                        Capsule()
+                            .fill(Color(hex: slice.color))
+                            .frame(width: usable * CGFloat(slice.count) / CGFloat(total))
+                    }
                 }
             }
-            .clipShape(Capsule())
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         }
-        .frame(height: 10)
+        .frame(height: 12)
+        .clipShape(Capsule())
         .background(Color.primary.opacity(0.06), in: Capsule())
     }
 

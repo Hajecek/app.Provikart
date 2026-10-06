@@ -47,6 +47,8 @@ struct HomeView: View {
         return .current(now: luckyBoxTick)
     }
 
+    @State private var qualification: QualificationProgress?
+    private let qualificationService = QualificationService()
     private let commissionService = CommissionService()
     private let userGoalsService = UserGoalsService()
     private let pendingCompletionService = OrderItemsPendingCompletionService()
@@ -87,6 +89,21 @@ struct HomeView: View {
                         }
                     }
                     .listRowBackground(Color.clear)
+                }
+
+                if let qualification {
+                    Section {
+                        NavigationLink {
+                            QualificationView()
+                                .environmentObject(authState)
+                        } label: {
+                            qualificationHomeRow(qualification)
+                        }
+                        .buttonStyle(.plain)
+                        .navigationLinkIndicatorVisibility(.hidden)
+                        .listRowBackground(QualificationLevelBackdrop())
+                        .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
+                    }
                 }
 
                 // Přehledové karty
@@ -243,7 +260,8 @@ struct HomeView: View {
             async let pending: Void = loadPendingCompletion()
             async let services: Void = loadServicesCount()
             async let entries: Void = loadEntryCardsCount()
-            _ = await (dealwars, goals, commission, pending, services, entries)
+            async let qualificationLoad: Void = loadQualification()
+            _ = await (dealwars, goals, commission, pending, services, entries, qualificationLoad)
             await refreshLuckyBoxQuota()
 
             // Periodické obnovení na pozadí (každých 5 s) – silent, bez blikání.
@@ -257,7 +275,8 @@ struct HomeView: View {
                 async let p: Void = loadPendingCompletion()
                 async let s: Void = loadServicesCount()
                 async let e: Void = loadEntryCardsCount()
-                _ = await (d, g, c, p, s, e)
+                async let q: Void = loadQualification()
+                _ = await (d, g, c, p, s, e, q)
                 await refreshLuckyBoxQuota()
             }
         }
@@ -267,6 +286,7 @@ struct HomeView: View {
             await loadPendingCompletion()
             await loadServicesCount()
             await loadEntryCardsCount()
+            await loadQualification()
             await loadDealwarsSummary()
             await refreshLuckyBoxQuota()
         }
@@ -982,6 +1002,21 @@ struct HomeView: View {
             }
         } catch {
             // Cíle nejsou kritické – při chybě zůstane výchozí 100k
+        }
+    }
+
+    private func qualificationHomeRow(_ progress: QualificationProgress) -> some View {
+        QualificationLevelRow(progress: progress, showsChevron: true)
+    }
+
+    private func loadQualification() async {
+        let token = await MainActor.run { authState.authToken }
+        guard let token else { return }
+        do {
+            let next = try await qualificationService.fetchProgress(token: token)
+            await MainActor.run { qualification = next.visible ? next : nil }
+        } catch {
+            // Karta zůstane skrytá, dokud API neběží.
         }
     }
 

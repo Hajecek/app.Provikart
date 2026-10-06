@@ -171,6 +171,7 @@ struct ManagerTabMenuView: View {
     @StateObject private var notificationsBadge = ManagerNotificationsBadgeState()
     @State private var selectedTab: ManagerTabs = .home
     @State private var problemsRefreshToken = UUID()
+    @StateObject private var rdPhotoShortcut = RdPhotoShortcut()
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -242,7 +243,13 @@ struct ManagerTabMenuView: View {
                 }
             }
         }
-        .modifier(LoginApprovalBottomAccessoryModifier(approvalState: appLoginApprovalState))
+        .environmentObject(rdPhotoShortcut)
+        .modifier(LoginApprovalBottomAccessoryModifier(
+            approvalState: appLoginApprovalState,
+            showsPhoto: selectedTab == .localities && rdPhotoShortcut.localityId != nil,
+            photoEnabled: rdPhotoShortcut.canAdd,
+            onTakePhoto: { rdPhotoShortcut.requestCamera() }
+        ))
         .task {
             performanceBadge.startPolling { [authState] in authState.authToken }
             notificationsBadge.startPolling { [authState] in authState.authToken }
