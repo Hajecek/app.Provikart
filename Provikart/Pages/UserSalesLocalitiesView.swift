@@ -174,6 +174,7 @@ final class UserSalesLocalitiesViewModel: ObservableObject {
     var canEditFiber: Bool { editableFields.contains("fiber_ks") || editableFields.isEmpty }
     var canEditOpened: Bool { editableFields.contains("opened_count") || editableFields.isEmpty }
     var canEditDone: Bool { editableFields.contains("is_done") || editableFields.isEmpty }
+    var canEditNd: Bool { editableFields.contains("nd_count") || editableFields.isEmpty }
     var canEditClose: Bool {
         editableFields.contains("close")
             || editableFields.contains("closed")
@@ -947,6 +948,7 @@ struct UserSalesLocalityDetailView: View {
     @State private var openedValue: Int
     @State private var isDone: Bool
     @State private var isClosed: Bool
+    @State private var ndCount: Int
     @State private var d2d: Bool
     @State private var noteText: String
     @State private var syncStatus: SyncStatus = .idle
@@ -970,6 +972,7 @@ struct UserSalesLocalityDetailView: View {
         _openedValue = State(initialValue: item.openedCount)
         _isDone = State(initialValue: item.isDone)
         _isClosed = State(initialValue: item.isClosed)
+        _ndCount = State(initialValue: item.ndCount)
         _d2d = State(initialValue: item.d2d)
         _noteText = State(initialValue: item.note ?? "")
     }
@@ -1018,6 +1021,14 @@ struct UserSalesLocalityDetailView: View {
                 Text(isClosed
                      ? "Lokalita je zavřená, otevřené dveře a fiber už nejde měnit."
                      : "Klepnutím přidáš otevřené dveře nebo fiber. Změny se ukládají automaticky.")
+            }
+
+            if item.isFamilyHouse && viewModel.canEditNd {
+                Section {
+                    SalesLocalityNdStepper(count: $ndCount)
+                } footer: {
+                    Text("Každé plus je další návštěva, kdy nikdo nebyl doma. Ve sloupci se ukáže ND, 2× ND, 4× ND…")
+                }
             }
 
             if viewModel.canEditClose {
@@ -1078,6 +1089,7 @@ struct UserSalesLocalityDetailView: View {
         .onChange(of: fiberValue) { _, _ in markDirtyAndDebounce(ms: 650) }
         .onChange(of: openedValue) { _, _ in markDirtyAndDebounce(ms: 650) }
         .onChange(of: isDone) { _, _ in markDirtyAndDebounce(ms: 300) }
+        .onChange(of: ndCount) { _, _ in markDirtyAndDebounce(ms: 300) }
         .onChange(of: isClosed) { _, _ in markDirtyAndDebounce(ms: 300) }
         .onChange(of: d2d) { _, _ in markDirtyAndDebounce(ms: 300) }
         .onChange(of: noteText) { _, _ in markDirtyAndDebounce(ms: 900) }
@@ -1153,6 +1165,7 @@ struct UserSalesLocalityDetailView: View {
         let fiberSnapshot = fiberValue
         let openedSnapshot = openedValue
         let doneSnapshot = isDone
+        let ndSnapshot = ndCount
         let closedSnapshot = isClosed
         let d2dSnapshot = d2d
         let noteSnapshot = noteText
@@ -1168,6 +1181,7 @@ struct UserSalesLocalityDetailView: View {
                 fiberSnapshot: fiberSnapshot,
                 openedSnapshot: openedSnapshot,
                 doneSnapshot: doneSnapshot,
+                ndSnapshot: ndSnapshot,
                 closedSnapshot: closedSnapshot,
                 d2dSnapshot: d2dSnapshot,
                 noteSnapshot: noteSnapshot
@@ -1187,8 +1201,9 @@ struct UserSalesLocalityDetailView: View {
                         followUpdated,
                         fiberSnapshot: fiberValue,
                         openedSnapshot: openedValue,
-                        doneSnapshot: isDone,
-                        closedSnapshot: isClosed,
+                doneSnapshot: isDone,
+                ndSnapshot: ndCount,
+                closedSnapshot: isClosed,
                         d2dSnapshot: d2d,
                         noteSnapshot: noteText
                     )
@@ -1217,8 +1232,9 @@ struct UserSalesLocalityDetailView: View {
                     updated,
                     fiberSnapshot: fiberValue,
                     openedSnapshot: openedValue,
-                    doneSnapshot: isDone,
-                    closedSnapshot: isClosed,
+                doneSnapshot: isDone,
+                ndSnapshot: ndCount,
+                closedSnapshot: isClosed,
                     d2dSnapshot: d2d,
                     noteSnapshot: noteText
                 )
@@ -1234,6 +1250,7 @@ struct UserSalesLocalityDetailView: View {
         fiberSnapshot: Int,
         openedSnapshot: Int,
         doneSnapshot: Bool,
+        ndSnapshot: Int,
         closedSnapshot: Bool,
         d2dSnapshot: Bool,
         noteSnapshot: String
@@ -1247,6 +1264,7 @@ struct UserSalesLocalityDetailView: View {
         if fiberValue == fiberSnapshot { fiberValue = updated.fiberKs }
         if openedValue == openedSnapshot { openedValue = updated.openedCount }
         if isDone == doneSnapshot { isDone = updated.isDone }
+        if ndCount == ndSnapshot { ndCount = updated.ndCount }
         if isClosed == closedSnapshot { isClosed = updated.isClosed }
         if d2d == d2dSnapshot { d2d = updated.d2d }
         if noteText == noteSnapshot { noteText = updated.note ?? "" }
@@ -1278,6 +1296,9 @@ struct UserSalesLocalityDetailView: View {
 
         if viewModel.canEditDone, isDone != item.isDone {
             fields.isDone = isDone
+        }
+        if item.isFamilyHouse, viewModel.canEditNd, ndCount != item.ndCount {
+            fields.ndCount = min(99, max(0, ndCount))
         }
         if viewModel.canEditClose, isClosed != item.isClosed {
             fields.isClosed = isClosed
@@ -1317,6 +1338,54 @@ enum SalesLocalityKindStyle {
     static let rd = Color(red: 0.36, green: 0.30, blue: 0.86)
     static let doors = Color(red: 0.97, green: 0.58, blue: 0.12)
     static let fiber = Color(red: 0.12, green: 0.62, blue: 0.72)
+}
+
+enum SalesLocalityNd {
+    static let tint = Color(red: 0.98, green: 0.45, blue: 0.09)
+
+    static func label(_ count: Int) -> String {
+        let n = min(99, max(0, count))
+        if n <= 0 { return "0" }
+        if n == 1 { return "ND" }
+        return "\(n)× ND"
+    }
+}
+
+struct SalesLocalityNdStepper: View {
+    @Binding var count: Int
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Není doma")
+                    .font(.body.weight(.semibold))
+                Text(count <= 0 ? "Nikdo nebyl doma" : SalesLocalityNd.label(count))
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(count <= 0 ? .secondary : SalesLocalityNd.tint)
+            }
+            Spacer(minLength: 8)
+            Button {
+                count = max(0, count - 1)
+            } label: {
+                Image(systemName: "minus")
+                    .font(.body.weight(.bold))
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(.bordered)
+            .disabled(count <= 0)
+            Button {
+                count = min(99, count + 1)
+            } label: {
+                Image(systemName: "plus")
+                    .font(.body.weight(.bold))
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(SalesLocalityNd.tint)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Není doma, \(SalesLocalityNd.label(count))")
+    }
 }
 
 struct SalesLocalityRdBadge: View {
@@ -1377,6 +1446,17 @@ struct SalesLocalityListSummary: View {
                         .foregroundStyle(SalesLocalityKindStyle.rd)
                         .lineLimit(1)
                         .fixedSize()
+                }
+
+                if item.isFamilyHouse, item.ndCount > 0 {
+                    Text(SalesLocalityNd.label(item.ndCount))
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .fixedSize()
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(SalesLocalityNd.tint, in: Capsule())
                 }
 
                 Text(statusTitle)

@@ -65,6 +65,7 @@ final class ManagerSalesLocalitiesViewModel: ObservableObject {
     var canEditFiber: Bool { editableFields.contains("fiber_ks") || editableFields.isEmpty }
     var canEditOpened: Bool { editableFields.contains("opened_count") || editableFields.isEmpty }
     var canEditDone: Bool { editableFields.contains("is_done") || editableFields.isEmpty }
+    var canEditNd: Bool { editableFields.contains("nd_count") || editableFields.isEmpty }
     var canEditClose: Bool {
         editableFields.contains("close")
             || editableFields.contains("closed")
@@ -405,13 +406,15 @@ struct ManagerSalesLocalitiesView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        ToolbarItemGroup(placement: .topBarLeading) {
+        ToolbarItem(placement: .topBarLeading) {
             if viewModel.isSelectionMode {
                 Button("Zrušit") {
                     withAnimation(.snappy(duration: 0.25)) {
                         viewModel.exitSelectionMode()
                     }
                 }
+            } else {
+                localitiesFilterMenu
             }
         }
         ToolbarItemGroup(placement: .topBarTrailing) {
@@ -472,8 +475,6 @@ struct ManagerSalesLocalitiesView: View {
 
     private var listContent: some View {
         List {
-            filtersSection
-
             if SalesLocalityRdGrouping.visible(viewModel.items, kind: viewModel.kindFilter).isEmpty {
                 Section {
                     ContentUnavailableView(
@@ -569,95 +570,93 @@ struct ManagerSalesLocalitiesView: View {
         .animation(.default, value: viewModel.isSelectionMode)
     }
 
-    private var filtersSection: some View {
-        Section {
-            SalesLocalityFilterStrip {
-                ForEach(SalesLocalityDoneFilter.allCases) { filter in
-                    SalesLocalityFilterChip(
-                        title: filter.rawValue,
-                        isSelected: viewModel.doneFilter == filter
-                    ) {
-                        viewModel.setDoneFilter(filter)
-                    }
-                }
-                SalesLocalityFilterDivider()
-                ForEach(SalesLocalityKindFilter.allCases) { filter in
-                    SalesLocalityFilterChip(
-                        title: filter.rawValue,
-                        isSelected: viewModel.kindFilter == filter
-                    ) {
-                        viewModel.kindFilter = filter
-                    }
-                }
-            }
-            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-            .listRowSeparator(.hidden)
+    private var localitiesFilterIsActive: Bool {
+        viewModel.kindFilter != .localities || viewModel.hasActiveQuickFilters
+    }
 
-            Picker(
-                "Přiřazení",
-                selection: Binding(
-                    get: { viewModel.assignmentFilter },
-                    set: { newValue in
-                        viewModel.setAssignmentFilter(newValue)
-                        if newValue != .assigned {
-                            viewModel.setSalesFilter(nil)
-                        }
+    private var localitiesFilterMenu: some View {
+        Menu {
+            Section("Druh") {
+                Picker("Druh", selection: $viewModel.kindFilter) {
+                    ForEach(SalesLocalityKindFilter.allCases) { kind in
+                        Text(kind.rawValue).tag(kind)
                     }
-                )
-            ) {
-                Text("Vše").tag(ManagerSalesAssignmentFilter.all)
-                Text("Bez obchodníka (\(viewModel.facets.unassignedSales))")
-                    .tag(ManagerSalesAssignmentFilter.unassigned)
-                Text("Přiřazené (\(viewModel.facets.assignedSales))")
-                    .tag(ManagerSalesAssignmentFilter.assigned)
+                }
+                .pickerStyle(.inline)
+            }
+
+            Section("Stav") {
+                Picker(
+                    "Stav",
+                    selection: Binding(
+                        get: { viewModel.doneFilter },
+                        set: { viewModel.setDoneFilter($0) }
+                    )
+                ) {
+                    ForEach(SalesLocalityDoneFilter.allCases) { filter in
+                        Text(filter.rawValue).tag(filter)
+                    }
+                }
+                .pickerStyle(.inline)
+            }
+
+            Section("Přiřazení") {
+                Picker("Přiřazení", selection: assignmentSelection) {
+                    Text("Vše").tag(ManagerSalesAssignmentFilter.all)
+                    Text("Bez obchodníka (\(viewModel.facets.unassignedSales))")
+                        .tag(ManagerSalesAssignmentFilter.unassigned)
+                    Text("Přiřazené (\(viewModel.facets.assignedSales))")
+                        .tag(ManagerSalesAssignmentFilter.assigned)
+                }
+                .pickerStyle(.inline)
             }
 
             if viewModel.assignmentFilter != .unassigned {
-                Button {
-                    showSalesFilterSheet = true
-                } label: {
-                    HStack(spacing: 12) {
-                        if let member = viewModel.selectedSalesMember {
-                            ManagerSalesMemberAvatar(member: member, token: authState.authToken, size: 28)
-                        } else {
-                            Image(systemName: "person.crop.circle")
-                                .font(.title2)
-                                .foregroundStyle(.secondary)
-                                .frame(width: 28, height: 28)
+                Section("Obchodník") {
+                    Button {
+                        DispatchQueue.main.async {
+                            showSalesFilterSheet = true
                         }
-
-                        Text("Obchodník")
-                            .foregroundStyle(.primary)
-
-                        Spacer(minLength: 8)
-
-                        Text(salesFilterValueLabel)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.trailing)
-                            .lineLimit(1)
-
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.tertiary)
+                    } label: {
+                        Label(
+                            viewModel.selectedSalesFilterId == nil ? "Vybrat" : salesFilterValueLabel,
+                            systemImage: "person"
+                        )
+                    }
+                    if viewModel.selectedSalesFilterId != nil {
+                        Button("Zrušit obchodníka") {
+                            viewModel.setSalesFilter(nil)
+                        }
                     }
                 }
-                .buttonStyle(.plain)
             }
-        } header: {
-            HStack {
-                Text("Filtry")
-                Spacer()
-                if viewModel.hasActiveQuickFilters {
-                    Button("Vymazat") {
+
+            if localitiesFilterIsActive {
+                Section {
+                    Button("Vymazat filtry", systemImage: "xmark") {
+                        viewModel.kindFilter = .localities
                         viewModel.clearQuickFilters()
                     }
-                    .font(.footnote)
-                    .textCase(nil)
                 }
             }
-        } footer: {
-            Text(filtersFooterText)
+        } label: {
+            Image(systemName: localitiesFilterIsActive
+                ? "line.3.horizontal.decrease.circle.fill"
+                : "line.3.horizontal.decrease.circle")
         }
+        .accessibilityLabel("Filtry")
+    }
+
+    private var assignmentSelection: Binding<ManagerSalesAssignmentFilter> {
+        Binding(
+            get: { viewModel.assignmentFilter },
+            set: { newValue in
+                viewModel.setAssignmentFilter(newValue)
+                if newValue != .assigned {
+                    viewModel.setSalesFilter(nil)
+                }
+            }
+        )
     }
 
     private var salesFilterValueLabel: String {
@@ -665,14 +664,6 @@ struct ManagerSalesLocalitiesView: View {
             return ManagerSalesLocalitiesViewModel.memberDisplayName(member)
         }
         return viewModel.assignmentFilter == .assigned ? "Kdokoli" : "Všichni"
-    }
-
-    private var filtersFooterText: String {
-        var parts: [String] = [viewModel.resultsCaption]
-        if viewModel.doneFilter == .all {
-            parts.append("rozpracované \(viewModel.facets.open) · hotovo \(viewModel.facets.done)")
-        }
-        return parts.joined(separator: " · ")
     }
 
     @ViewBuilder
@@ -1043,6 +1034,7 @@ struct ManagerSalesLocalityDetailView: View {
     @State private var hpValue: Int
     @State private var isDone: Bool
     @State private var isClosed: Bool
+    @State private var ndCount: Int
     @State private var d2d: Bool
     @State private var noteText: String
     @State private var majitelText: String
@@ -1072,6 +1064,7 @@ struct ManagerSalesLocalityDetailView: View {
         _hpValue = State(initialValue: item.hp)
         _isDone = State(initialValue: item.isDone)
         _isClosed = State(initialValue: item.isClosed)
+        _ndCount = State(initialValue: item.ndCount)
         _d2d = State(initialValue: item.d2d)
         _noteText = State(initialValue: item.note ?? "")
         _majitelText = State(initialValue: item.majitel ?? "")
@@ -1135,6 +1128,14 @@ struct ManagerSalesLocalityDetailView: View {
                 Text(isClosed
                      ? "Lokalita je zavřená, otevřené dveře a fiber už nejde měnit."
                      : "Klepnutím přidáš otevřené dveře nebo fiber. Změny se ukládají automaticky.")
+            }
+
+            if item.isFamilyHouse && viewModel.canEditNd {
+                Section {
+                    SalesLocalityNdStepper(count: $ndCount)
+                } footer: {
+                    Text("Každé plus je další návštěva, kdy nikdo nebyl doma. Ve sloupci se ukáže ND, 2× ND, 4× ND…")
+                }
             }
 
             if viewModel.canEditClose {
@@ -1287,6 +1288,7 @@ struct ManagerSalesLocalityDetailView: View {
             markDirtyAndDebounce(ms: 650)
         }
         .onChange(of: isDone) { _, _ in markDirtyAndDebounce(ms: 300) }
+        .onChange(of: ndCount) { _, _ in markDirtyAndDebounce(ms: 300) }
         .onChange(of: isClosed) { _, _ in markDirtyAndDebounce(ms: 300) }
         .onChange(of: d2d) { _, _ in markDirtyAndDebounce(ms: 300) }
         .onChange(of: noteText) { _, _ in markDirtyAndDebounce(ms: 900) }
@@ -1386,6 +1388,9 @@ struct ManagerSalesLocalityDetailView: View {
         openedValue = updated.openedCount
         hpValue = updated.hp
         isDone = updated.isDone
+        if ndCount == updated.ndCount || !item.isFamilyHouse {
+            ndCount = updated.ndCount
+        }
         isClosed = updated.isClosed
         d2d = updated.d2d
         noteText = updated.note ?? ""
@@ -1423,6 +1428,9 @@ struct ManagerSalesLocalityDetailView: View {
         }
         if viewModel.canEditDone, isDone != item.isDone {
             fields.isDone = isDone
+        }
+        if item.isFamilyHouse, viewModel.canEditNd, ndCount != item.ndCount {
+            fields.ndCount = min(99, max(0, ndCount))
         }
         if viewModel.canEditClose, isClosed != item.isClosed {
             fields.isClosed = isClosed

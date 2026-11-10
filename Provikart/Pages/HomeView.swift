@@ -48,7 +48,11 @@ struct HomeView: View {
     }
 
     @State private var qualification: QualificationProgress?
+    @State private var performanceReportRequired = false
+    @State private var showPerformanceReport = false
+    @State private var didAutoPresentPerformanceReport = false
     private let qualificationService = QualificationService()
+    private let performanceReportService = PerformanceDayReportService()
     private let commissionService = CommissionService()
     private let userGoalsService = UserGoalsService()
     private let pendingCompletionService = OrderItemsPendingCompletionService()
@@ -89,6 +93,25 @@ struct HomeView: View {
                         }
                     }
                     .listRowBackground(Color.clear)
+                }
+
+                if performanceReportRequired {
+                    Section {
+                        Button {
+                            showPerformanceReport = true
+                        } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Vyplň report výkonu")
+                                    .font(.headline)
+                                Text("Dnes nemáš žádnou službu. Napiš, kolik lidí jsi naklepal, kolik otevřelo a proč se nepodařilo prodat.")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
 
                 if let qualification {
@@ -239,11 +262,31 @@ struct HomeView: View {
                     }
             }
         }
+        .fullScreenCover(isPresented: $showPerformanceReport, onDismiss: {
+            Task { await loadPerformanceReport(autoPresent: false) }
+        }) {
+            NavigationStack {
+                PerformanceDayReportView {
+                    performanceReportRequired = false
+                    showPerformanceReport = false
+                }
+                .environmentObject(authState)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Zavřít") {
+                            showPerformanceReport = false
+                        }
+                        .fontWeight(.semibold)
+                    }
+                }
+            }
+        }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             LuckyChestController.shared.resumeIfNeeded()
             refreshLuckyBoxStatus()
             maybeAutoPresentLuckyBox()
+            Task { await loadPerformanceReport(autoPresent: true) }
         }
         .task {
             LuckyChestController.shared.resumeIfNeeded()
@@ -261,7 +304,8 @@ struct HomeView: View {
             async let services: Void = loadServicesCount()
             async let entries: Void = loadEntryCardsCount()
             async let qualificationLoad: Void = loadQualification()
-            _ = await (dealwars, goals, commission, pending, services, entries, qualificationLoad)
+            async let performanceReport: Void = loadPerformanceReport(autoPresent: true)
+            _ = await (dealwars, goals, commission, pending, services, entries, qualificationLoad, performanceReport)
             await refreshLuckyBoxQuota()
 
             // Periodické obnovení na pozadí (každých 5 s) – silent, bez blikání.
@@ -276,7 +320,8 @@ struct HomeView: View {
                 async let s: Void = loadServicesCount()
                 async let e: Void = loadEntryCardsCount()
                 async let q: Void = loadQualification()
-                _ = await (d, g, c, p, s, e, q)
+                async let report: Void = loadPerformanceReport(autoPresent: true)
+                _ = await (d, g, c, p, s, e, q, report)
                 await refreshLuckyBoxQuota()
             }
         }
@@ -1017,6 +1062,30 @@ struct HomeView: View {
             await MainActor.run { qualification = next.visible ? next : nil }
         } catch {
             // Karta zůstane skrytá, dokud API neběží.
+        }
+    }
+
+    private func loadPerformanceReport(autoPresent: Bool) async {
+        let token = await MainActor.run { authState.authToken }
+        guard let token, !token.isEmpty else { return }
+        do {
+            let prompt = try await performanceReportService.fetch(token: token)
+            await MainActor.run {
+                performanceReportRequired = prompt.required
+                if prompt.required && autoPresent && !didAutoPresentPerformanceReport {
+                    didAutoPresentPerformanceReport = true
+                    showPerformanceReport = true
+                }
+                if !prompt.required {
+                    showPerformanceReport = false
+                }
+            }
+        } catch {
+            await MainActor.run {
+                if !showPerformanceReport {
+                    performanceReportRequired = false
+                }
+            }
         }
     }
 

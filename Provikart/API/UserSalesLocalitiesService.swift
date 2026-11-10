@@ -50,6 +50,7 @@ struct SalesLocalityItem: Decodable, Identifiable, Equatable {
     let d2d: Bool
     let isDone: Bool
     let isClosed: Bool
+    let ndCount: Int
     let openedPct: Double?
     let penetrationPct: Double?
     let salesUserId: Int?
@@ -87,6 +88,7 @@ struct SalesLocalityItem: Decodable, Identifiable, Equatable {
         case openedCount = "opened_count"
         case d2d
         case isDone = "is_done"
+        case ndCount = "nd_count"
         case close
         case closed
         case isClosed = "is_closed"
@@ -128,6 +130,7 @@ struct SalesLocalityItem: Decodable, Identifiable, Equatable {
         openedCount = c.decodeFlexibleInt(forKey: .openedCount) ?? 0
         d2d = c.decodeFlexibleBool(forKey: .d2d)
         isDone = c.decodeFlexibleBool(forKey: .isDone)
+        ndCount = max(0, c.decodeFlexibleInt(forKey: .ndCount) ?? 0)
         isClosed = c.decodeFlexibleBool(forKey: .close)
             || c.decodeFlexibleBool(forKey: .closed)
             || c.decodeFlexibleBool(forKey: .isClosed)
@@ -437,6 +440,7 @@ struct SalesLocalityUpdateFields {
     var openedCount: Int?
     var isDone: Bool?
     var isClosed: Bool?
+    var ndCount: Int?
     var note: String?
     var majitel: String?
     var email: String?
@@ -452,6 +456,7 @@ struct SalesLocalityUpdateFields {
         if let openedCount { body["opened_count"] = openedCount }
         if let isDone { body["is_done"] = isDone ? 1 : 0 }
         if let isClosed { body["close"] = isClosed ? 1 : 0 }
+        if let ndCount { body["nd_count"] = ndCount }
         if let note { body["note"] = note }
         if let majitel { body["majitel"] = majitel }
         if let email { body["email"] = email }
