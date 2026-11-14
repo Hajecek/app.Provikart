@@ -11,13 +11,7 @@ import SwiftUI
 /// Sdílené pozadí manažera: systemGrouped + glow shora.
 struct ManagerScreenBackground: View {
     var body: some View {
-        ZStack(alignment: .top) {
-            Color(uiColor: .systemGroupedBackground)
-                .ignoresSafeArea()
-            ManagerTopArchGlow()
-                .ignoresSafeArea(edges: .top)
-                .allowsHitTesting(false)
-        }
+        ManagerMeshBackground()
     }
 }
 

@@ -180,6 +180,9 @@ final class UserSalesLocalitiesViewModel: ObservableObject {
             || editableFields.contains("closed")
             || editableFields.isEmpty
     }
+    var canEditNotTradable: Bool {
+        editableFields.contains("not_tradable") || editableFields.isEmpty
+    }
     var canEditNote: Bool { editableFields.contains("note") }
     var canEditD2d: Bool { editableFields.contains("d2d") || editableFields.isEmpty }
 
@@ -393,7 +396,7 @@ struct UserSalesLocalitiesView: View {
                                     SalesLocalityRow(item: item)
                                 }
                                 .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
-                                .listRowBackground(SalesLocalityClosedStyle.rowBackground(isClosed: item.isClosed, isFamilyHouse: true))
+                                .listRowBackground(SalesLocalityClosedStyle.rowBackground(isClosed: item.isClosed, isNotTradable: item.isNotTradable, isFamilyHouse: true))
                             }
                         }
                     }
@@ -411,7 +414,7 @@ struct UserSalesLocalitiesView: View {
                             SalesLocalityRow(item: item)
                         }
                         .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16))
-                        .listRowBackground(SalesLocalityClosedStyle.rowBackground(isClosed: item.isClosed, isFamilyHouse: item.isFamilyHouse))
+                        .listRowBackground(SalesLocalityClosedStyle.rowBackground(isClosed: item.isClosed, isNotTradable: item.isNotTradable, isFamilyHouse: item.isFamilyHouse))
                     }
                 }
 
@@ -948,6 +951,7 @@ struct UserSalesLocalityDetailView: View {
     @State private var openedValue: Int
     @State private var isDone: Bool
     @State private var isClosed: Bool
+    @State private var isNotTradable: Bool
     @State private var ndCount: Int
     @State private var d2d: Bool
     @State private var noteText: String
@@ -972,6 +976,7 @@ struct UserSalesLocalityDetailView: View {
         _openedValue = State(initialValue: item.openedCount)
         _isDone = State(initialValue: item.isDone)
         _isClosed = State(initialValue: item.isClosed)
+        _isNotTradable = State(initialValue: item.isNotTradable)
         _ndCount = State(initialValue: item.ndCount)
         _d2d = State(initialValue: item.d2d)
         _noteText = State(initialValue: item.note ?? "")
@@ -984,8 +989,12 @@ struct UserSalesLocalityDetailView: View {
                     item: item,
                     opened: openedValue,
                     fiber: fiberValue,
-                    hp: item.hp
+                    hp: item.hp,
+                    isClosed: isClosed,
+                    isNotTradable: isNotTradable
                 )
+                .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+                .listRowBackground(Color.clear)
             }
 
             if item.isFamilyHouse {
@@ -1031,15 +1040,24 @@ struct UserSalesLocalityDetailView: View {
                 }
             }
 
-            if viewModel.canEditClose {
+            if viewModel.canEditClose || viewModel.canEditNotTradable {
                 Section {
-                    LocalityClosedToggle(isClosed: $isClosed)
-                        .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
-                        .listRowBackground(Color.clear)
+                    HStack(alignment: .top, spacing: 12) {
+                        if viewModel.canEditClose {
+                            LocalityClosedToggle(isClosed: $isClosed)
+                        }
+                        if viewModel.canEditNotTradable {
+                            LocalityNotTradableToggle(isNotTradable: $isNotTradable)
+                        }
+                    }
+                    .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+                    .listRowBackground(Color.clear)
                 } footer: {
                     Text(isClosed
-                         ? "Klepnutím lokalitu znovu otevřeš a odemkneš přidávání."
-                         : "Zavřením se lokalita uzavře a zamkne se přidávání dveří i fiberu.")
+                         ? "Zavřeno: dveře a fiber jsou zamčené. Klepnutím lokalitu znovu otevřeš."
+                         : (isNotTradable
+                            ? "Neobchodovatelné: nezavřeno, ale nejde prodávat. Vypadne ze statistik."
+                            : "Zavřít zamkne zápis, neobchodovatelné označí lokalitu modře a vyřadí ji ze statistik."))
                 }
             }
 
@@ -1080,6 +1098,9 @@ struct UserSalesLocalityDetailView: View {
         }
         .navigationTitle("Detail lokality")
         .navigationBarTitleDisplayMode(.inline)
+        .scrollContentBackground(.hidden)
+        .background(Color(uiColor: .systemGroupedBackground))
+        .listSectionSpacing(.custom(14))
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 syncStatusView
@@ -1091,6 +1112,7 @@ struct UserSalesLocalityDetailView: View {
         .onChange(of: isDone) { _, _ in markDirtyAndDebounce(ms: 300) }
         .onChange(of: ndCount) { _, _ in markDirtyAndDebounce(ms: 300) }
         .onChange(of: isClosed) { _, _ in markDirtyAndDebounce(ms: 300) }
+        .onChange(of: isNotTradable) { _, _ in markDirtyAndDebounce(ms: 300) }
         .onChange(of: d2d) { _, _ in markDirtyAndDebounce(ms: 300) }
         .onChange(of: noteText) { _, _ in markDirtyAndDebounce(ms: 900) }
         .onDisappear {
@@ -1266,6 +1288,8 @@ struct UserSalesLocalityDetailView: View {
         if isDone == doneSnapshot { isDone = updated.isDone }
         if ndCount == ndSnapshot { ndCount = updated.ndCount }
         if isClosed == closedSnapshot { isClosed = updated.isClosed }
+        // Neobchodovatelnost server vyhodnocuje sám (vynuluje hotovo/odloženo), vždy ji převezmi.
+        isNotTradable = updated.isNotTradable
         if d2d == d2dSnapshot { d2d = updated.d2d }
         if noteText == noteSnapshot { noteText = updated.note ?? "" }
     }
@@ -1303,6 +1327,9 @@ struct UserSalesLocalityDetailView: View {
         if viewModel.canEditClose, isClosed != item.isClosed {
             fields.isClosed = isClosed
         }
+        if viewModel.canEditNotTradable, isNotTradable != item.isNotTradable {
+            fields.isNotTradable = isNotTradable
+        }
         if viewModel.canEditD2d, d2d != item.d2d {
             fields.d2d = d2d
         }
@@ -1320,13 +1347,21 @@ struct UserSalesLocalityDetailView: View {
 
 enum SalesLocalityClosedStyle {
     static let tint = Color(red: 0.82, green: 0.26, blue: 0.28)
+    /// Neobchodovatelné lokality (nezavřeno, ale nejde prodávat) – modře jako na webu.
+    static let notTradableTint = Color(red: 0.22, green: 0.45, blue: 0.92)
 
     @ViewBuilder
-    static func rowBackground(isClosed: Bool, isFamilyHouse: Bool = false) -> some View {
+    static func rowBackground(isClosed: Bool, isNotTradable: Bool = false, isFamilyHouse: Bool = false, glass: Bool = false) -> some View {
         ZStack {
-            Color(uiColor: .secondarySystemGroupedBackground)
+            if glass {
+                Rectangle().fill(ManagerGlassFill())
+            } else {
+                Color(uiColor: .secondarySystemGroupedBackground)
+            }
             if isClosed {
                 tint.opacity(0.16)
+            } else if isNotTradable {
+                notTradableTint.opacity(0.18)
             } else if isFamilyHouse {
                 SalesLocalityKindStyle.rd.opacity(0.08)
             }
@@ -1419,154 +1454,112 @@ struct SalesLocalityListSummary: View {
     var salesLabel: String? = nil
     var salesMissing: Bool = false
 
-    private var statusTitle: String {
-        if item.isClosed { return "Zavřeno" }
-        if item.isDone { return "Hotovo" }
-        return "Aktivní"
+    private var status: (title: String, icon: String, tint: Color) {
+        if item.isClosed { return ("Zavřeno", "lock.fill", SalesLocalityClosedStyle.tint) }
+        if item.isNotTradable { return ("Neobchodovatelné", "nosign", SalesLocalityClosedStyle.notTradableTint) }
+        if item.isDone { return ("Hotovo", "checkmark.seal.fill", SV.good) }
+        return ("Aktivní", "bolt.fill", SV.accent)
     }
 
-    private var statusTint: Color {
+    /// Barva stavu lokality (pro okraj/podkres karty).
+    static func accent(for item: SalesLocalityItem) -> Color {
         if item.isClosed { return SalesLocalityClosedStyle.tint }
-        if item.isDone { return .green }
-        return SalesLocalityKindStyle.doors
+        if item.isNotTradable { return SalesLocalityClosedStyle.notTradableTint }
+        if item.isDone { return SV.lime }
+        if item.isFamilyHouse { return SalesLocalityKindStyle.rd }
+        return SV.accent
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(item.listTitle)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: item.isFamilyHouse ? "house.fill" : "building.2.fill")
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .foregroundStyle(item.isFamilyHouse ? SalesLocalityKindStyle.rd : Color.primary.opacity(0.75))
+                    .frame(width: 40, height: 40)
+                    .background(
+                        (item.isFamilyHouse ? SalesLocalityKindStyle.rd : Color.primary).opacity(0.12),
+                        in: Circle()
+                    )
 
-                if item.isFamilyHouse {
-                    Text("RD")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(SalesLocalityKindStyle.rd)
-                        .lineLimit(1)
-                        .fixedSize()
-                }
-
-                if item.isFamilyHouse, item.ndCount > 0 {
-                    Text(SalesLocalityNd.label(item.ndCount))
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                        .fixedSize()
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(SalesLocalityNd.tint, in: Capsule())
-                }
-
-                Text(statusTitle)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(statusTint)
-                    .lineLimit(1)
-                    .fixedSize()
-            }
-
-            if let place = item.listPlace {
-                Text(place)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-
-            if salesLabel != nil || item.isFamilyHouse {
-                HStack(spacing: 8) {
-                    if let salesLabel {
-                        Text(salesLabel)
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(salesMissing ? SalesLocalityKindStyle.doors : .secondary)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.listTitle)
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                    if let place = item.listPlace {
+                        Text(place)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
-                    Spacer(minLength: 8)
-                    if item.isFamilyHouse {
-                        Text("foto \(item.photosCount)/\(max(item.photosMax, 1))")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(SalesLocalityKindStyle.rd)
-                            .lineLimit(1)
-                            .fixedSize()
-                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                SVChip(
+                    text: status.title,
+                    icon: status.icon,
+                    tint: status.tint,
+                    textColor: item.isDone && !item.isClosed && !item.isNotTradable ? SV.good : nil
+                )
+                .fixedSize()
             }
 
-            HStack {
-                Text("Dveře \(item.openedCount)/\(item.hp)")
-                    .foregroundStyle(SalesLocalityKindStyle.doors)
-                Spacer()
-                Text("Fiber \(item.fiberKs)/\(item.hp)")
-                    .foregroundStyle(SalesLocalityKindStyle.fiber)
-            }
-            .font(.caption.weight(.semibold))
-            .monospacedDigit()
-            .padding(.top, 6)
-        }
-        .padding(.vertical, 2)
-    }
-}
-
-struct SalesLocalityDetailIdentity: View {
-    let item: SalesLocalityItem
-    var opened: Int
-    var fiber: Int
-    var hp: Int
-
-    init(item: SalesLocalityItem, opened: Int? = nil, fiber: Int? = nil, hp: Int? = nil) {
-        self.item = item
-        self.opened = opened ?? item.openedCount
-        self.fiber = fiber ?? item.fiberKs
-        self.hp = hp ?? item.hp
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if item.isFamilyHouse {
-                Label(item.rdGroupTitle, systemImage: "house.fill")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(SalesLocalityKindStyle.rd)
-            }
-            Text(item.listTitle)
-                .font(.title2.weight(.bold))
-                .fixedSize(horizontal: false, vertical: true)
-            if let place = item.listPlace {
-                Text(place)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
             HStack(spacing: 6) {
+                tag("HP \(item.hp)", icon: "building.2")
                 if item.isFamilyHouse {
-                    SalesLocalityRdBadge()
+                    tag("Foto \(item.photosCount)/\(max(item.photosMax, 1))", icon: "camera.fill", tint: SalesLocalityKindStyle.rd)
+                    if item.ndCount > 0 {
+                        tag(SalesLocalityNd.label(item.ndCount), icon: "person.slash", tint: SalesLocalityNd.tint)
+                    }
                 }
-                SalesLocalityStatusBadge(item: item)
-                Text("HP \(hp)")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                if let salesLabel {
+                    HStack(spacing: 5) {
+                        Image(systemName: salesMissing ? "person.crop.circle.badge.exclamationmark" : "person.crop.circle")
+                            .font(.caption2.weight(.bold))
+                        Text(salesLabel)
+                            .font(.caption.weight(.semibold))
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(salesMissing ? SV.coral : .secondary)
+                }
             }
-            VStack(spacing: 8) {
-                detailMeter(title: "Dveře", value: opened, tint: SalesLocalityKindStyle.doors)
-                detailMeter(title: "Fiber", value: fiber, tint: SalesLocalityKindStyle.fiber)
+
+            HStack(spacing: 10) {
+                meter(title: "Dveře", value: item.openedCount, tint: SV.accent)
+                meter(title: "Fiber", value: item.fiberKs, tint: SV.sky)
             }
-            .padding(.top, 2)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 4)
     }
 
-    private func detailMeter(title: String, value: Int, tint: Color) -> some View {
-        let progress = hp > 0 ? min(1, max(0, Double(value) / Double(hp))) : 0
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack {
+    private func tag(_ text: String, icon: String, tint: Color = .secondary) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon).font(.system(size: 9, weight: .bold))
+            Text(text).font(.caption2.weight(.bold))
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(tint.opacity(0.12), in: Capsule())
+    }
+
+    private func meter(title: String, value: Int, tint: Color) -> some View {
+        let progress = item.hp > 0 ? min(1, max(0, Double(value) / Double(item.hp))) : 0
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
                 Text(title)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(tint)
-                Spacer()
-                Text("\(value)/\(hp)")
-                    .font(.caption.weight(.bold))
-                    .monospacedDigit()
                     .foregroundStyle(.secondary)
+                Spacer(minLength: 4)
+                Text("\(value)")
+                    .font(.system(.subheadline, design: .rounded).weight(.bold))
+                    .monospacedDigit()
+                Text("/\(item.hp)")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
@@ -1578,6 +1571,146 @@ struct SalesLocalityDetailIdentity: View {
             }
             .frame(height: 6)
         }
+        .padding(10)
+        .frame(maxWidth: .infinity)
+        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+struct SalesLocalityDetailIdentity: View {
+    let item: SalesLocalityItem
+    var opened: Int
+    var fiber: Int
+    var hp: Int
+    var isClosed: Bool
+    var isNotTradable: Bool
+
+    init(
+        item: SalesLocalityItem,
+        opened: Int? = nil,
+        fiber: Int? = nil,
+        hp: Int? = nil,
+        isClosed: Bool? = nil,
+        isNotTradable: Bool? = nil
+    ) {
+        self.item = item
+        self.opened = opened ?? item.openedCount
+        self.fiber = fiber ?? item.fiberKs
+        self.hp = hp ?? item.hp
+        self.isClosed = isClosed ?? item.isClosed
+        self.isNotTradable = isNotTradable ?? item.isNotTradable
+    }
+
+    private var status: (title: String, icon: String, tint: Color) {
+        if isClosed { return ("Zavřeno", "lock.fill", SalesLocalityClosedStyle.tint) }
+        if isNotTradable { return ("Neobchodovatelné", "nosign", SalesLocalityClosedStyle.notTradableTint) }
+        if item.isDone { return ("Hotovo", "checkmark.seal.fill", .green) }
+        return ("Aktivní", "bolt.fill", SalesLocalityKindStyle.doors)
+    }
+
+    var body: some View {
+        let accent = status.tint
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    if item.isFamilyHouse {
+                        Label(item.rdGroupTitle, systemImage: "house.fill")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(SalesLocalityKindStyle.rd)
+                    }
+                    Text(item.listTitle)
+                        .font(.title2.weight(.bold))
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let place = item.listPlace {
+                        Label(place, systemImage: "mappin.and.ellipse")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .labelStyle(.titleAndIcon)
+                            .lineLimit(2)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 8) {
+                chip(status.title, icon: status.icon, tint: accent, filled: true)
+                if item.isFamilyHouse {
+                    chip("Rodinný dům", icon: "house.fill", tint: SalesLocalityKindStyle.rd, filled: false)
+                }
+                chip("HP \(hp)", icon: "building.2.fill", tint: .secondary, filled: false)
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 12) {
+                ring(title: "Dveře", value: opened, tint: SalesLocalityKindStyle.doors)
+                ring(title: "Fiber", value: fiber, tint: SalesLocalityKindStyle.fiber)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(18)
+        .background(
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [accent.opacity(0.20), accent.opacity(0.04), .clear],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .strokeBorder(accent.opacity(0.22), lineWidth: 1)
+                }
+                .shadow(color: accent.opacity(0.12), radius: 14, y: 6)
+        )
+        .animation(.snappy(duration: 0.25), value: status.title)
+    }
+
+    private func chip(_ text: String, icon: String, tint: Color, filled: Bool) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon).font(.caption2.weight(.bold))
+            Text(text).font(.caption.weight(.bold))
+        }
+        .foregroundStyle(filled ? Color.white : tint)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(filled ? tint : tint.opacity(0.12), in: Capsule())
+    }
+
+    private func ring(title: String, value: Int, tint: Color) -> some View {
+        let progress = hp > 0 ? min(1, max(0, Double(value) / Double(hp))) : 0
+        return HStack(spacing: 12) {
+            ZStack {
+                Circle().stroke(tint.opacity(0.16), lineWidth: 7)
+                Circle()
+                    .trim(from: 0, to: progress)
+                    .stroke(tint, style: StrokeStyle(lineWidth: 7, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .animation(.snappy(duration: 0.3), value: progress)
+                Text(String(format: "%.0f%%", progress * 100))
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+            }
+            .frame(width: 52, height: 52)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text("\(value)/\(hp)")
+                    .font(.headline.weight(.bold))
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity)
+        .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 
@@ -1695,12 +1828,14 @@ struct SalesLocalityStatusBadge: View {
 
     private var title: String {
         if item.isClosed { return "Zavřeno" }
+        if item.isNotTradable { return "Neobchodovatelné" }
         if item.isDone { return "Hotovo" }
         return "Aktivní"
     }
 
     private var tint: Color {
         if item.isClosed { return SalesLocalityClosedStyle.tint }
+        if item.isNotTradable { return SalesLocalityClosedStyle.notTradableTint }
         if item.isDone { return .green }
         return .orange
     }
@@ -1754,10 +1889,9 @@ struct LocalityVisitActionsCard: View {
     private var canDecreaseFiber: Bool { !isClosed && canEditFiber && fiber > 0 }
 
     var body: some View {
-        VStack(spacing: 10) {
-            countRow(
-                title: "Otevřené dveře",
-                unitLabel: "dveří",
+        HStack(alignment: .top, spacing: 12) {
+            countTile(
+                title: "Dveře",
                 icon: "door.left.hand.open",
                 value: opened,
                 tint: LocalityVisitPalette.doors,
@@ -1770,9 +1904,8 @@ struct LocalityVisitActionsCard: View {
                 onIncrease: incrementOpened,
                 onDecrease: decrementOpened
             )
-            countRow(
+            countTile(
                 title: "Fiber",
-                unitLabel: "fiber",
                 icon: "cable.connector",
                 value: fiber,
                 tint: LocalityVisitPalette.fiber,
@@ -1793,9 +1926,8 @@ struct LocalityVisitActionsCard: View {
         .accessibilityHint(isClosed ? "Lokalita je zavřená, hodnoty nelze měnit" : "")
     }
 
-    private func countRow(
+    private func countTile(
         title: String,
-        unitLabel: String,
         icon: String,
         value: Int,
         tint: Color,
@@ -1811,66 +1943,50 @@ struct LocalityVisitActionsCard: View {
         let progress: Double = hp > 0 ? min(1, max(0, Double(value) / Double(hp))) : 0
 
         return VStack(spacing: 14) {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 Image(systemName: isClosed ? "lock.fill" : icon)
-                    .font(.body.weight(.bold))
+                    .font(.footnote.weight(.bold))
                     .foregroundStyle(tint)
-                    .frame(width: 34, height: 34)
+                    .frame(width: 28, height: 28)
                     .background(soft.opacity(0.4), in: Circle())
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.subheadline.weight(.bold))
-                    Text("\(value) z \(hp) \(unitLabel)")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                        .contentTransition(.numericText())
-                }
-
-                Spacer(minLength: 8)
-
-                Text(String(format: "%.0f %%", progress * 100))
-                    .font(.title3.weight(.heavy))
-                    .foregroundStyle(tint)
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
+                Text(title)
+                    .font(.subheadline.weight(.bold))
+                Spacer(minLength: 0)
             }
 
-            HStack(spacing: 16) {
-                stepButton(systemName: "minus", enabled: canDecrease, tint: tint, accessibility: decreaseLabel, action: onDecrease)
-
+            VStack(spacing: 0) {
                 Text("\(value)")
-                    .font(.system(size: 42, weight: .bold, design: .rounded))
+                    .font(.system(size: 54, weight: .heavy, design: .rounded))
                     .monospacedDigit()
-                    .foregroundStyle(.primary)
-                    .frame(maxWidth: .infinity)
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
                     .contentTransition(.numericText())
-                    .scaleEffect(pulse > 0 ? 1.04 : 1)
+                    .scaleEffect(pulse > 0 ? 1.05 : 1)
                     .animation(.spring(response: 0.28, dampingFraction: 0.62), value: pulse)
-
-                stepButton(systemName: "plus", enabled: canIncrease, tint: tint, accessibility: increaseLabel, action: onIncrease)
+                Text("z \(hp)")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
 
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
+                    Capsule().fill(tint.opacity(0.14))
                     Capsule()
-                        .fill(tint.opacity(0.12))
-                    Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [soft, tint],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
+                        .fill(LinearGradient(colors: [soft, tint], startPoint: .leading, endPoint: .trailing))
                         .frame(width: max(value > 0 ? 8 : 0, geo.size.width * progress))
                 }
                 .animation(.snappy(duration: 0.24), value: value)
             }
-            .frame(height: 8)
+            .frame(height: 6)
+
+            HStack(spacing: 8) {
+                stepButton(systemName: "minus", enabled: canDecrease, tint: tint, filled: false, accessibility: decreaseLabel, action: onDecrease)
+                stepButton(systemName: "plus", enabled: canIncrease, tint: tint, filled: true, accessibility: increaseLabel, action: onIncrease)
+            }
         }
-        .padding(16)
+        .padding(14)
+        .frame(maxWidth: .infinity)
         .background(rowBackground(tint: tint))
         .overlay { rowStroke(tint: tint, soft: soft) }
         .accessibilityElement(children: .contain)
@@ -1910,27 +2026,27 @@ struct LocalityVisitActionsCard: View {
         systemName: String,
         enabled: Bool,
         tint: Color,
+        filled: Bool,
         accessibility: String,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.title3.weight(.bold))
-                .foregroundStyle(enabled ? Color.white : Color.secondary.opacity(0.4))
-                .frame(width: 56, height: 56)
+                .foregroundStyle(enabled ? (filled ? Color.white : tint) : Color.secondary.opacity(0.4))
+                .frame(maxWidth: .infinity)
+                .frame(height: 50)
                 .background(
-                    Circle()
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .fill(
-                            LinearGradient(
-                                colors: enabled
-                                    ? [tint.opacity(0.92), tint]
-                                    : [Color.primary.opacity(0.08), Color.primary.opacity(0.05)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
+                            enabled
+                                ? (filled
+                                    ? AnyShapeStyle(LinearGradient(colors: [tint.opacity(0.92), tint], startPoint: .topLeading, endPoint: .bottomTrailing))
+                                    : AnyShapeStyle(tint.opacity(0.14)))
+                                : AnyShapeStyle(Color.primary.opacity(0.06))
                         )
                 )
-                .shadow(color: enabled ? tint.opacity(0.28) : .clear, radius: 6, y: 2)
+                .shadow(color: enabled && filled ? tint.opacity(0.28) : .clear, radius: 6, y: 2)
         }
         .buttonStyle(LocalityVisitTapStyle())
         .disabled(!enabled)
@@ -1971,45 +2087,53 @@ struct LocalityVisitActionsCard: View {
     }
 }
 
-struct LocalityClosedToggle: View {
-    @Binding var isClosed: Bool
+struct LocalityStatusTile: View {
+    let title: String
+    let activeTitle: String
+    let subtitle: String
+    let icon: String
+    let activeIcon: String
+    let tint: Color
+    @Binding var isOn: Bool
+    let accessibilityOn: String
+    let accessibilityOff: String
 
     var body: some View {
         Button {
-            isClosed.toggle()
+            isOn.toggle()
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         } label: {
-            HStack(spacing: 12) {
-                Image(systemName: isClosed ? "lock.fill" : "door.left.hand.closed")
-                    .font(.title3.weight(.semibold))
-                    .frame(width: 36, height: 36)
-                    .background(
-                        Circle().fill(isClosed ? Color.white.opacity(0.2) : LocalityVisitPalette.closed.opacity(0.16))
-                    )
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(isClosed ? "Zavřeno" : "Označit jako zavřené")
-                        .font(.headline.weight(.bold))
-                    Text(isClosed ? "Lokalita je uzavřená" : "Uzavře lokalitu a zamkne zápis")
-                        .font(.caption)
-                        .opacity(0.85)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Image(systemName: isOn ? activeIcon : icon)
+                        .font(.body.weight(.semibold))
+                        .frame(width: 36, height: 36)
+                        .background(Circle().fill(isOn ? Color.white.opacity(0.22) : tint.opacity(0.16)))
+                    Spacer(minLength: 4)
+                    Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
+                        .font(.title3.weight(.semibold))
+                        .opacity(isOn ? 1 : 0.4)
                 }
-
-                Spacer(minLength: 8)
-
-                Image(systemName: isClosed ? "checkmark.circle.fill" : "circle")
-                    .font(.title3.weight(.semibold))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(isOn ? activeTitle : title)
+                        .font(.subheadline.weight(.bold))
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                    Text(subtitle)
+                        .font(.caption)
+                        .opacity(0.8)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                }
             }
-            .foregroundStyle(isClosed ? Color.white : LocalityVisitPalette.closed)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 16)
+            .foregroundStyle(isOn ? Color.white : tint)
+            .padding(14)
+            .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
             .background(
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .fill(
                         LinearGradient(
-                            colors: isClosed
-                                ? [LocalityVisitPalette.closed.opacity(0.92), LocalityVisitPalette.closed]
-                                : [LocalityVisitPalette.closed.opacity(0.1), LocalityVisitPalette.closed.opacity(0.08)],
+                            colors: isOn ? [tint.opacity(0.92), tint] : [tint.opacity(0.10), tint.opacity(0.06)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
@@ -2017,13 +2141,50 @@ struct LocalityClosedToggle: View {
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .strokeBorder(LocalityVisitPalette.closed.opacity(isClosed ? 0 : 0.32), lineWidth: 1)
+                    .strokeBorder(tint.opacity(isOn ? 0 : 0.30), lineWidth: 1)
             }
-            .shadow(color: LocalityVisitPalette.closed.opacity(isClosed ? 0.28 : 0.08), radius: 10, y: 4)
+            .shadow(color: tint.opacity(isOn ? 0.28 : 0.06), radius: 10, y: 4)
         }
         .buttonStyle(LocalityVisitTapStyle())
-        .accessibilityLabel(isClosed ? "Lokalita je zavřená" : "Označit lokalitu jako zavřenou")
-        .accessibilityAddTraits(isClosed ? .isSelected : [])
+        .animation(.snappy(duration: 0.2), value: isOn)
+        .accessibilityLabel(isOn ? accessibilityOn : accessibilityOff)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
+    }
+}
+
+struct LocalityClosedToggle: View {
+    @Binding var isClosed: Bool
+
+    var body: some View {
+        LocalityStatusTile(
+            title: "Zavřít lokalitu",
+            activeTitle: "Zavřeno",
+            subtitle: isClosed ? "Zápis je zamčený" : "Zamkne zápis dveří a fiberu",
+            icon: "door.left.hand.closed",
+            activeIcon: "lock.fill",
+            tint: LocalityVisitPalette.closed,
+            isOn: $isClosed,
+            accessibilityOn: "Lokalita je zavřená",
+            accessibilityOff: "Označit lokalitu jako zavřenou"
+        )
+    }
+}
+
+struct LocalityNotTradableToggle: View {
+    @Binding var isNotTradable: Bool
+
+    var body: some View {
+        LocalityStatusTile(
+            title: "Neobchodovatelné",
+            activeTitle: "Neobchodovatelné",
+            subtitle: isNotTradable ? "Mimo statistiky" : "Nezavřeno, nejde prodávat",
+            icon: "slash.circle",
+            activeIcon: "nosign",
+            tint: SalesLocalityClosedStyle.notTradableTint,
+            isOn: $isNotTradable,
+            accessibilityOn: "Lokalita je neobchodovatelná",
+            accessibilityOff: "Označit lokalitu jako neobchodovatelnou"
+        )
     }
 }
 

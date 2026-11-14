@@ -59,11 +59,11 @@ enum ManagerLocationReportStatus: Equatable {
     var tint: Color {
         switch self {
         case .reported:
-            return .green
+            return SV.good
         case .absent(let status):
-            return status == "N" ? .red : .blue
+            return status == "N" ? SV.bad : SV.sky
         case .missing:
-            return .orange
+            return SV.accent
         }
     }
 
@@ -360,7 +360,7 @@ struct ManagerLocationsSheetView: View {
                     mainContent
                 }
             }
-            .background(Color(uiColor: .systemGroupedBackground))
+            .background { ManagerScreenBackground() }
             .navigationTitle("Lokality týmu")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -382,13 +382,13 @@ struct ManagerLocationsSheetView: View {
             .sheet(isPresented: $showSummary) {
                 NavigationStack {
                     VStack(spacing: 12) {
-                        summaryStatRow(title: "Vyplněno", value: viewModel.filledCount, tint: .green, icon: "checkmark.circle.fill")
-                        summaryStatRow(title: "Nezadáno", value: viewModel.missingCount, tint: .orange, icon: "exclamationmark.circle.fill")
-                        summaryStatRow(title: "Nepřítomni", value: viewModel.absentCount, tint: .blue, icon: "calendar.circle.fill")
+                        summaryStatRow(title: "Vyplněno", value: viewModel.filledCount, tint: SV.good, icon: "checkmark.circle.fill")
+                        summaryStatRow(title: "Nezadáno", value: viewModel.missingCount, tint: SV.coral, icon: "exclamationmark.circle.fill")
+                        summaryStatRow(title: "Nepřítomni", value: viewModel.absentCount, tint: SV.sky, icon: "calendar.circle.fill")
                     }
                     .padding(20)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    .background(Color(uiColor: .systemGroupedBackground))
+                    .background { ManagerScreenBackground() }
                     .navigationTitle("Souhrn")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
@@ -493,16 +493,16 @@ struct ManagerLocationsSheetView: View {
                 Button("Dnes") {
                     viewModel.selectedDate = Date()
                 }
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.accentColor)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(SV.ink)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(Color.accentColor.opacity(0.12), in: Capsule())
+                .background(SV.accent, in: Capsule())
             }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .background(cardBackground(tint: .blue))
+        .background(cardBackground(tint: SV.sky))
     }
 
     private var summaryHeroCard: some View {
@@ -521,19 +521,19 @@ struct ManagerLocationsSheetView: View {
                         summaryStatRow(
                             title: "Vyplněno",
                             value: viewModel.filledCount,
-                            tint: .green,
+                            tint: SV.good,
                             icon: "checkmark.circle.fill"
                         )
                         summaryStatRow(
                             title: "Nezadáno",
                             value: viewModel.missingCount,
-                            tint: .orange,
+                            tint: SV.coral,
                             icon: "exclamationmark.circle.fill"
                         )
                         summaryStatRow(
                             title: "Nepřítomni",
                             value: viewModel.absentCount,
-                            tint: .blue,
+                            tint: SV.sky,
                             icon: "calendar.circle.fill"
                         )
                     }
@@ -541,7 +541,7 @@ struct ManagerLocationsSheetView: View {
             }
         }
         .padding(16)
-        .background(cardBackground(tint: .green))
+        .background(cardBackground(tint: SV.good))
     }
 
     private var completionRing: some View {
@@ -555,7 +555,7 @@ struct ManagerLocationsSheetView: View {
                 .trim(from: 0, to: rate)
                 .stroke(
                     AngularGradient(
-                        colors: [.green.opacity(0.7), .green],
+                        colors: [SV.lime.opacity(0.7), SV.lime],
                         center: .center
                     ),
                     style: StrokeStyle(lineWidth: 8, lineCap: .round)
@@ -624,19 +624,19 @@ struct ManagerLocationsSheetView: View {
                     .padding(.vertical, 2)
                     .background(isSelected ? Color.white.opacity(0.22) : Color.primary.opacity(0.08), in: Capsule())
             }
-            .foregroundStyle(isSelected ? Color.white : Color.primary)
+            .foregroundStyle(isSelected ? SV.onPill : Color.primary.opacity(0.84))
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
             .background {
                 if isSelected {
                     Capsule()
-                        .fill(Color.accentColor)
+                        .fill(SV.pill)
                 } else {
                     Capsule()
-                        .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                        .fill(ManagerGlassFill())
                         .overlay {
                             Capsule()
-                                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+                                .stroke(SV.rim, lineWidth: 1)
                         }
                 }
             }
@@ -808,12 +808,12 @@ struct ManagerLocationsSheetView: View {
         return HStack(spacing: 12) {
             Image(systemName: "mappin.circle.fill")
                 .font(.title3)
-                .foregroundStyle(hasLocation ? .blue : .red)
+                .foregroundStyle(hasLocation ? SV.sky : SV.bad)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(hasLocation ? entry.locationName : "Nezadáno")
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(hasLocation ? Color.primary : Color.red)
+                    .foregroundStyle(hasLocation ? Color.primary : SV.bad)
                     .lineLimit(2)
 
                 if let arrival = entry.arrivalTime, !arrival.isEmpty {
@@ -828,10 +828,10 @@ struct ManagerLocationsSheetView: View {
             if let arrival = entry.arrivalTime, !arrival.isEmpty {
                 Text(arrival)
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(SV.sky)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
-                    .background(Color.blue.opacity(0.12), in: Capsule())
+                    .background(SV.sky.opacity(0.12), in: Capsule())
             }
         }
         .padding(12)
@@ -861,35 +861,15 @@ struct ManagerLocationsSheetView: View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.body.weight(.semibold))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(.primary)
                 .frame(width: 40, height: 40)
-                .background(Color.accentColor.opacity(0.12), in: Circle())
+                .overlay(Circle().strokeBorder(Color.primary.opacity(0.18)))
         }
         .buttonStyle(.plain)
     }
 
     private func cardBackground(tint: Color) -> some View {
-        RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .fill(Color(uiColor: .secondarySystemGroupedBackground))
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                tint.opacity(0.14),
-                                tint.opacity(0.05),
-                                .clear
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(Color.primary.opacity(0.06), lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.04), radius: 8, x: 0, y: 3)
+        SVCardBackground(radius: 22, tint: tint)
     }
 }
 

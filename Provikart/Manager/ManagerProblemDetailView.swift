@@ -41,19 +41,19 @@ private enum ManagerReportAppearance {
 
     static func accentColor(for report: UserReport) -> Color {
         if report.is_deferred_sale_issue { return .purple }
-        if report.is_incomplete_order_issue { return .red }
-        if report.is_term_selection_issue { return .blue }
-        if report.created_by_manager == true { return .blue }
+        if report.is_incomplete_order_issue { return SV.bad }
+        if report.is_term_selection_issue { return SV.sky }
+        if report.created_by_manager == true { return SV.sky }
         switch status(for: report) {
-        case .created: return .orange
+        case .created: return SV.coral
         case .open: return .yellow
-        case .completed: return .green
+        case .completed: return SV.good
         }
     }
 
     static func headerTint(for report: UserReport) -> Color {
         let accent = accentColor(for: report)
-        return accent == .yellow ? .orange : accent
+        return accent == .yellow ? SV.coral : accent
     }
 
     static func rowIcon(for report: UserReport) -> String {
@@ -204,7 +204,7 @@ struct ManagerProblemDetailView: View {
                     .padding(.bottom, 16)
             }
         }
-        .background(Color(uiColor: .systemGroupedBackground))
+        .background { ManagerScreenBackground() }
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
@@ -406,9 +406,9 @@ private struct ReportDetailStatusTrack: View {
 
     private func tintForStep(_ step: ManagerReportAppearance.Status) -> Color {
         switch step {
-        case .created: return .orange
-        case .open: return .orange
-        case .completed: return .green
+        case .created: return SV.coral
+        case .open: return SV.coral
+        case .completed: return SV.good
         }
     }
 }
@@ -519,7 +519,7 @@ private struct ReportDetailBody: View {
                 }
 
                 factRow("Stav", report.statusDisplayCzech, icon: "circle.dotted", tint: statusTint)
-                factRow("Dokončeno", report.isCompleted ? "Ano" : "Ne", icon: report.isCompleted ? "checkmark.circle.fill" : "hourglass", tint: report.isCompleted ? .green : .orange)
+                factRow("Dokončeno", report.isCompleted ? "Ano" : "Ne", icon: report.isCompleted ? "checkmark.circle.fill" : "hourglass", tint: report.isCompleted ? SV.good : SV.coral)
 
                 if let updated = report.updated_at, !updated.isEmpty {
                     factRow("Naposledy upraveno", formatDate(updated), icon: "clock.arrow.trianglehead.counterclockwise.rotate.90", tint: .secondary)
@@ -532,9 +532,9 @@ private struct ReportDetailBody: View {
 
     private var statusTint: Color {
         switch status {
-        case .created: return .orange
-        case .open: return .orange
-        case .completed: return .green
+        case .created: return SV.coral
+        case .open: return SV.coral
+        case .completed: return SV.good
         }
     }
 
@@ -581,12 +581,12 @@ private struct ReportDetailBody: View {
     private func resultSection(_ result: String) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionLabel("Výsledek", icon: "checkmark.seal.fill")
-                .foregroundStyle(.green)
+                .foregroundStyle(SV.good)
 
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.title2)
-                    .foregroundStyle(.green)
+                    .foregroundStyle(SV.good)
                     .padding(.top, 2)
 
                 Text(result)
@@ -598,11 +598,11 @@ private struct ReportDetailBody: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color.green.opacity(0.08))
+                    .fill(SV.good.opacity(0.08))
             }
             .overlay {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Color.green.opacity(0.2), lineWidth: 1)
+                    .strokeBorder(SV.good.opacity(0.2), lineWidth: 1)
             }
         }
         .padding(.horizontal, 20)
@@ -672,7 +672,7 @@ private struct ReportDetailTimelineRow: View {
                     .frame(width: 2, height: 10)
 
                 Circle()
-                    .fill(isResult ? Color.green : tint.opacity(0.85))
+                    .fill(isResult ? SV.good : tint.opacity(0.85))
                     .frame(width: 9, height: 9)
 
                 if !isLast {
@@ -689,10 +689,10 @@ private struct ReportDetailTimelineRow: View {
                 if isResult {
                     Text("Výsledek")
                         .font(.caption2.weight(.bold))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(SV.good)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
-                        .background(Color.green.opacity(0.12), in: Capsule())
+                        .background(SV.good.opacity(0.12), in: Capsule())
                 }
 
                 Text(item.text)
@@ -710,7 +710,7 @@ private struct ReportDetailTimelineRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                    .fill(ManagerGlassFill())
             }
             .padding(.bottom, isLast ? 0 : 2)
         }
@@ -1003,7 +1003,7 @@ private struct ManagerReplyToReportView: View {
                 if let errorMessage {
                     Text(errorMessage)
                         .font(.footnote)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(SV.bad)
                         .padding(.horizontal, 20)
                         .padding(.bottom, 8)
                 }

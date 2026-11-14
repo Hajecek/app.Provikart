@@ -170,20 +170,20 @@ struct ManagerTeamProfilesView: View {
                 summaryBadge(
                     title: "Vyplněné profily",
                     value: viewModel.filledProfilesCount(),
-                    tint: .green,
+                    tint: SV.good,
                     icon: "checkmark.circle.fill"
                 )
                 summaryBadge(
                     title: "Bez detailu",
                     value: max(viewModel.profiles.count - viewModel.filledProfilesCount(), 0),
-                    tint: .orange,
+                    tint: SV.coral,
                     icon: "person.crop.circle.badge.questionmark"
                 )
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(cardBackground(tint: .blue))
+        .background(cardBackground(tint: SV.sky))
     }
 
     private func summaryBadge(title: String, value: Int, tint: Color, icon: String) -> some View {
@@ -268,10 +268,10 @@ struct ManagerTeamProfilesView: View {
             if let roleLabel = profile.roleLabel {
                 Text(roleLabel)
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(SV.sky)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
-                    .background(Color.blue.opacity(0.12), in: Capsule())
+                    .background(SV.sky.opacity(0.12), in: Capsule())
             }
 
             Image(systemName: "chevron.right")
@@ -279,7 +279,7 @@ struct ManagerTeamProfilesView: View {
                 .foregroundStyle(.tertiary)
         }
         .padding(16)
-        .background(cardBackground(tint: profile.hasProfileContent ? .green : .gray))
+        .background(cardBackground(tint: profile.hasProfileContent ? SV.good : .gray))
     }
 
     private func profileAvatar(_ profile: TeamProfile) -> some View {
@@ -342,23 +342,7 @@ struct ManagerTeamProfilesView: View {
     }
 
     private func cardBackground(tint: Color) -> some View {
-        RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .fill(Color(uiColor: .secondarySystemGroupedBackground))
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [tint.opacity(0.14), tint.opacity(0.05), .clear],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(Color.primary.opacity(0.06), lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.04), radius: 8, x: 0, y: 3)
+        SVCardBackground(radius: 22, tint: tint)
     }
 }
 

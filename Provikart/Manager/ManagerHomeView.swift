@@ -59,8 +59,8 @@ struct ManagerHomeView: View {
     @State private var showLocations = false
     @State private var chartReveal: CGFloat = 0
     @Namespace private var periodAnimation
+    @Environment(\.colorScheme) private var scheme
 
-    private let brandOrange = Color(red: 0.93, green: 0.43, blue: 0.08)
     private let brandGold = Color(red: 1.00, green: 0.70, blue: 0.20)
 
     var body: some View {
@@ -89,7 +89,7 @@ struct ManagerHomeView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    ProvikartBrandLogoView(style: .large)
+                    ManagerToolbarLogo()
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     ManagerAddReportToolbarButton()
@@ -140,10 +140,11 @@ struct ManagerHomeView: View {
             LazyVStack(alignment: .leading, spacing: 24) {
                 welcomeHeader
                 periodSelector
-                progressCard
-                servicesCard
                 alertsBlock
-                performanceHero
+                progressCard
+                planCard
+                servicesCard
+                feeCard
                 activityBento
                 teamCarousel
                 attentionCard
@@ -190,10 +191,10 @@ struct ManagerHomeView: View {
                 .minimumScaleFactor(0.75)
             HStack(spacing: 8) {
                 Label(roleTitle, systemImage: "person.crop.circle.badge.checkmark")
-                    .foregroundStyle(brandOrange)
-                    .padding(.horizontal, 9)
+                    .foregroundStyle(svInk)
+                    .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(brandOrange.opacity(0.11), in: Capsule())
+                    .background(svAccent, in: Capsule())
 
                 if let data = viewModel.payload {
                     Label("\(data.memberCount) \(memberWord(data.memberCount)) v týmu", systemImage: "person.2.fill")
@@ -218,13 +219,13 @@ struct ManagerHomeView: View {
                 } label: {
                     Text(item.title)
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(viewModel.period == item ? .white : .secondary)
+                        .foregroundStyle(viewModel.period == item ? svOnPill : Color.primary.opacity(0.84))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 9)
                         .background {
                             if viewModel.period == item {
                                 Capsule()
-                                    .fill(brandOrange.gradient)
+                                    .fill(svPill)
                                     .matchedGeometryEffect(id: "period", in: periodAnimation)
                             }
                         }
@@ -233,57 +234,133 @@ struct ManagerHomeView: View {
             }
         }
         .padding(4)
-        .background(.thinMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.06)))
+        .background(.ultraThinMaterial, in: Capsule())
+        .background(glassFill, in: Capsule())
+        .overlay(Capsule().strokeBorder(glassRim))
     }
 
-    private let progressBlue = Color(red: 0, green: 0.48, blue: 1)
+    // MARK: - Karty ve stylu webového přehledu
+
+    private var isDark: Bool { scheme == .dark }
+    /// Paleta shodná s webovým přehledem (--sv-*).
+    private var svCoral: Color { isDark ? Color(red: 1.00, green: 0.60, blue: 0.49) : Color(red: 0.95, green: 0.49, blue: 0.37) }
+    private var svLime: Color { isDark ? Color(red: 0.80, green: 0.94, blue: 0.42) : Color(red: 0.66, green: 0.84, blue: 0.21) }
+    private var svGood: Color { isDark ? Color(red: 0.72, green: 0.90, blue: 0.35) : Color(red: 0.24, green: 0.48, blue: 0.08) }
+    private var svBad: Color { isDark ? Color(red: 1.00, green: 0.60, blue: 0.49) : Color(red: 0.72, green: 0.25, blue: 0.12) }
+    private let svAccent = Color(red: 0.99, green: 0.745, blue: 0.19)
+    private let svInk = Color(red: 0.075, green: 0.09, blue: 0.10)
+    private var svPill: Color { isDark ? Color(red: 0.345, green: 0.37, blue: 0.365).opacity(0.74) : svInk }
+    private var svOnPill: Color { isDark ? Color(red: 0.95, green: 0.96, blue: 0.94) : Color(red: 0.965, green: 0.97, blue: 0.95) }
+
+    private var periodPhrase: String {
+        switch viewModel.period {
+        case .today: return "dnes"
+        case .yesterday: return "včera"
+        case .week: return "tento týden"
+        case .month: return "tento měsíc"
+        }
+    }
+
+    private func svCard<Content: View>(
+        _ title: String,
+        icon: String = "arrow.up.right",
+        onTap: (() -> Void)? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                Text(title)
+                    .font(.headline.weight(.semibold))
+                Spacer(minLength: 8)
+                if let onTap {
+                    Button {
+                        bump()
+                        onTap()
+                    } label: {
+                        Image(systemName: icon)
+                            .font(.footnote.weight(.bold))
+                            .foregroundStyle(.primary)
+                            .frame(width: 36, height: 36)
+                            .overlay(Circle().strokeBorder(Color.primary.opacity(0.18)))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Otevřít \(title)")
+                }
+            }
+            content()
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(surface(radius: 24))
+    }
+
+    private func svChip(_ text: String, tone: String) -> some View {
+        let color: Color = tone == "up" ? svLime : (tone == "down" ? svCoral : .secondary)
+        let textColor: Color = tone == "up" ? svGood : (tone == "down" ? svBad : .secondary)
+        let icon = tone == "up" ? "arrow.up" : (tone == "down" ? "arrow.down" : "minus")
+        return HStack(spacing: 5) {
+            Image(systemName: icon).font(.system(size: 10, weight: .heavy))
+            Text(text).font(.caption.weight(.bold))
+        }
+        .foregroundStyle(textColor)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(color.opacity(0.16), in: Capsule())
+        .overlay(Capsule().strokeBorder(color.opacity(0.32)))
+    }
+
+    private func svFacts(_ items: [(String, String)]) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                VStack(spacing: 3) {
+                    Text(item.0)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                    Text(item.1)
+                        .font(.subheadline.weight(.bold).monospacedDigit())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.65)
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+    }
 
     @ViewBuilder
     private var progressCard: some View {
-        if let progress = viewModel.payload?.progress, !progress.labels.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Postup služeb")
-                            .font(.title3.bold())
-                        if !progress.subtitle.isEmpty {
-                            Text(progress.subtitle)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
+        if let progress = viewModel.payload?.progress {
+            svCard("Služby", icon: "ellipsis", onTap: { selectedTab = .performance }) {
+                HStack(alignment: .bottom, spacing: 14) {
+                    Text("\(progress.currentTotal)")
+                        .font(.system(size: 62, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .tracking(-2)
+                        .contentTransition(.numericText())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                    VStack(alignment: .leading, spacing: 6) {
+                        if !progress.verdict.isEmpty {
+                            svChip(progress.verdict, tone: progress.tone)
                         }
+                        Text("služeb \(periodPhrase)")
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(.secondary)
                     }
-                    Spacer(minLength: 8)
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text(progress.verdict)
-                            .font(.headline.bold())
-                            .foregroundStyle(progressTone(progress.tone))
-                            .multilineTextAlignment(.trailing)
-                        if progress.sameDay > 0 {
-                            Text("ke \(progress.sameDay). dni")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                    .padding(.bottom, 8)
                 }
 
-                HStack(spacing: 8) {
-                    progressStat(progress.currentTotal, progress.nowCaption, progressBlue)
-                    progressStat(progress.previousSame, progress.sameCaption, .secondary)
-                    progressStat(progress.previousTotal, progress.prevCaption, .secondary)
-                }
-
-                if !progress.compact {
+                if !progress.compact && !progress.labels.isEmpty {
                     HStack(spacing: 14) {
-                        progressLegend(progress.currentLabel, progressBlue, dashed: false)
+                        progressLegend(progress.currentLabel, svCoral, dashed: false)
                         progressLegend(progress.previousLabel, .secondary, dashed: true)
                     }
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
 
                     progressChart(progress)
-                        .frame(height: 196)
+                        .frame(height: 190)
                         .mask(alignment: .leading) {
                             GeometryReader { geo in
                                 Rectangle()
@@ -293,31 +370,170 @@ struct ManagerHomeView: View {
                 }
 
                 if !progress.story.isEmpty {
-                    Text(progress.story)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "waveform.path.ecg")
+                            .font(.footnote.weight(.bold))
+                            .foregroundStyle(svCoral)
+                        Text(progress.story)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
-            .padding(16)
-            .background(surface(tint: .blue, radius: 22))
         }
     }
 
-    private func progressStat(_ value: Int, _ caption: String, _ color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text("\(value)")
-                .font(.title3.bold().monospacedDigit())
-                .foregroundStyle(color)
-            Text(caption)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-                .minimumScaleFactor(0.8)
+    private func planColor(_ pct: Int) -> Color {
+        let k = Double(max(0, min(100, pct))) / 100
+        return Color(hue: (125 * k) / 360, saturation: 0.78 + 0.04 * k, brightness: 0.90)
+    }
+
+    @ViewBuilder
+    private var planCard: some View {
+        if let summary = viewModel.payload?.summary {
+            let pct = summary.hasGoal ? max(0, min(100, summary.planPct ?? 0)) : 0
+            let color = planColor(pct)
+            svCard("Plán služeb", icon: "ellipsis", onTap: { selectedTab = .performance }) {
+                HStack(spacing: 20) {
+                    ZStack {
+                        Circle().stroke(Color.primary.opacity(0.08), lineWidth: 14)
+                        Circle()
+                            .trim(from: 0, to: CGFloat(pct) / 100)
+                            .stroke(color, style: StrokeStyle(lineWidth: 14, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                            .animation(.snappy(duration: 0.5), value: pct)
+                        if summary.hasGoal {
+                            VStack(spacing: 2) {
+                                Text("\(pct)%")
+                                    .font(.system(size: 30, weight: .semibold, design: .rounded))
+                                    .monospacedDigit()
+                                Text(summary.monthName)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            Text("Není nastavený cíl")
+                                .font(.footnote.weight(.semibold))
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 14)
+                        }
+                    }
+                    .frame(width: 124, height: 124)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        planFact("Hotovo", "\(viewModel.payload?.servicesMeta?.monthTotal ?? 0)")
+                        planFact("Cíl", summary.hasGoal ? summary.teamGoalLabel : "—")
+                        planFact("Predikce provize", summary.monthPrediction)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func planFact(_ title: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(title)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.subheadline.weight(.bold).monospacedDigit())
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
+        }
+    }
+
+    @ViewBuilder
+    private var servicesCard: some View {
+        if let slices = viewModel.payload?.servicesBreakdown, !slices.isEmpty {
+            let total = viewModel.payload?.servicesMeta?.total ?? slices.reduce(0) { $0 + $1.count }
+            let active = slices.filter { $0.count > 0 }.count
+            svCard("Rozpad na služby", onTap: { selectedTab = .performance }) {
+                HStack(alignment: .bottom, spacing: 12) {
+                    Text("\(total)")
+                        .font(.system(size: 46, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .tracking(-1.5)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("služeb \(periodPhrase)")
+                            .font(.footnote.weight(.medium))
+                        Text("\(active)/\(slices.count) kategorií aktivních")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.bottom, 4)
+                }
+
+                stackedServicesBar(slices)
+
+                VStack(spacing: 12) {
+                    ForEach(slices) { slice in
+                        HStack(spacing: 10) {
+                            Circle()
+                                .fill(Color(hex: slice.color))
+                                .frame(width: 9, height: 9)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(slice.label)
+                                    .font(.subheadline.weight(.medium))
+                                    .lineLimit(1)
+                                GeometryReader { geo in
+                                    ZStack(alignment: .leading) {
+                                        Capsule().fill(Color.primary.opacity(0.07))
+                                        Capsule()
+                                            .fill(Color(hex: slice.color))
+                                            .frame(width: geo.size.width * CGFloat(max(0, min(100, slice.pct))) / 100)
+                                    }
+                                }
+                                .frame(height: 4)
+                            }
+                            Text("\(slice.count)")
+                                .font(.subheadline.weight(.bold).monospacedDigit())
+                                .frame(minWidth: 24, alignment: .trailing)
+                            Text(slice.delta)
+                                .font(.caption2.weight(.bold).monospacedDigit())
+                                .foregroundStyle(slice.deltaUp == true ? svGood : (slice.deltaUp == false ? svBad : Color.secondary))
+                                .frame(minWidth: 34, alignment: .trailing)
+                            Text("\(slice.pct)%")
+                                .font(.caption.weight(.semibold).monospacedDigit())
+                                .foregroundStyle(.secondary)
+                                .frame(width: 38, alignment: .trailing)
+                        }
+                        .opacity(slice.count > 0 ? 1 : 0.5)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var feeCard: some View {
+        if let summary = viewModel.payload?.summary {
+            let kpis = viewModel.payload?.kpis ?? []
+            let revenue = kpis.first(where: { $0.key == "revenue" })?.value ?? "—"
+            let completed = kpis.first(where: { $0.key == "completed" })?.value ?? "—"
+            let tone = summary.commissionDeltaUp == true ? "up" : (summary.commissionDeltaUp == false ? "down" : "flat")
+            svCard("Provize", onTap: { selectedTab = .performance }) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(summary.totalCommission)
+                        .font(.system(size: 36, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .tracking(-1)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                    svChip(summary.commissionDelta, tone: tone)
+                }
+                Text("vyděláno \(periodPhrase) · \(viewModel.periodLabel)")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Divider().opacity(0.5)
+                svFacts([
+                    ("Hodnota objednávek", revenue),
+                    ("Dokončené", completed),
+                    ("Nejlepší", summary.bestName)
+                ])
+            }
+        }
     }
 
     private func progressLegend(_ title: String, _ color: Color, dashed: Bool) -> some View {
@@ -358,7 +574,7 @@ struct ManagerHomeView: View {
                     )
                     .foregroundStyle(
                         LinearGradient(
-                            colors: [progressBlue.opacity(0.22), progressBlue.opacity(0.02)],
+                            colors: [svCoral.opacity(0.22), svCoral.opacity(0.02)],
                             startPoint: .top,
                             endPoint: .bottom
                         )
@@ -369,20 +585,20 @@ struct ManagerHomeView: View {
                         y: .value("Služby", value),
                         series: .value("Řada", "current")
                     )
-                    .foregroundStyle(progressBlue)
+                    .foregroundStyle(svCoral)
                     .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
                     .interpolationMethod(.catmullRom)
                     PointMark(
                         x: .value("Den", point.index),
                         y: .value("Služby", value)
                     )
-                    .foregroundStyle(progressBlue)
+                    .foregroundStyle(svCoral)
                     .symbolSize(42)
                 }
             }
             if let today = progress.todayIndex, points.indices.contains(today) {
                 RuleMark(x: .value("Den", today))
-                    .foregroundStyle(progressBlue.opacity(0.35))
+                    .foregroundStyle(svCoral.opacity(0.35))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
             }
         }
@@ -493,88 +709,6 @@ struct ManagerHomeView: View {
     }
 
     @ViewBuilder
-    private var performanceHero: some View {
-        if let summary = viewModel.payload?.summary {
-            VStack(alignment: .leading, spacing: 12) {
-                sectionTitle("Výsledky", trailing: viewModel.periodLabel)
-                Button {
-                    bump()
-                    selectedTab = .performance
-                } label: {
-                    VStack(alignment: .leading, spacing: 18) {
-                        HStack(alignment: .top, spacing: 12) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Provize týmu")
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(.white.opacity(0.72))
-                                Text(summary.totalCommission)
-                                    .font(.system(size: 31, weight: .bold, design: .rounded))
-                                    .foregroundStyle(.white)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.65)
-                                deltaChip(summary.commissionDelta, up: summary.commissionDeltaUp, onDark: true)
-                            }
-                            Spacer()
-                            targetRing(summary)
-                        }
-
-                        if summary.hasGoal {
-                            let pct = min(1, max(0, Double(summary.planPct ?? 0) / 100))
-                            VStack(alignment: .leading, spacing: 6) {
-                                ProgressView(value: pct)
-                                    .tint(.white)
-                                HStack {
-                                    Text("\(summary.planPct ?? 0) % z cíle")
-                                    Spacer()
-                                    Text(summary.teamGoalLabel)
-                                }
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.white.opacity(0.72))
-                            }
-                        }
-
-                        HStack(spacing: 8) {
-                            darkMetric("Měsíc", summary.monthEarnedLabel)
-                            darkMetric("Predikce", summary.monthPrediction)
-                            darkMetric("Nejlepší", summary.bestName)
-                        }
-                    }
-                    .padding(18)
-                    .background(heroBackground)
-                }
-                .buttonStyle(.plain)
-
-                if let kpis = viewModel.payload?.kpis, !kpis.isEmpty {
-                    HStack(spacing: 10) {
-                        ForEach(kpis.prefix(3)) { kpi in
-                            kpiTile(kpi)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private func targetRing(_ summary: ManagerOverviewSummary) -> some View {
-        let value = min(1, max(0, Double(summary.planPct ?? 0) / 100))
-        return ZStack {
-            Circle().stroke(.white.opacity(0.18), lineWidth: 7)
-            Circle()
-                .trim(from: 0, to: value)
-                .stroke(.white, style: StrokeStyle(lineWidth: 7, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-            VStack(spacing: 0) {
-                Text(summary.hasGoal ? "\(summary.planPct ?? 0)" : "—")
-                    .font(.headline.bold().monospacedDigit())
-                Text("%")
-                    .font(.caption2.weight(.semibold))
-            }
-            .foregroundStyle(.white)
-        }
-        .frame(width: 68, height: 68)
-    }
-
-    @ViewBuilder
     private var activityBento: some View {
         if let activities = viewModel.payload?.activities, !activities.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
@@ -589,7 +723,7 @@ struct ManagerHomeView: View {
                                 HStack {
                                     Image(systemName: activityIcon(item.label))
                                         .font(.subheadline.weight(.bold))
-                                        .foregroundStyle(brandOrange)
+                                        .foregroundStyle(svCoral)
                                     Spacer()
                                     deltaChip(item.delta, up: item.up)
                                 }
@@ -608,44 +742,6 @@ struct ManagerHomeView: View {
                         .buttonStyle(.plain)
                     }
                 }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var servicesCard: some View {
-        if let slices = viewModel.payload?.servicesBreakdown, !slices.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                sectionTitle("Mix služeb", trailing: viewModel.payload?.servicesMeta.map { "\($0.total) celkem" })
-                VStack(spacing: 14) {
-                    stackedServicesBar(slices)
-                    ForEach(slices.prefix(5)) { slice in
-                        Button {
-                            bump()
-                            selectedTab = .performance
-                        } label: {
-                            HStack(spacing: 10) {
-                                Circle()
-                                    .fill(Color(hex: slice.color))
-                                    .frame(width: 9, height: 9)
-                                Text(slice.label)
-                                    .font(.subheadline.weight(.medium))
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                                Text("\(slice.count)")
-                                    .font(.subheadline.weight(.bold).monospacedDigit())
-                                    .foregroundStyle(.primary)
-                                Text("\(slice.pct) %")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 42, alignment: .trailing)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(16)
-                .background(surface(tint: .blue, radius: 22))
             }
         }
     }
@@ -678,7 +774,7 @@ struct ManagerHomeView: View {
                                             .lineLimit(1)
                                         Text(person.commission)
                                             .font(.headline.weight(.bold).monospacedDigit())
-                                            .foregroundStyle(brandOrange)
+                                            .foregroundStyle(svCoral)
                                         Text("\(person.services) služeb · \(person.planLabel)")
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
@@ -831,7 +927,7 @@ struct ManagerHomeView: View {
     private func sectionTitle(_ title: String, trailing: String? = nil) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(title)
-                .font(.title3.bold())
+                .font(.headline.weight(.semibold))
                 .foregroundStyle(.primary)
             Spacer()
             if let trailing {
@@ -841,34 +937,6 @@ struct ManagerHomeView: View {
             }
         }
         .padding(.horizontal, 2)
-    }
-
-    private func kpiTile(_ kpi: ManagerOverviewKPI) -> some View {
-        Button {
-            bump()
-            selectedTab = .performance
-        } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                Image(systemName: kpiIcon(kpi.key))
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(kpiTint(kpi.tone))
-                    .frame(width: 28, height: 28)
-                    .background(kpiTint(kpi.tone).opacity(0.12), in: Circle())
-                Text(kpi.value)
-                    .font(.subheadline.bold().monospacedDigit())
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.65)
-                Text(kpi.label)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-            .padding(12)
-            .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
-            .background(surface(radius: 18))
-        }
-        .buttonStyle(.plain)
     }
 
     private func stackedServicesBar(_ slices: [ManagerOverviewServiceSlice]) -> some View {
@@ -895,23 +963,6 @@ struct ManagerHomeView: View {
         .background(Color.primary.opacity(0.06), in: Capsule())
     }
 
-    private func darkMetric(_ title: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.62))
-            Text(value)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white.opacity(0.11), in: RoundedRectangle(cornerRadius: 11))
-    }
-
     private func localityMetric(_ title: String, _ value: Int, _ color: Color) -> some View {
         VStack(spacing: 4) {
             Text("\(value)")
@@ -926,34 +977,26 @@ struct ManagerHomeView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var heroBackground: some View {
-        RoundedRectangle(cornerRadius: 24, style: .continuous)
-            .fill(
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.94, green: 0.47, blue: 0.08),
-                        Color(red: 0.65, green: 0.20, blue: 0.07),
-                        Color(red: 0.28, green: 0.08, blue: 0.08)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 24)
-                    .strokeBorder(.white.opacity(0.12))
-            }
-            .shadow(color: brandOrange.opacity(0.22), radius: 16, y: 7)
+    private var glassFill: Color {
+        isDark ? Color(red: 0.078, green: 0.09, blue: 0.09).opacity(0.46) : Color.white.opacity(0.50)
+    }
+
+    private var glassRim: Color {
+        isDark ? Color.white.opacity(0.15) : Color.white.opacity(0.72)
     }
 
     private func surface(tint: Color = .clear, radius: CGFloat) -> some View {
         RoundedRectangle(cornerRadius: radius, style: .continuous)
-            .fill(Color(uiColor: .secondarySystemGroupedBackground))
+            .fill(.ultraThinMaterial)
+            .overlay {
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .fill(glassFill)
+            }
             .overlay {
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
                     .fill(
                         LinearGradient(
-                            colors: [tint.opacity(0.09), .clear],
+                            colors: [tint.opacity(0.07), .clear],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
@@ -961,15 +1004,15 @@ struct ManagerHomeView: View {
             }
             .overlay {
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.055))
+                    .strokeBorder(glassRim)
             }
-            .shadow(color: .black.opacity(0.035), radius: 7, y: 3)
+            .shadow(color: .black.opacity(isDark ? 0.35 : 0.10), radius: 18, y: 10)
     }
 
     private func deltaChip(_ text: String, up: Bool?, onDark: Bool = false) -> some View {
         let color: Color = {
-            if up == true { return .green }
-            if up == false { return .red }
+            if up == true { return svGood }
+            if up == false { return svBad }
             return .secondary
         }()
         return HStack(spacing: 3) {
@@ -1010,23 +1053,6 @@ struct ManagerHomeView: View {
             selectedTab = .problems
         default:
             break
-        }
-    }
-
-    private func kpiIcon(_ key: String) -> String {
-        switch key {
-        case "commissions": return "creditcard.fill"
-        case "revenue": return "banknote.fill"
-        case "completed": return "checkmark.circle.fill"
-        default: return "chart.bar.fill"
-        }
-    }
-
-    private func kpiTint(_ tone: String) -> Color {
-        switch tone {
-        case "green", "emerald": return .green
-        case "orange": return .orange
-        default: return .blue
         }
     }
 

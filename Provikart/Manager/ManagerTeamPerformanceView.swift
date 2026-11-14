@@ -394,7 +394,7 @@ struct ManagerTeamPerformanceView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    ProvikartBrandLogoView(style: .large)
+                    ManagerToolbarLogo()
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
@@ -599,15 +599,14 @@ struct ManagerTeamPerformanceView: View {
                     viewModel.jumpToCurrentMonth()
                 }
                 .font(.caption.weight(.bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(SV.ink)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(Color.orange.gradient, in: Capsule())
+                .background(SV.accent, in: Capsule())
             }
         }
-        .padding(6)
-        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(0.055)))
+        .padding(8)
+        .background(SVCardBackground(radius: 22))
     }
 
     private var summarySheet: some View {
@@ -616,7 +615,7 @@ struct ManagerTeamPerformanceView: View {
                 summaryHeroCard
                     .padding(20)
             }
-            .background(Color(uiColor: .systemGroupedBackground))
+            .background { ManagerScreenBackground() }
             .navigationTitle("Souhrn")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -644,7 +643,7 @@ struct ManagerTeamPerformanceView: View {
                     title: "Dnes",
                     value: "\(viewModel.todayServicesCount)",
                     icon: "sun.max.fill",
-                    color: .orange
+                    color: SV.coral
                 )
                 compactMetric(
                     title: "Aktivní",
@@ -697,8 +696,7 @@ struct ManagerTeamPerformanceView: View {
             }
         }
         .padding(4)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(0.06)))
+        .background(SVCardBackground(radius: 22))
     }
 
     private func filterChip(_ filter: ManagerPerformanceFilter) -> some View {
@@ -717,16 +715,16 @@ struct ManagerTeamPerformanceView: View {
                     .minimumScaleFactor(0.7)
                 Text("\(count)")
                     .font(.caption2.weight(.bold))
-                    .foregroundStyle(isSelected ? .white.opacity(0.8) : .secondary)
+                    .foregroundStyle(isSelected ? SV.onPill.opacity(0.8) : .secondary)
             }
-            .foregroundStyle(isSelected ? Color.white : Color.primary)
+            .foregroundStyle(isSelected ? SV.onPill : Color.primary.opacity(0.84))
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 6)
             .padding(.vertical, 9)
             .background {
                 if isSelected {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.orange.gradient)
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(SV.pill)
                         .matchedGeometryEffect(id: "performanceFilter", in: filterAnimation)
                 }
             }
@@ -751,7 +749,7 @@ struct ManagerTeamPerformanceView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Členové týmu")
-                    .font(.title3.bold())
+                    .font(.headline.weight(.semibold))
                 Spacer()
                 Text("\(filteredUsers.count) z \(viewModel.users.count)")
                     .font(.caption.weight(.semibold))
@@ -804,8 +802,10 @@ struct ManagerTeamPerformanceView: View {
 
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("\(user.total)")
-                        .font(.system(.title2, design: .rounded).weight(.bold))
-                        .foregroundStyle(Color.orange)
+                        .font(.system(size: 38, weight: .semibold, design: .rounded))
+                        .tracking(-1.2)
+                        .monospacedDigit()
+                        .foregroundStyle(.primary)
                         .contentTransition(.numericText())
                     Text("služeb za měsíc")
                         .font(.caption2)
@@ -817,10 +817,10 @@ struct ManagerTeamPerformanceView: View {
                 statusPill(
                     title: todayCount > 0 ? "\(todayCount) dnes" : "Dnes bez výkonu",
                     icon: todayCount > 0 ? "checkmark.circle.fill" : "clock",
-                    color: todayCount > 0 ? .green : .secondary
+                    color: todayCount > 0 ? SV.lime : .secondary
                 )
                 if hasManual {
-                    statusPill(title: "Ruční zápis", icon: "pencil", color: .indigo)
+                    statusPill(title: "Ruční zápis", icon: "pencil", color: SV.sky)
                 }
                 Spacer()
                 Text("Klepnutím upravíte den")
@@ -835,17 +835,12 @@ struct ManagerTeamPerformanceView: View {
     }
 
     private func statusPill(title: String, icon: String, color: Color) -> some View {
-        Label(title, systemImage: icon)
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(color)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(color.opacity(0.10), in: Capsule())
+        SVChip(text: title, icon: icon, tint: color, textColor: color == SV.lime ? SV.good : nil)
     }
 
     private func memberAvatar(_ user: ManagerPerformanceUser) -> some View {
         let todayCount = viewModel.entry(for: user, day: viewModel.todayKey)?.servicesCount ?? 0
-        let tint: Color = todayCount > 0 ? .orange : .secondary
+        let tint: Color = todayCount > 0 ? SV.coral : .secondary
 
         return ZStack(alignment: .bottomTrailing) {
             Group {
@@ -926,12 +921,12 @@ struct ManagerTeamPerformanceView: View {
         let isManual = entry?.isManual == true
         let isToday = viewModel.isToday(day)
         let key = "\(user.userId)_\(day)"
-        let tint: Color = isManual ? .indigo : (count != nil && (count ?? 0) > 0 ? .orange : .secondary)
+        let tint: Color = isManual ? .indigo : (count != nil && (count ?? 0) > 0 ? SV.coral : .secondary)
 
         return VStack(spacing: 4) {
             Text(weekdayShort(day))
                 .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(isToday ? Color.orange : Color.secondary)
+                .foregroundStyle(isToday ? SV.coral : Color.secondary)
                 .textCase(.uppercase)
 
             Button {
@@ -941,7 +936,7 @@ struct ManagerTeamPerformanceView: View {
                 VStack(spacing: 2) {
                     Text(dayNumber(day))
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(isToday ? Color.orange : Color.primary)
+                        .foregroundStyle(isToday ? SV.coral : Color.primary)
                     if viewModel.savingKey == key {
                         ProgressView()
                             .scaleEffect(0.7)
@@ -957,12 +952,12 @@ struct ManagerTeamPerformanceView: View {
                 }
                 .frame(width: 38, height: 44)
                 .background(
-                    isToday ? Color.orange.opacity(0.13) : tint.opacity(count == nil ? 0.055 : 0.12),
+                    isToday ? SV.coral.opacity(0.13) : tint.opacity(count == nil ? 0.055 : 0.12),
                     in: RoundedRectangle(cornerRadius: 11, style: .continuous)
                 )
                 .overlay {
                     RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .strokeBorder(isToday ? Color.orange : tint.opacity(0.25), lineWidth: isToday ? 1.5 : 1)
+                        .strokeBorder(isToday ? SV.coral : tint.opacity(0.25), lineWidth: isToday ? 1.5 : 1)
                 }
             }
             .buttonStyle(.plain)
@@ -979,67 +974,23 @@ struct ManagerTeamPerformanceView: View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.body.weight(.semibold))
-                .foregroundStyle(Color.orange)
+                .foregroundStyle(.primary)
                 .frame(width: 38, height: 38)
-                .background(Color.orange.opacity(0.11), in: Circle())
+                .overlay(Circle().strokeBorder(Color.primary.opacity(0.18)))
         }
         .buttonStyle(.plain)
     }
 
     private var compactSummaryBackground: some View {
-        RoundedRectangle(cornerRadius: 20, style: .continuous)
-            .fill(Color(uiColor: .secondarySystemGroupedBackground))
-            .overlay {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.orange.opacity(0.08), .clear],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.055), lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.035), radius: 8, y: 3)
+        SVCardBackground(radius: 22, tint: SV.coral)
     }
 
     private func memberCardBackground(active: Bool) -> some View {
-        RoundedRectangle(cornerRadius: 22, style: .continuous)
-            .fill(Color(uiColor: .secondarySystemGroupedBackground))
-            .overlay(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(active ? Color.orange : Color.clear)
-                    .frame(width: 4)
-                    .padding(.vertical, 18)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.055), lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.04), radius: 8, y: 3)
+        SVCardBackground(radius: 24, tint: active ? SV.coral : .clear)
     }
 
     private func cardBackground(tint: Color) -> some View {
-        RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .fill(Color(uiColor: .secondarySystemGroupedBackground))
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [tint.opacity(0.14), tint.opacity(0.05), .clear],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(Color.primary.opacity(0.06), lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.04), radius: 8, x: 0, y: 3)
+        SVCardBackground(radius: 22, tint: tint)
     }
 
     private func dayNumber(_ day: String) -> String {
@@ -1169,7 +1120,7 @@ private struct PerformanceEditSheet: View {
                 .padding(.top, 8)
                 .padding(.bottom, 24)
             }
-            .background(Color(uiColor: .systemGroupedBackground))
+            .background { ManagerScreenBackground() }
             .navigationTitle("Úprava výkonu")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -1479,12 +1430,7 @@ private struct PerformanceEditSheet: View {
     }
 
     private var sheetCardBackground: some View {
-        RoundedRectangle(cornerRadius: 20, style: .continuous)
-            .fill(Color(uiColor: .secondarySystemGroupedBackground))
-            .overlay {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(Color.primary.opacity(0.05), lineWidth: 1)
-            }
+        SVCardBackground(radius: 20)
     }
 
     private func seedValues() {

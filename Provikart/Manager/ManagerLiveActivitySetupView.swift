@@ -165,7 +165,7 @@ struct ManagerLiveActivitySetupView: View {
         .padding(16)
         .background(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                .fill(ManagerGlassFill())
         )
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)

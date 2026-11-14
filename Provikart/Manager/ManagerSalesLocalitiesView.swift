@@ -71,6 +71,9 @@ final class ManagerSalesLocalitiesViewModel: ObservableObject {
             || editableFields.contains("closed")
             || editableFields.isEmpty
     }
+    var canEditNotTradable: Bool {
+        editableFields.contains("not_tradable") || editableFields.isEmpty
+    }
     var canEditNote: Bool { editableFields.contains("note") }
     var canEditMajitel: Bool { editableFields.contains("majitel") }
     var canEditEmail: Bool { editableFields.contains("email") }
@@ -507,14 +510,18 @@ struct ManagerSalesLocalitiesView: View {
                             SalesLocalityRdGroupHeader(group: group, expanded: expandedRd.contains(group.id))
                         }
                         .buttonStyle(.plain)
-                        .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16))
-                        .listRowBackground(SalesLocalityClosedStyle.rowBackground(isClosed: false, isFamilyHouse: true))
+                        .padding(14)
+                        .background(SVCardBackground(radius: 22, tint: SalesLocalityKindStyle.rd))
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
 
                         if expandedRd.contains(group.id) {
                             ForEach(group.houses) { item in
                                 localityListRow(item)
-                                    .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
-                                    .listRowBackground(SalesLocalityClosedStyle.rowBackground(isClosed: item.isClosed, isFamilyHouse: true))
+                                    .listRowInsets(EdgeInsets(top: 6, leading: 28, bottom: 6, trailing: 16))
+                                    .listRowBackground(Color.clear)
+                                    .listRowSeparator(.hidden)
                             }
                         }
                     }
@@ -541,8 +548,9 @@ struct ManagerSalesLocalitiesView: View {
                 ForEach(SalesLocalityRdGrouping.visible(viewModel.items, kind: .localities)) { item in
                     Section {
                         localityListRow(item)
-                            .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16))
-                            .listRowBackground(SalesLocalityClosedStyle.rowBackground(isClosed: item.isClosed, isFamilyHouse: item.isFamilyHouse))
+                            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
                     }
                 }
 
@@ -565,8 +573,9 @@ struct ManagerSalesLocalitiesView: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
-        .listSectionSpacing(12)
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .listSectionSpacing(0)
         .animation(.default, value: viewModel.isSelectionMode)
     }
 
@@ -669,42 +678,56 @@ struct ManagerSalesLocalitiesView: View {
     @ViewBuilder
     private func localityListRow(_ item: SalesLocalityItem) -> some View {
         let isSelected = viewModel.selectedIds.contains(item.id)
+        let accent = SalesLocalityListSummary.accent(for: item)
 
-        if viewModel.isSelectionMode {
-            Button {
-                viewModel.toggleSelection(item.id)
-            } label: {
-                HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .font(.title3)
-                        .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
-                        .padding(.top, 2)
-                        .accessibilityHidden(true)
+        return Group {
+            if viewModel.isSelectionMode {
+                Button {
+                    viewModel.toggleSelection(item.id)
+                } label: {
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                            .font(.title3)
+                            .foregroundStyle(isSelected ? SV.accent : Color.secondary)
+                            .padding(.top, 2)
+                            .accessibilityHidden(true)
 
-                    ManagerSalesLocalityRow(item: item)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(item.addressTitle)
-            .accessibilityAddTraits(isSelected ? [.isSelected] : [])
-            .accessibilityHint("Klepnutím přepnete výběr")
-        } else {
-            NavigationLink {
-                ManagerSalesLocalityDetailView(item: item, viewModel: viewModel)
-                    .environmentObject(authState)
-            } label: {
-                ManagerSalesLocalityRow(item: item)
-            }
-            .simultaneousGesture(
-                LongPressGesture(minimumDuration: 0.45)
-                    .onEnded { _ in
-                        guard viewModel.canAssignSales else { return }
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        viewModel.beginSelection(with: item.id)
+                        ManagerSalesLocalityRow(item: item)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
-            )
-            .accessibilityHint(viewModel.canAssignSales ? "Podržením vyberete pro přiřazení" : "")
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(item.addressTitle)
+                .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+                .accessibilityHint("Klepnutím přepnete výběr")
+            } else {
+                ManagerSalesLocalityRow(item: item)
+                    .contentShape(Rectangle())
+                    .overlay {
+                        NavigationLink {
+                            ManagerSalesLocalityDetailView(item: item, viewModel: viewModel)
+                                .environmentObject(authState)
+                        } label: {
+                            EmptyView()
+                        }
+                        .opacity(0)
+                    }
+                    .simultaneousGesture(
+                        LongPressGesture(minimumDuration: 0.45)
+                            .onEnded { _ in
+                                guard viewModel.canAssignSales else { return }
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                viewModel.beginSelection(with: item.id)
+                            }
+                    )
+                    .accessibilityHint(viewModel.canAssignSales ? "Podržením vyberete pro přiřazení" : "")
+            }
+        }
+        .padding(16)
+        .background(SVCardBackground(radius: 24, tint: accent))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(SV.accent, lineWidth: isSelected ? 2 : 0)
         }
     }
 
@@ -1034,6 +1057,7 @@ struct ManagerSalesLocalityDetailView: View {
     @State private var hpValue: Int
     @State private var isDone: Bool
     @State private var isClosed: Bool
+    @State private var isNotTradable: Bool
     @State private var ndCount: Int
     @State private var d2d: Bool
     @State private var noteText: String
@@ -1064,6 +1088,7 @@ struct ManagerSalesLocalityDetailView: View {
         _hpValue = State(initialValue: item.hp)
         _isDone = State(initialValue: item.isDone)
         _isClosed = State(initialValue: item.isClosed)
+        _isNotTradable = State(initialValue: item.isNotTradable)
         _ndCount = State(initialValue: item.ndCount)
         _d2d = State(initialValue: item.d2d)
         _noteText = State(initialValue: item.note ?? "")
@@ -1091,8 +1116,12 @@ struct ManagerSalesLocalityDetailView: View {
                     item: item,
                     opened: openedValue,
                     fiber: fiberValue,
-                    hp: hpValue
+                    hp: hpValue,
+                    isClosed: isClosed,
+                    isNotTradable: isNotTradable
                 )
+                .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+                .listRowBackground(Color.clear)
             }
 
             if item.isFamilyHouse {
@@ -1138,15 +1167,24 @@ struct ManagerSalesLocalityDetailView: View {
                 }
             }
 
-            if viewModel.canEditClose {
+            if viewModel.canEditClose || viewModel.canEditNotTradable {
                 Section {
-                    LocalityClosedToggle(isClosed: $isClosed)
-                        .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
-                        .listRowBackground(Color.clear)
+                    HStack(alignment: .top, spacing: 12) {
+                        if viewModel.canEditClose {
+                            LocalityClosedToggle(isClosed: $isClosed)
+                        }
+                        if viewModel.canEditNotTradable {
+                            LocalityNotTradableToggle(isNotTradable: $isNotTradable)
+                        }
+                    }
+                    .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+                    .listRowBackground(Color.clear)
                 } footer: {
                     Text(isClosed
-                         ? "Klepnutím lokalitu znovu otevřeš a odemkneš přidávání."
-                         : "Zavřením se lokalita uzavře a zamkne se přidávání dveří i fiberu.")
+                         ? "Zavřeno: dveře a fiber jsou zamčené. Klepnutím lokalitu znovu otevřeš."
+                         : (isNotTradable
+                            ? "Neobchodovatelné: nezavřeno, ale nejde prodávat. Vypadne ze statistik."
+                            : "Zavřít zamkne zápis, neobchodovatelné označí lokalitu modře a vyřadí ji ze statistik."))
                 }
             }
 
@@ -1248,6 +1286,9 @@ struct ManagerSalesLocalityDetailView: View {
         }
         .navigationTitle("Detail lokality")
         .navigationBarTitleDisplayMode(.inline)
+        .scrollContentBackground(.hidden)
+        .background { ManagerScreenBackground() }
+        .listSectionSpacing(.custom(14))
         .modifier(RdPhotoDetailAccessory(
             localityId: item.id,
             token: authState.authToken,
@@ -1290,6 +1331,7 @@ struct ManagerSalesLocalityDetailView: View {
         .onChange(of: isDone) { _, _ in markDirtyAndDebounce(ms: 300) }
         .onChange(of: ndCount) { _, _ in markDirtyAndDebounce(ms: 300) }
         .onChange(of: isClosed) { _, _ in markDirtyAndDebounce(ms: 300) }
+        .onChange(of: isNotTradable) { _, _ in markDirtyAndDebounce(ms: 300) }
         .onChange(of: d2d) { _, _ in markDirtyAndDebounce(ms: 300) }
         .onChange(of: noteText) { _, _ in markDirtyAndDebounce(ms: 900) }
         .onChange(of: majitelText) { _, _ in markDirtyAndDebounce(ms: 900) }
@@ -1392,6 +1434,7 @@ struct ManagerSalesLocalityDetailView: View {
             ndCount = updated.ndCount
         }
         isClosed = updated.isClosed
+        isNotTradable = updated.isNotTradable
         d2d = updated.d2d
         noteText = updated.note ?? ""
         majitelText = updated.majitel ?? ""
@@ -1434,6 +1477,9 @@ struct ManagerSalesLocalityDetailView: View {
         }
         if viewModel.canEditClose, isClosed != item.isClosed {
             fields.isClosed = isClosed
+        }
+        if viewModel.canEditNotTradable, isNotTradable != item.isNotTradable {
+            fields.isNotTradable = isNotTradable
         }
         if viewModel.canEditD2d, d2d != item.d2d {
             fields.d2d = d2d

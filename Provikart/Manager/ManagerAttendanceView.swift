@@ -358,6 +358,9 @@ struct ManagerAttendanceView: View {
             .navigationTitle("Docházka")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    ManagerToolbarLogo()
+                }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
                         showSummary = true
@@ -520,11 +523,11 @@ struct ManagerAttendanceView: View {
                 Button("Dnes") {
                     viewModel.jumpToCurrentMonth()
                 }
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.accentColor)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(SV.ink)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(Color.accentColor.opacity(0.12), in: Capsule())
+                .background(SV.accent, in: Capsule())
             }
         }
         .padding(.horizontal, 14)
@@ -546,7 +549,7 @@ struct ManagerAttendanceView: View {
                 }
                 .padding(20)
             }
-            .background(Color(uiColor: .systemGroupedBackground))
+            .background { ManagerScreenBackground() }
             .navigationTitle("Souhrn")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -562,13 +565,13 @@ struct ManagerAttendanceView: View {
     private var summaryHeroCard: some View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
-                monthMetricChip(status: "P", title: "Dnes v práci", count: viewModel.presentTodayCount, color: .green)
+                monthMetricChip(status: "P", title: "Dnes v práci", count: viewModel.presentTodayCount, color: SV.good)
                 monthMetricChip(status: "–", title: "Dnes mimo", count: viewModel.absentTodayCount, color: .orange)
             }
             HStack(spacing: 8) {
-                monthMetricChip(status: "P", title: "Práce", count: viewModel.teamStatusCount("P"), color: .green)
-                monthMetricChip(status: "V", title: "Volno", count: viewModel.teamStatusCount("V"), color: .blue)
-                monthMetricChip(status: "N", title: "Nemoc", count: viewModel.teamStatusCount("N"), color: .red)
+                monthMetricChip(status: "P", title: "Práce", count: viewModel.teamStatusCount("P"), color: SV.good)
+                monthMetricChip(status: "V", title: "Volno", count: viewModel.teamStatusCount("V"), color: SV.sky)
+                monthMetricChip(status: "N", title: "Nemoc", count: viewModel.teamStatusCount("N"), color: SV.bad)
             }
         }
     }
@@ -644,9 +647,9 @@ struct ManagerAttendanceView: View {
 
     private var statusLegend: some View {
         HStack(spacing: 12) {
-            legendItem(status: "P", title: "Práce", color: .green)
-            legendItem(status: "V", title: "Volno", color: .blue)
-            legendItem(status: "N", title: "Nemoc", color: .red)
+            legendItem(status: "P", title: "Práce", color: SV.good)
+            legendItem(status: "V", title: "Volno", color: SV.sky)
+            legendItem(status: "N", title: "Nemoc", color: SV.bad)
         }
         .padding(.horizontal, 4)
     }
@@ -696,19 +699,19 @@ struct ManagerAttendanceView: View {
                     .padding(.vertical, 2)
                     .background(isSelected ? Color.white.opacity(0.22) : Color.primary.opacity(0.08), in: Capsule())
             }
-            .foregroundStyle(isSelected ? Color.white : Color.primary)
+            .foregroundStyle(isSelected ? SV.onPill : Color.primary.opacity(0.84))
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
             .background {
                 if isSelected {
                     Capsule()
-                        .fill(Color.accentColor)
+                        .fill(SV.pill)
                 } else {
                     Capsule()
-                        .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                        .fill(ManagerGlassFill())
                         .overlay {
                             Capsule()
-                                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+                                .stroke(SV.rim, lineWidth: 1)
                         }
                 }
             }
@@ -766,7 +769,7 @@ struct ManagerAttendanceView: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(viewModel.displayName(for: user))
-                        .font(.headline)
+                        .font(.headline.weight(.bold))
                         .lineLimit(1)
                     if let username = user.username, !username.isEmpty {
                         Text("@\(username)")
@@ -862,11 +865,11 @@ struct ManagerAttendanceView: View {
         return VStack(spacing: 5) {
             Text(dayNumber(day))
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(isToday ? Color.accentColor : Color.primary)
+                .foregroundStyle(isToday ? SV.coral : Color.primary)
 
             Text(weekdayShort(day))
                 .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(isToday ? Color.accentColor : Color.secondary)
+                .foregroundStyle(isToday ? SV.coral : Color.secondary)
                 .textCase(.uppercase)
 
             Button {
@@ -878,7 +881,7 @@ struct ManagerAttendanceView: View {
                         .frame(width: 36, height: 36)
                         .overlay {
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .stroke(isToday ? Color.accentColor : color.opacity(0.35), lineWidth: isToday ? 2 : 1)
+                                .stroke(isToday ? SV.accent : color.opacity(0.35), lineWidth: isToday ? 2 : 1)
                         }
 
                     if viewModel.savingKey == key {
@@ -919,42 +922,22 @@ struct ManagerAttendanceView: View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.body.weight(.semibold))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(.primary)
                 .frame(width: 40, height: 40)
-                .background(Color.accentColor.opacity(0.12), in: Circle())
+                .overlay(Circle().strokeBorder(Color.primary.opacity(0.18)))
         }
         .buttonStyle(.plain)
     }
 
     private func cardBackground(tint: Color) -> some View {
-        RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .fill(Color(uiColor: .secondarySystemGroupedBackground))
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                tint.opacity(0.14),
-                                tint.opacity(0.05),
-                                .clear
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(Color.primary.opacity(0.06), lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.04), radius: 8, x: 0, y: 3)
+        SVCardBackground(radius: 22, tint: tint)
     }
 
     private func statusColor(_ status: String) -> Color {
         switch status {
-        case "P": return .green
-        case "V": return .blue
-        case "N": return .red
+        case "P": return SV.good
+        case "V": return SV.sky
+        case "N": return SV.bad
         default: return .secondary
         }
     }

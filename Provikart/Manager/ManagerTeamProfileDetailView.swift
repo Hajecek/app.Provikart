@@ -64,7 +64,7 @@ struct ManagerTeamProfileDetailView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .background(Color(uiColor: .systemGroupedBackground))
+        .background { ManagerScreenBackground() }
         .navigationTitle("Profil")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable {
@@ -136,15 +136,15 @@ struct ManagerTeamProfileDetailView: View {
             if let roleLabel = profile.roleLabel {
                 Text(roleLabel)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(SV.sky)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
-                    .background(Color.blue.opacity(0.12), in: Capsule())
+                    .background(SV.sky.opacity(0.12), in: Capsule())
             }
         }
         .frame(maxWidth: .infinity)
         .padding(20)
-        .background(detailCardBackground(tint: .blue))
+        .background(detailCardBackground(tint: SV.sky))
     }
 
     private func contactSection(_ profile: TeamProfile) -> some View {
@@ -255,22 +255,7 @@ struct ManagerTeamProfileDetailView: View {
     }
 
     private func detailCardBackground(tint: Color) -> some View {
-        RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .fill(Color(uiColor: .secondarySystemGroupedBackground))
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [tint.opacity(0.1), tint.opacity(0.03), .clear],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(Color.primary.opacity(0.06), lineWidth: 1)
-            }
+        SVCardBackground(radius: 22, tint: tint)
     }
 }
 

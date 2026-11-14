@@ -139,7 +139,7 @@ struct ManagerReportIssueView: View {
 
     private var reportContent: some View {
         ZStack {
-            Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
+            ManagerScreenBackground()
             reportForm
         }
     }

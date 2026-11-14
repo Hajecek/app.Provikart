@@ -144,7 +144,7 @@ struct ManagerNotificationsView: View {
                     listContent
                 }
             }
-            .background(Color(uiColor: .systemGroupedBackground))
+            .background { ManagerScreenBackground() }
             .navigationTitle("Oznámení")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -286,7 +286,7 @@ struct ManagerNotificationsView: View {
                     )
                 if unread > 0 {
                     Circle()
-                        .fill(Color.orange)
+                        .fill(SV.coral)
                         .frame(width: 7, height: 7)
                 }
             }
@@ -294,7 +294,7 @@ struct ManagerNotificationsView: View {
             .padding(.vertical, 8)
             .background(
                 Capsule()
-                    .fill(selected ? Color.accentColor.opacity(0.16) : Color(uiColor: .secondarySystemGroupedBackground))
+                    .fill(selected ? AnyShapeStyle(Color.accentColor.opacity(0.16)) : AnyShapeStyle(ManagerGlassFill()))
             )
             .overlay(
                 Capsule()
@@ -324,7 +324,7 @@ struct ManagerNotificationsView: View {
             if unread > 0 {
                 Text("\(unread) nových")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(SV.coral)
             }
             Text("\(count)")
                 .font(.caption.weight(.semibold))
@@ -357,7 +357,7 @@ struct ManagerNotificationsView: View {
                 } label: {
                     Label("Nepřečtené", systemImage: "envelope.badge")
                 }
-                .tint(.orange)
+                .tint(SV.coral)
             } else {
                 Button {
                     Task {
@@ -371,7 +371,7 @@ struct ManagerNotificationsView: View {
                 } label: {
                     Label("Přečtené", systemImage: "envelope.open")
                 }
-                .tint(.blue)
+                .tint(SV.sky)
             }
         }
         .contextMenu {

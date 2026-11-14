@@ -394,7 +394,8 @@ struct ManagerProblemsView: View {
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Reporty")
-                    .font(.system(size: 36, weight: .bold, design: .rounded))
+                    .font(.system(size: 38, weight: .semibold, design: .rounded))
+                    .tracking(-1)
                 Text("Požadavky a problémy vašeho týmu")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -405,27 +406,23 @@ struct ManagerProblemsView: View {
                     value: activeReportsSorted.count,
                     title: "Aktivní",
                     icon: "tray.full.fill",
-                    tint: .blue
+                    tint: SV.sky
                 )
                 overviewMetric(
                     value: createdReports.count,
                     title: "Nové",
                     icon: "sparkles",
-                    tint: .orange
+                    tint: SV.coral
                 )
                 overviewMetric(
                     value: openReports.count,
                     title: "Řeší se",
                     icon: "arrow.triangle.2.circlepath",
-                    tint: .green
+                    tint: SV.good
                 )
             }
-            .padding(6)
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.05), lineWidth: 1)
-            }
+            .padding(8)
+            .background(SVCardBackground(radius: 22))
         }
     }
 
@@ -489,7 +486,7 @@ struct ManagerProblemsView: View {
                         title: "Nové",
                         subtitle: "Čekají na vaši reakci",
                         count: createdReports.count,
-                        tint: .orange,
+                        tint: SV.coral,
                         icon: "sparkles"
                     )
                 }
@@ -505,7 +502,7 @@ struct ManagerProblemsView: View {
                         title: "Probíhající",
                         subtitle: "Již se řeší",
                         count: openReports.count,
-                        tint: .yellow,
+                        tint: SV.accent,
                         icon: "arrow.triangle.2.circlepath"
                     )
                 }
@@ -584,24 +581,17 @@ struct ManagerProblemsView: View {
                 Text("\(count)")
                     .font(.caption2.weight(.bold))
                     .monospacedDigit()
-                    .foregroundStyle(isSelected ? Color.white.opacity(0.85) : Color.secondary)
+                    .foregroundStyle(isSelected ? SV.onPill.opacity(0.85) : Color.secondary)
             }
-            .foregroundStyle(isSelected ? .white : .primary)
+            .foregroundStyle(isSelected ? SV.onPill : Color.primary.opacity(0.84))
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
             .background {
                 Capsule(style: .continuous)
-                    .fill(
-                        isSelected
-                            ? AnyShapeStyle(categoryTint(category).gradient)
-                            : AnyShapeStyle(Color(uiColor: .secondarySystemGroupedBackground))
-                    )
+                    .fill(isSelected ? AnyShapeStyle(SV.pill) : AnyShapeStyle(ManagerGlassFill()))
                     .overlay {
                         Capsule(style: .continuous)
-                            .strokeBorder(
-                                isSelected ? Color.white.opacity(0.15) : Color.primary.opacity(0.05),
-                                lineWidth: 1
-                            )
+                            .strokeBorder(isSelected ? Color.clear : SV.rim, lineWidth: 1)
                     }
             }
             .contentShape(Capsule(style: .continuous))
@@ -685,10 +675,10 @@ struct ManagerProblemsView: View {
 
     private func categoryTint(_ category: ManagerReportsFilter) -> Color {
         switch category {
-        case .regular: return .orange
-        case .incompleteOrders: return .red
-        case .deferredSales: return .purple
-        case .termSelection: return .blue
+        case .regular: return SV.accent
+        case .incompleteOrders: return SV.coral
+        case .deferredSales: return Color(red: 0.65, green: 0.55, blue: 0.98)
+        case .termSelection: return SV.sky
         }
     }
 
@@ -699,19 +689,18 @@ struct ManagerProblemsView: View {
         let tint = leadingBorderColor(for: report)
 
         return HStack(spacing: 0) {
-            tint.frame(width: 4)
-
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 12) {
                     Image(systemName: rowIcon(for: report))
                         .font(.body.weight(.semibold))
                         .foregroundStyle(tint)
                         .frame(width: 38, height: 38)
-                        .background(tint.opacity(0.13), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                        .background(tint.opacity(0.16), in: Circle())
+                        .overlay(Circle().strokeBorder(tint.opacity(0.30)))
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(title)
-                            .font(.headline)
+                            .font(.headline.weight(.semibold))
                             .foregroundStyle(.primary)
                             .lineLimit(2)
                         if let direction, !direction.isEmpty {
@@ -751,56 +740,22 @@ struct ManagerProblemsView: View {
             .padding(14)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [tint.opacity(0.09), .clear],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                }
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.055), lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(SVCardBackground(radius: 22, tint: tint))
         .padding(.horizontal, 4)
         .padding(.vertical, 2)
-        .shadow(color: .black.opacity(0.04), radius: 8, x: 0, y: 3)
     }
 
     private func statusBadge(for status: ManagerReportStatus) -> some View {
-        let color: Color = {
+        let (label, tint, text): (String, Color, Color?) = {
             switch status {
-            case .created: return .orange
-            case .open: return .yellow
-            case .completed: return .green
-            case .unknown: return .gray
+            case .created: return ("Nové", SV.coral, SV.bad)
+            case .open: return ("Probíhá", SV.sky, nil)
+            case .completed: return ("Hotovo", SV.lime, SV.good)
+            case .unknown: return ("Neznámé", .gray, nil)
             }
         }()
 
-        let label: String = {
-            switch status {
-            case .created: return "Nové"
-            case .open: return "Probíhá"
-            case .completed: return "Hotovo"
-            case .unknown: return "Neznámé"
-            }
-        }()
-
-        return Text(label)
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(color)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(color.opacity(0.14))
-            .clipShape(Capsule())
+        return SVChip(text: label, tint: tint, textColor: text)
             .accessibilityLabel("Stav: \(label)")
     }
 
@@ -832,25 +787,14 @@ struct ManagerProblemsView: View {
     }
 
     private func leadingBorderColor(for report: UserReport) -> Color {
-        if report.is_deferred_sale_issue {
-            return .purple
-        }
-        if report.is_incomplete_order_issue {
-            return .red
-        }
-        if report.is_term_selection_issue {
-            return .blue
-        }
-        if report.created_by_manager == true {
-            return .blue
-        }
+        if report.is_deferred_sale_issue { return Color(red: 0.65, green: 0.55, blue: 0.98) }
+        if report.is_incomplete_order_issue { return SV.coral }
+        if report.is_term_selection_issue { return SV.sky }
+        if report.created_by_manager == true { return SV.sky }
         switch normalizedStatus(for: report) {
-        case .created:
-            return .orange
-        case .open:
-            return .yellow
-        case .completed, .unknown:
-            return .gray
+        case .created: return SV.accent
+        case .open: return SV.sky
+        case .completed, .unknown: return .gray
         }
     }
 
@@ -917,7 +861,7 @@ private struct ManagerProblemsNavigationModifier: ViewModifier {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    ProvikartBrandLogoView(style: .large)
+                    ManagerToolbarLogo()
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     ManagerAddReportToolbarButton()
