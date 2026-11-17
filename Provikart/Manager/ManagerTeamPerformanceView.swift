@@ -364,6 +364,7 @@ struct ManagerTeamPerformanceView: View {
     @EnvironmentObject private var performanceBadge: ManagerPerformanceBadgeState
     @StateObject private var viewModel = ManagerTeamPerformanceViewModel()
     @State private var selectedCell: PerformanceCellSelection?
+    @State private var compareRoute: ManagerPerformanceCompareRoute?
     @State private var searchText = ""
     @State private var selectedFilter: ManagerPerformanceFilter = .all
     @State private var isLocationsSheetPresented = false
@@ -415,6 +416,16 @@ struct ManagerTeamPerformanceView: View {
                 }
             }
             .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Hledat člena týmu")
+            .sheet(item: $compareRoute) { route in
+                ManagerPerformanceCompareView(
+                    user: route.user,
+                    displayName: viewModel.displayName(for: route.user),
+                    monthDate: viewModel.selectedMonthDate,
+                    isCurrentMonth: viewModel.isCurrentMonth,
+                    todayKey: viewModel.todayKey,
+                    token: authState.authToken
+                )
+            }
             .sheet(isPresented: $showSummary) {
                 summarySheet
             }
@@ -784,12 +795,26 @@ struct ManagerTeamPerformanceView: View {
 
         return VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .center, spacing: 12) {
+                Button {
+                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    compareRoute = ManagerPerformanceCompareRoute(user: user)
+                } label: {
+                HStack(alignment: .center, spacing: 12) {
                 memberAvatar(user)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(viewModel.displayName(for: user))
-                        .font(.headline.weight(.bold))
-                        .lineLimit(1)
+                    HStack(spacing: 5) {
+                        Text(viewModel.displayName(for: user))
+                            .font(.headline.weight(.bold))
+                            .lineLimit(1)
+                        if hasManual {
+                            // Ruční zápis jen jako malá ikonka místo štítku.
+                            Image(systemName: "pencil.circle.fill")
+                                .font(.subheadline)
+                                .foregroundStyle(SV.sky)
+                                .accessibilityLabel("Obsahuje ruční zápis")
+                        }
+                    }
                     if let username = user.username, !username.isEmpty {
                         Text("@\(username)")
                             .font(.caption)
@@ -797,6 +822,14 @@ struct ManagerTeamPerformanceView: View {
                             .lineLimit(1)
                     }
                 }
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Zobrazí srovnání s minulým měsícem")
 
                 Spacer(minLength: 0)
 
@@ -813,29 +846,10 @@ struct ManagerTeamPerformanceView: View {
                 }
             }
 
-            HStack(spacing: 8) {
-                statusPill(
-                    title: todayCount > 0 ? "\(todayCount) dnes" : "Dnes bez výkonu",
-                    icon: todayCount > 0 ? "checkmark.circle.fill" : "clock",
-                    color: todayCount > 0 ? SV.lime : .secondary
-                )
-                if hasManual {
-                    statusPill(title: "Ruční zápis", icon: "pencil", color: SV.sky)
-                }
-                Spacer()
-                Text("Klepnutím upravíte den")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
-
             userDaysRow(user)
         }
         .padding(16)
         .background(memberCardBackground(active: todayCount > 0))
-    }
-
-    private func statusPill(title: String, icon: String, color: Color) -> some View {
-        SVChip(text: title, icon: icon, tint: color, textColor: color == SV.lime ? SV.good : nil)
     }
 
     private func memberAvatar(_ user: ManagerPerformanceUser) -> some View {
@@ -1053,6 +1067,9 @@ private struct PerformanceEditSheet: View {
     @State private var family: Int = 0
     @State private var transfer: Int = 0
     @State private var showClearConfirm = false
+    /// Kategorie s rozbaleným rychlým výběrem čísla.
+    @State private var expanded: PerformanceCategory?
+    @State private var barReveal: CGFloat = 0
 
     private var currentBreakdown: ManagerPerformanceBreakdown {
         ManagerPerformanceBreakdown(
@@ -1068,15 +1085,16 @@ private struct PerformanceEditSheet: View {
         selection.entry?.autoBreakdown
     }
 
+    private var isManual: Bool { selection.entry?.isManual == true }
+
     private var hasChangesFromAuto: Bool {
         guard let auto = autoBreakdown else {
-            return currentBreakdown.total > 0 || selection.entry?.isManual == true
+            return currentBreakdown.total > 0 || isManual
         }
         return currentBreakdown != auto
     }
 
-    private var servicesWord: String {
-        let n = currentBreakdown.total
+    private func word(_ n: Int) -> String {
         switch n {
         case 1: return "služba"
         case 2...4: return "služby"
@@ -1084,31 +1102,31 @@ private struct PerformanceEditSheet: View {
         }
     }
 
-    private var bindingForCategory: (PerformanceCategory) -> Binding<Int> {
-        { category in
-            switch category {
-            case .internet: return $internet
-            case .postpaid: return $postpaid
-            case .oneplay: return $oneplay
-            case .family: return $family
-            case .transfer: return $transfer
-            }
+    private func binding(_ category: PerformanceCategory) -> Binding<Int> {
+        switch category {
+        case .internet: return $internet
+        case .postpaid: return $postpaid
+        case .oneplay: return $oneplay
+        case .family: return $family
+        case .transfer: return $transfer
         }
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
-                    headerBlock
-
-                    if let auto = autoBreakdown, auto.total > 0 {
-                        autoBlock(auto)
-                    }
+                VStack(alignment: .leading, spacing: 18) {
+                    totalCard
 
                     if canEdit {
-                        editBlock
+                        quickActions
+                        VStack(spacing: 10) {
+                            ForEach(PerformanceCategory.allCases) { category in
+                                categoryRow(category)
+                            }
+                        }
                     } else {
+                        readOnlyBreakdown
                         readOnlyNotice
                     }
 
@@ -1116,17 +1134,41 @@ private struct PerformanceEditSheet: View {
                         errorBlock(errorMessage)
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
                 .padding(.bottom, 24)
             }
+            .scrollDismissesKeyboard(.immediately)
             .background { ManagerScreenBackground() }
-            .navigationTitle("Úprava výkonu")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    VStack(spacing: 0) {
+                        Text(displayName)
+                            .font(.subheadline.weight(.bold))
+                            .lineLimit(1)
+                        Text(formattedDate(selection.day))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Zavřít") { onCancel() }
                         .disabled(isSaving)
+                }
+                if canEdit && isManual {
+                    ToolbarItem(placement: .primaryAction) {
+                        Menu {
+                            Button(role: .destructive) {
+                                showClearConfirm = true
+                            } label: {
+                                Label("Smazat ruční přepis", systemImage: "arrow.uturn.backward")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                        }
+                        .disabled(isSaving)
+                    }
                 }
             }
             .safeAreaInset(edge: .bottom) {
@@ -1148,119 +1190,306 @@ private struct PerformanceEditSheet: View {
             }
             .onAppear {
                 seedValues()
+                withAnimation(.spring(response: 0.7, dampingFraction: 0.85).delay(0.1)) { barReveal = 1 }
             }
         }
     }
 
-    private var headerBlock: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(displayName)
-                .font(.title2.weight(.bold))
-                .lineLimit(2)
+    // MARK: - Celkem
 
-            Text(formattedDate(selection.day))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            HStack(spacing: 10) {
-                Image(systemName: selection.entry?.isManual == true
-                      ? "pencil.circle.fill"
-                      : "arrow.triangle.2.circlepath")
-                    .font(.body.weight(.semibold))
-                Text(selection.entry?.isManual == true
-                      ? "Ruční přepis aktivní"
-                      : "Automatický výpočet z objednávek")
-                    .font(.subheadline.weight(.medium))
+    private var totalCard: some View {
+        let total = currentBreakdown.total
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text("\(total)")
+                    .font(.system(size: 56, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .contentTransition(.numericText(value: Double(total)))
+                    .animation(.snappy(duration: 0.22), value: total)
+                Text(word(total))
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 8)
+                statusChip
             }
-            .foregroundStyle(selection.entry?.isManual == true ? Color.indigo : Color.secondary)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                (selection.entry?.isManual == true ? Color.indigo : Color.secondary).opacity(0.1),
-                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-            )
-        }
-        .padding(20)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(sheetCardBackground)
-    }
 
-    private func autoBlock(_ auto: ManagerPerformanceBreakdown) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Automatický výkon")
-                .font(.headline)
+            compositionBar
 
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-                ForEach(PerformanceCategory.allCases) { cat in
-                    let count = value(for: cat, in: auto)
-                    if count > 0 {
-                        HStack(spacing: 10) {
-                            Image(systemName: cat.iconName)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(cat.tint)
-                                .frame(width: 28, height: 28)
-                                .background(cat.tint.opacity(0.14), in: Circle())
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(cat.title)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Text("\(count)")
-                                    .font(.title3.weight(.bold))
-                                    .monospacedDigit()
-                            }
-                            Spacer(minLength: 0)
-                        }
-                        .padding(14)
-                        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            if let auto = autoBreakdown {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                    Text("Z objednávek: \(auto.total)")
+                    if hasChangesFromAuto && auto.total != total {
+                        Image(systemName: "arrow.right")
+                        Text("ručně \(total)")
+                            .fontWeight(.bold)
+                            .foregroundStyle(Color.indigo)
+                        let d = total - auto.total
+                        Text(d > 0 ? "(+\(d))" : "(\(d))")
+                            .foregroundStyle(.secondary)
                     }
                 }
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(.secondary)
+                .animation(.snappy, value: total)
             }
-
-            HStack {
-                Text("Celkem auto")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text("\(auto.total)")
-                    .font(.title3.weight(.bold))
-                    .monospacedDigit()
-            }
-            .padding(.top, 4)
         }
-        .padding(20)
+        .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(sheetCardBackground)
+        .background(SVCardBackground(radius: 22))
     }
 
-    private var editBlock: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Ruční zápis")
-                    .font(.headline)
-                Text("Nastavte počet služeb pro tento den.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
+    private var statusChip: some View {
+        let manual = isManual || hasChangesFromAuto
+        return Label(manual ? "Ruční" : "Auto", systemImage: manual ? "pencil" : "bolt.fill")
+            .font(.caption.weight(.bold))
+            .foregroundStyle(manual ? Color.indigo : Color.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background((manual ? Color.indigo : Color.secondary).opacity(0.12), in: Capsule())
+            .animation(.snappy, value: manual)
+    }
 
-            VStack(spacing: 14) {
-                ForEach(PerformanceCategory.allCases) { category in
-                    categoryEditor(category, value: bindingForCategory(category))
+    /// Barevný pruh – podíl kategorií na celku.
+    private var compositionBar: some View {
+        let total = currentBreakdown.total
+        let parts = PerformanceCategory.allCases.filter { value(for: $0, in: currentBreakdown) > 0 }
+        return GeometryReader { geo in
+            let gaps = CGFloat(max(0, parts.count - 1)) * 3
+            let usable = max(0, geo.size.width - gaps) * barReveal
+            HStack(spacing: 3) {
+                ForEach(parts) { category in
+                    Capsule()
+                        .fill(category.tint.gradient)
+                        .frame(width: total > 0 ? usable * CGFloat(value(for: category, in: currentBreakdown)) / CGFloat(total) : 0)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Capsule().fill(Color.primary.opacity(0.07)))
+            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: currentBreakdown)
         }
-        .padding(20)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(sheetCardBackground)
+        .frame(height: 10)
+        .clipShape(Capsule())
+    }
+
+    // MARK: - Rychlé akce
+
+    private var quickActions: some View {
+        HStack(spacing: 8) {
+            if let auto = autoBreakdown {
+                quickButton("Podle objednávek", icon: "arrow.triangle.2.circlepath", disabled: currentBreakdown == auto) {
+                    apply(auto)
+                }
+            }
+            quickButton("Vynulovat", icon: "xmark.circle", disabled: currentBreakdown.total == 0) {
+                apply(.init())
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func quickButton(_ title: String, icon: String, disabled: Bool, action: @escaping () -> Void) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            withAnimation(.snappy(duration: 0.25)) { action() }
+        } label: {
+            Label(title, systemImage: icon)
+                .font(.footnote.weight(.semibold))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.primary.opacity(0.06), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled || isSaving)
+        .opacity(disabled ? 0.4 : 1)
+    }
+
+    private func apply(_ breakdown: ManagerPerformanceBreakdown) {
+        internet = breakdown.internet
+        postpaid = breakdown.postpaid
+        oneplay = breakdown.oneplay
+        family = breakdown.family
+        transfer = breakdown.transfer
+    }
+
+    // MARK: - Řádek kategorie
+
+    private func categoryRow(_ category: PerformanceCategory) -> some View {
+        let value = binding(category)
+        let auto = autoBreakdown.map { self.value(for: category, in: $0) }
+        let isOpen = expanded == category
+        let changed = auto.map { $0 != value.wrappedValue } ?? (value.wrappedValue > 0)
+
+        return VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                Button {
+                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                        expanded = isOpen ? nil : category
+                    }
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: category.iconName)
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(category.tint)
+                            .frame(width: 40, height: 40)
+                            .background(category.tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(category.title)
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(.primary)
+                            if let auto {
+                                Text(changed ? "auto \(auto) · upraveno" : "auto \(auto)")
+                                    .font(.caption)
+                                    .foregroundStyle(changed ? Color.indigo : Color.secondary)
+                            }
+                        }
+                        Spacer(minLength: 4)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                stepButton("minus", enabled: value.wrappedValue > 0) {
+                    value.wrappedValue -= 1
+                }
+
+                Button {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                        expanded = isOpen ? nil : category
+                    }
+                } label: {
+                    Text("\(value.wrappedValue)")
+                        .font(.title2.weight(.bold).monospacedDigit())
+                        .foregroundStyle(value.wrappedValue > 0 ? Color.primary : Color.secondary)
+                        .frame(minWidth: 40, minHeight: 40)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(isOpen ? category.tint.opacity(0.16) : Color.clear)
+                        )
+                        .contentTransition(.numericText(value: Double(value.wrappedValue)))
+                        .animation(.snappy(duration: 0.18), value: value.wrappedValue)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(category.title): \(value.wrappedValue)")
+                .accessibilityHint("Otevře rychlý výběr čísla")
+
+                stepButton("plus", enabled: value.wrappedValue < 9999, tint: category.tint) {
+                    value.wrappedValue += 1
+                }
+            }
+
+            if isOpen {
+                quickPicker(category, value: value, auto: auto)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.primary.opacity(isOpen ? 0.06 : 0.035))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(isOpen ? category.tint.opacity(0.4) : Color.clear, lineWidth: 1)
+        )
+    }
+
+    private func stepButton(_ icon: String, enabled: Bool, tint: Color = .primary, action: @escaping () -> Void) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        } label: {
+            Image(systemName: icon)
+                .font(.body.weight(.bold))
+                .frame(width: 40, height: 40)
+                .foregroundStyle(enabled ? tint : Color.secondary.opacity(0.4))
+                .background((tint == .primary ? Color.primary : tint).opacity(enabled ? 0.12 : 0.05), in: Circle())
+        }
+        .buttonStyle(.plain)
+        .buttonRepeatBehavior(.enabled)
+        .disabled(!enabled || isSaving)
+    }
+
+    /// Rychlý výběr: čísla 0–10 jedním klepnutím (+ víc).
+    private func quickPicker(_ category: PerformanceCategory, value: Binding<Int>, auto: Int?) -> some View {
+        let upper = max(10, value.wrappedValue + 2)
+        let numbers = Array(0...min(upper, 30))
+        return ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(numbers, id: \.self) { n in
+                        let selected = n == value.wrappedValue
+                        Button {
+                            UISelectionFeedbackGenerator().selectionChanged()
+                            withAnimation(.snappy(duration: 0.2)) {
+                                value.wrappedValue = n
+                            }
+                        } label: {
+                            VStack(spacing: 1) {
+                                Text("\(n)")
+                                    .font(.headline.monospacedDigit())
+                                if n == auto {
+                                    Circle().fill(Color.secondary).frame(width: 4, height: 4)
+                                } else {
+                                    Color.clear.frame(width: 4, height: 4)
+                                }
+                            }
+                            .frame(width: 42, height: 46)
+                            .foregroundStyle(selected ? Color.white : Color.primary)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(selected ? category.tint : Color.primary.opacity(0.06))
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .id(n)
+                    }
+                }
+                .padding(.horizontal, 2)
+            }
+            .onAppear {
+                proxy.scrollTo(max(0, value.wrappedValue - 2), anchor: .leading)
+            }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if auto != nil {
+                Text("• = z objednávek")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.tertiary)
+                    .offset(y: 14)
+            }
+        }
+        .padding(.bottom, auto != nil ? 10 : 0)
+    }
+
+    // MARK: - Jen pro čtení
+
+    private var readOnlyBreakdown: some View {
+        VStack(spacing: 8) {
+            ForEach(PerformanceCategory.allCases) { category in
+                let count = value(for: category, in: currentBreakdown)
+                HStack(spacing: 12) {
+                    Image(systemName: category.iconName)
+                        .foregroundStyle(category.tint)
+                        .frame(width: 32, height: 32)
+                        .background(category.tint.opacity(0.14), in: Circle())
+                    Text(category.title).font(.subheadline.weight(.medium))
+                    Spacer()
+                    Text("\(count)").font(.headline.monospacedDigit())
+                }
+                .opacity(count > 0 ? 1 : 0.5)
+            }
+        }
+        .padding(16)
+        .background(SVCardBackground(radius: 20))
     }
 
     private var readOnlyNotice: some View {
-        Text("Vlastní výkon nelze upravovat. Můžete zapisovat jen členům svého týmu.")
-            .font(.subheadline)
+        Label("Vlastní výkon nelze upravovat. Můžete zapisovat jen členům svého týmu.", systemImage: "lock.fill")
+            .font(.footnote)
             .foregroundStyle(.secondary)
-            .padding(20)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(sheetCardBackground)
+            .padding(.horizontal, 4)
     }
 
     private func errorBlock(_ message: String) -> some View {
@@ -1276,176 +1505,54 @@ private struct PerformanceEditSheet: View {
         .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    private func categoryEditor(_ category: PerformanceCategory, value: Binding<Int>) -> some View {
-        HStack(spacing: 14) {
-            Image(systemName: category.iconName)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(category.tint)
-                .frame(width: 44, height: 44)
-                .background(category.tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-            Text(category.title)
-                .font(.body.weight(.semibold))
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            HStack(spacing: 10) {
-                Button {
-                    if value.wrappedValue > 0 {
-                        value.wrappedValue -= 1
-                    }
-                } label: {
-                    Image(systemName: "minus")
-                        .font(.body.weight(.bold))
-                        .frame(width: 44, height: 44)
-                        .foregroundStyle(value.wrappedValue > 0 ? Color.primary : Color.secondary.opacity(0.4))
-                        .background(Color.primary.opacity(0.06), in: Circle())
-                }
-                .buttonStyle(.plain)
-                .disabled(value.wrappedValue <= 0 || isSaving)
-
-                Text("\(value.wrappedValue)")
-                    .font(.title2.weight(.bold).monospacedDigit())
-                    .frame(minWidth: 36)
-                    .contentTransition(.numericText())
-                    .animation(.snappy(duration: 0.18), value: value.wrappedValue)
-
-                Button {
-                    if value.wrappedValue < 9999 {
-                        value.wrappedValue += 1
-                    }
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.body.weight(.bold))
-                        .frame(width: 44, height: 44)
-                        .foregroundStyle(Color.accentColor)
-                        .background(Color.accentColor.opacity(0.14), in: Circle())
-                }
-                .buttonStyle(.plain)
-                .disabled(value.wrappedValue >= 9999 || isSaving)
-            }
-        }
-        .padding(16)
-        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
+    // MARK: - Uložení
 
     private var saveBar: some View {
-        VStack(spacing: 16) {
-            HStack(alignment: .center, spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Celkem k uložení")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.secondary)
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text("\(currentBreakdown.total)")
-                            .font(.system(size: 36, weight: .bold, design: .rounded))
-                            .monospacedDigit()
-                            .contentTransition(.numericText())
-                            .animation(.snappy(duration: 0.2), value: currentBreakdown.total)
-                        Text(servicesWord)
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
+        let total = currentBreakdown.total
+        let unchanged = isManual
+            ? currentBreakdown == (selection.entry?.breakdown ?? .init())
+            : !hasChangesFromAuto
+        return Button {
+            Task { await onSave(currentBreakdown) }
+        } label: {
+            HStack(spacing: 10) {
+                if isSaving {
+                    ProgressView().tint(.white)
+                } else {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.title3.weight(.semibold))
                 }
-
-                Spacer(minLength: 8)
-
-                if let auto = autoBreakdown, hasChangesFromAuto {
-                    VStack(alignment: .trailing, spacing: 4) {
-                        Text("Auto")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.secondary)
-                        Text("\(auto.total)")
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .strikethrough(currentBreakdown.total != auto.total)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
+                Text(isSaving ? "Ukládám…" : "Uložit \(total) \(word(total))")
+                    .font(.headline)
+                    .contentTransition(.numericText(value: Double(total)))
+                    .animation(.snappy, value: total)
             }
-
-            Button {
-                Task { await onSave(currentBreakdown) }
-            } label: {
-                HStack(spacing: 10) {
-                    if isSaving {
-                        ProgressView()
-                            .controlSize(.regular)
-                            .tint(.white)
-                    } else {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.title3.weight(.semibold))
-                    }
-                    Text(isSaving ? "Ukládám…" : "Uložit výkon")
-                        .font(.headline)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 18)
-                .foregroundStyle(.white)
-                .background(
-                    LinearGradient(
-                        colors: [Color.accentColor, Color.accentColor.opacity(0.82)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-                )
-                .shadow(color: Color.accentColor.opacity(0.3), radius: 12, x: 0, y: 5)
-            }
-            .buttonStyle(.plain)
-            .disabled(isSaving)
-            .opacity(isSaving ? 0.75 : 1)
-            .accessibilityLabel("Uložit výkon \(currentBreakdown.total) \(servicesWord)")
-
-            if selection.entry?.isManual == true {
-                Button {
-                    showClearConfirm = true
-                } label: {
-                    Label("Smazat ruční přepis", systemImage: "arrow.uturn.backward")
-                        .font(.body.weight(.medium))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .foregroundStyle(.red)
-                        .background(
-                            Color.red.opacity(0.1),
-                            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        )
-                }
-                .buttonStyle(.plain)
-                .disabled(isSaving)
-            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 56)
+            .foregroundStyle(.white)
+            .background(Color.accentColor.gradient, in: Capsule())
+            .shadow(color: Color.accentColor.opacity(0.3), radius: 12, y: 5)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 18)
-        .padding(.bottom, 12)
+        .buttonStyle(.plain)
+        .disabled(isSaving)
+        .opacity(isSaving ? 0.75 : (unchanged ? 0.85 : 1))
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
         .background {
             Rectangle()
                 .fill(.ultraThinMaterial)
+                .mask(LinearGradient(colors: [.clear, .black, .black], startPoint: .top, endPoint: .bottom))
                 .ignoresSafeArea(edges: .bottom)
-                .overlay(alignment: .top) {
-                    Divider()
-                }
         }
-    }
-
-    private var sheetCardBackground: some View {
-        SVCardBackground(radius: 20)
+        .accessibilityLabel("Uložit výkon \(total) \(word(total))")
     }
 
     private func seedValues() {
-        if let manual = selection.entry?.breakdown, selection.entry?.isManual == true {
-            internet = manual.internet
-            postpaid = manual.postpaid
-            oneplay = manual.oneplay
-            family = manual.family
-            transfer = manual.transfer
+        if let manual = selection.entry?.breakdown, isManual {
+            apply(manual)
         } else if let auto = selection.entry?.autoBreakdown {
-            internet = auto.internet
-            postpaid = auto.postpaid
-            oneplay = auto.oneplay
-            family = auto.family
-            transfer = auto.transfer
+            apply(auto)
         }
     }
 

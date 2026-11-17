@@ -842,15 +842,32 @@ struct ManagerAttendanceView: View {
         }
     }
 
+    /// Řádek dnů – vždy začíná dnešním dnem, ať není potřeba scrollovat.
     private func userDaysRow(_ user: ManagerAttendanceUser) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(viewModel.days, id: \.self) { day in
-                    dayCell(user: user, day: day)
+        let todayKey = viewModel.todayKey
+        let hasToday = viewModel.days.contains(todayKey)
+
+        return ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(viewModel.days, id: \.self) { day in
+                        dayCell(user: user, day: day)
+                            .id(day)
+                    }
+                }
+                .padding(.vertical, 2)
+                .padding(.horizontal, 2)
+            }
+            .onAppear {
+                guard hasToday else { return }
+                proxy.scrollTo(todayKey, anchor: .leading)
+            }
+            .onChange(of: viewModel.days) { _, days in
+                guard days.contains(todayKey) else { return }
+                DispatchQueue.main.async {
+                    proxy.scrollTo(todayKey, anchor: .leading)
                 }
             }
-            .padding(.vertical, 2)
-            .padding(.horizontal, 2)
         }
     }
 

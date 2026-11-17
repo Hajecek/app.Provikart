@@ -12,13 +12,26 @@ import UIKit
 @MainActor
 final class ManagerHomeViewModel: ObservableObject {
     @Published var payload: ManagerOverviewPayload?
+    @Published var monthProgress: ManagerOverviewProgress?
+    /// Zvýší se po každém úspěšném načtení – spouští překreslení grafů.
+    @Published var revision = 0
     @Published var periodLabel = "Tento týden"
     @Published var period: ManagerOverviewPeriod = .week
     @Published var isLoading = false
     @Published var errorMessage: String?
+    /// Heatmapa složená z Výkonu, když ji přehled (API) zatím neposílá.
+    @Published private var fallbackHeatmap: ManagerOverviewHeatmap?
 
     private let service = ManagerOverviewService()
+    private let performanceService = ManagerTeamPerformanceService()
     private var loadGeneration = 0
+    private var heatmapFetchedAt: Date?
+    private var heatmapLoading = false
+
+    /// Aktivita po dnech – z API, jinak z Výkonu týmu.
+    var heatmap: ManagerOverviewHeatmap? {
+        payload?.heatmap ?? fallbackHeatmap
+    }
 
     func load(token: String?, silent: Bool = false) async {
         guard let token, !token.isEmpty else {
@@ -37,6 +50,15 @@ final class ManagerHomeViewModel: ObservableObject {
             periodLabel = label
             errorMessage = nil
             isLoading = false
+            revision += 1
+            if data.heatmap == nil {
+                Task { await loadHeatmapFallback(token: token) }
+            }
+            if period == .month {
+                monthProgress = data.progress
+            } else {
+                await loadMonthProgress(token: token, generation: generation)
+            }
         } catch is CancellationError {
             return
         } catch {
@@ -44,8 +66,44 @@ final class ManagerHomeViewModel: ObservableObject {
             isLoading = false
             if payload == nil {
                 errorMessage = error.localizedDescription
+            } else {
+                // Starý graf znovu ukázat, ať po chybě nezůstane schovaný.
+                revision += 1
             }
         }
+    }
+
+    /// Kumulativní křivka služeb za celý měsíc – podklad pro graf plánu,
+    /// nezávisle na zvoleném období.
+    private func loadMonthProgress(token: String, generation: Int) async {
+        guard let (data, _) = try? await service.fetchOverview(token: token, period: .month),
+              generation == loadGeneration else { return }
+        monthProgress = data.progress
+    }
+
+    /// Načte Výkon za měsíce, které heatmapa pokrývá (paralelně), a složí ji.
+    /// Výsledek drží 5 minut, ať se při přepínání období nenačítá pořád dokola.
+    private func loadHeatmapFallback(token: String) async {
+        if heatmapLoading { return }
+        if let fetched = heatmapFetchedAt, Date().timeIntervalSince(fetched) < 300, fallbackHeatmap != nil { return }
+        heatmapLoading = true
+        defer { heatmapLoading = false }
+
+        let months = ManagerHeatmapBuilder.monthsToFetch()
+        let service = performanceService
+        let payloads = await withTaskGroup(of: ManagerTeamPerformancePayload?.self) { group in
+            for month in months {
+                group.addTask { try? await service.fetchPerformance(token: token, month: month) }
+            }
+            var out: [ManagerTeamPerformancePayload] = []
+            for await payload in group {
+                if let payload { out.append(payload) }
+            }
+            return out
+        }
+        guard !payloads.isEmpty else { return }
+        fallbackHeatmap = ManagerHeatmapBuilder.build(from: payloads)
+        heatmapFetchedAt = Date()
     }
 }
 
@@ -53,15 +111,18 @@ struct ManagerHomeView: View {
     @EnvironmentObject private var authState: AuthState
     @Binding var selectedTab: ManagerTabs
     @StateObject private var viewModel = ManagerHomeViewModel()
-    @State private var selectedPersonID: ManagerHomePersonRoute?
-    @State private var showTeamList = false
-    @State private var showDealWars = false
+    @State private var heatmapDay: ManagerHeatmapDayRoute?
     @State private var showLocations = false
     @State private var chartReveal: CGFloat = 0
+    /// Klíč (období + data) právě vykresleného grafu – mění identitu Chartu.
+    @State private var drawnProgressKey = ""
+    @State private var drawnPlanKey = ""
+    @State private var planReveal: CGFloat = 0
+    @State private var mixRoute: ManagerServicesMixRoute?
+    @State private var showServicesStats = false
     @Namespace private var periodAnimation
     @Environment(\.colorScheme) private var scheme
 
-    private let brandGold = Color(red: 1.00, green: 0.70, blue: 0.20)
 
     var body: some View {
         NavigationStack {
@@ -104,6 +165,31 @@ struct ManagerHomeView: View {
                 }
             }
             .toolbarBackground(.hidden, for: .navigationBar)
+            .sheet(item: $heatmapDay) { route in
+                let cell = viewModel.heatmap?.weeks.flatMap { $0 }.first { $0.date == route.date }
+                ManagerHeatmapDayView(
+                    date: route.date,
+                    count: cell?.count ?? 0,
+                    detail: viewModel.heatmap?.days[route.date],
+                    tint: svCoral
+                )
+            }
+            .sheet(isPresented: $showServicesStats) {
+                ManagerServicesStatsView(
+                    viewModel: viewModel,
+                    onOpenPerformance: { selectedTab = .performance }
+                )
+            }
+            .sheet(item: $mixRoute) { route in
+                ManagerServicesMixDetailView(
+                    slices: viewModel.payload?.servicesBreakdown ?? [],
+                    detail: viewModel.payload?.mixDetail,
+                    initialKey: route.key,
+                    periodLabel: viewModel.periodLabel,
+                    periodPhrase: periodPhrase,
+                    onOpenPerformance: { selectedTab = .performance }
+                )
+            }
             .sheet(isPresented: $showLocations) {
                 ManagerLocationsSheetView()
                     .environmentObject(authState)
@@ -115,44 +201,37 @@ struct ManagerHomeView: View {
                 await viewModel.load(token: authState.authToken)
             }
             .onChange(of: viewModel.period) { _, _ in
+                hideProgressChart()
                 Task { await viewModel.load(token: authState.authToken, silent: true) }
             }
-            .onChange(of: progressSignature) { _, _ in
-                playProgressDraw()
-            }
-            .navigationDestination(item: $selectedPersonID) { route in
-                ManagerTeamProfileDetailView(profileID: route.id, preview: nil)
-                    .environmentObject(authState)
-            }
-            .navigationDestination(isPresented: $showTeamList) {
-                ManagerTeamProfilesView()
-                    .environmentObject(authState)
-            }
-            .navigationDestination(isPresented: $showDealWars) {
-                DealwarsView()
-                    .environmentObject(authState)
+            .onChange(of: viewModel.revision) { _, _ in
+                redrawProgressIfNeeded()
             }
         }
     }
 
     private var homeList: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 24) {
-                welcomeHeader
-                periodSelector
-                alertsBlock
+            LazyVStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 10) {
+                    welcomeHeader
+                    periodSelector
+                }
+                alertsBlock.homeCardAppear(0)
                 progressCard
-                planCard
-                servicesCard
-                feeCard
-                activityBento
-                teamCarousel
-                attentionCard
-                dealWarsCard
-                localitiesCard
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        bump()
+                        showServicesStats = true
+                    }
+                    .homeCardAppear(1)
+                servicesCard.homeCardAppear(2)
+                planCard.homeCardAppear(3)
+                heatmapCard.homeCardAppear(4)
+                feeCard.homeCardAppear(4)
             }
             .padding(.horizontal, 16)
-            .padding(.top, 8)
+            .padding(.top, 2)
             .padding(.bottom, 36)
         }
     }
@@ -171,41 +250,18 @@ struct ManagerHomeView: View {
         return name.split(separator: " ").first.map(String.init) ?? "manažere"
     }
 
-    private var roleTitle: String {
-        switch authState.currentUser?.role?.lowercased() {
-        case "admin": return "Administrátor"
-        case "manager": return "Manažer"
-        case "user": return "Obchodník"
-        default: return "Uživatel"
-        }
-    }
-
+    /// Kompaktní přivítání – jeden řádek, ať nahoře zbude místo na obsah.
+    /// Role je v Profilu, počet členů v sekci Tým.
     private var welcomeHeader: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(greetingText)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Text(firstName)
-                .font(.system(size: 38, weight: .bold, design: .rounded))
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-            HStack(spacing: 8) {
-                Label(roleTitle, systemImage: "person.crop.circle.badge.checkmark")
-                    .foregroundStyle(svInk)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(svAccent, in: Capsule())
-
-                if let data = viewModel.payload {
-                    Label("\(data.memberCount) \(memberWord(data.memberCount)) v týmu", systemImage: "person.2.fill")
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .font(.caption.weight(.semibold))
-            .padding(.top, 3)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 4)
+        (Text("\(greetingText), ").foregroundStyle(.secondary)
+            + Text(firstName).foregroundStyle(.primary))
+            .font(.system(.title3, design: .rounded).weight(.bold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 6)
+            .padding(.top, 14)
+            .padding(.bottom, 6)
     }
 
     private var periodSelector: some View {
@@ -331,7 +387,7 @@ struct ManagerHomeView: View {
     @ViewBuilder
     private var progressCard: some View {
         if let progress = viewModel.payload?.progress {
-            svCard("Služby", icon: "ellipsis", onTap: { selectedTab = .performance }) {
+            svCard("Služby", icon: "chart.xyaxis.line", onTap: { showServicesStats = true }) {
                 HStack(alignment: .bottom, spacing: 14) {
                     Text("\(progress.currentTotal)")
                         .font(.system(size: 62, weight: .semibold, design: .rounded))
@@ -351,15 +407,37 @@ struct ManagerHomeView: View {
                     .padding(.bottom, 8)
                 }
 
+                if progress.compact, let daily = idealDailyPace {
+                    let idealNow = Int(daily.rounded())
+                    let diff = progress.currentTotal - idealNow
+                    HStack(spacing: 8) {
+                        Capsule()
+                            .fill(svAccent)
+                            .frame(width: 16, height: 3)
+                        Text("Ideálně \(idealNow) služeb za den")
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 4)
+                        Text(diff >= 0 ? "+\(diff)" : "\(diff)")
+                            .font(.caption.weight(.bold).monospacedDigit())
+                            .foregroundStyle(diff >= 0 ? svGood : svBad)
+                    }
+                    .font(.footnote.weight(.medium))
+                }
+
                 if !progress.compact && !progress.labels.isEmpty {
                     HStack(spacing: 14) {
                         progressLegend(progress.currentLabel, svCoral, dashed: false)
                         progressLegend(progress.previousLabel, .secondary, dashed: true)
+                        if idealDailyPace != nil {
+                            progressLegend("Ideální tempo", svAccent, dashed: true)
+                        }
                     }
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
 
                     progressChart(progress)
+                        .id(drawnProgressKey)
+                        .transaction { $0.animation = nil }
                         .frame(height: 190)
                         .mask(alignment: .leading) {
                             GeometryReader { geo in
@@ -389,58 +467,388 @@ struct ManagerHomeView: View {
         return Color(hue: (125 * k) / 360, saturation: 0.78 + 0.04 * k, brightness: 0.90)
     }
 
-    @ViewBuilder
-    private var planCard: some View {
-        if let summary = viewModel.payload?.summary {
-            let pct = summary.hasGoal ? max(0, min(100, summary.planPct ?? 0)) : 0
-            let color = planColor(pct)
-            svCard("Plán služeb", icon: "ellipsis", onTap: { selectedTab = .performance }) {
-                HStack(spacing: 20) {
-                    ZStack {
-                        Circle().stroke(Color.primary.opacity(0.08), lineWidth: 14)
-                        Circle()
-                            .trim(from: 0, to: CGFloat(pct) / 100)
-                            .stroke(color, style: StrokeStyle(lineWidth: 14, lineCap: .round))
-                            .rotationEffect(.degrees(-90))
-                            .animation(.snappy(duration: 0.5), value: pct)
-                        if summary.hasGoal {
-                            VStack(spacing: 2) {
-                                Text("\(pct)%")
-                                    .font(.system(size: 30, weight: .semibold, design: .rounded))
-                                    .monospacedDigit()
-                                Text(summary.monthName)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                        } else {
-                            Text("Není nastavený cíl")
-                                .font(.footnote.weight(.semibold))
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal, 14)
-                        }
-                    }
-                    .frame(width: 124, height: 124)
+    private var daysLeftInMonth: Int {
+        let cal = Calendar.current
+        let now = Date()
+        let days = cal.range(of: .day, in: .month, for: now)?.count ?? 30
+        return max(0, days - cal.component(.day, from: now))
+    }
 
-                    VStack(alignment: .leading, spacing: 12) {
-                        planFact("Hotovo", "\(viewModel.payload?.servicesMeta?.monthTotal ?? 0)")
-                        planFact("Cíl", summary.hasGoal ? summary.teamGoalLabel : "—")
-                        planFact("Predikce provize", summary.monthPrediction)
-                    }
-                    Spacer(minLength: 0)
-                }
+    /// Data pro graf plánu: skutečnost (kumulativně po dnech měsíce),
+    /// ideální lineární tempo k cíli a odhad do konce měsíce.
+    private var planCurve: ManagerPlanCurve? {
+        guard let meta = viewModel.payload?.servicesMeta, meta.hasGoal else { return nil }
+        let cal = Calendar.current
+        let calendarDays = cal.range(of: .day, in: .month, for: Date())?.count ?? 30
+        let progress = viewModel.monthProgress
+        let series = progress?.current ?? []
+        let days = max(1, series.isEmpty ? calendarDays : series.count)
+
+        var actual: [ManagerPlanCurve.Point] = [.init(day: 0, value: 0)]
+        var todayDay = min(days, cal.component(.day, from: Date()))
+        if !series.isEmpty {
+            let lastKnown = series.lastIndex(where: { $0 != nil }) ?? -1
+            let today = progress?.todayIndex ?? lastKnown
+            todayDay = max(0, min(days, today + 1))
+            for (index, value) in series.enumerated() where index < todayDay {
+                if let value { actual.append(.init(day: index + 1, value: Double(value))) }
             }
+        }
+        // Poslední bod skutečnosti srovnáme s měsíčním součtem z plánu.
+        let doneNow = Double(meta.monthTotal)
+        if let last = actual.last, last.day == todayDay {
+            actual[actual.count - 1] = .init(day: todayDay, value: max(last.value, doneNow))
+        } else if todayDay > 0 {
+            actual.append(.init(day: todayDay, value: doneNow))
+        }
+
+        let goal = Double(meta.teamGoal)
+        let ideal = (0...days).map { ManagerPlanCurve.Point(day: $0, value: goal * Double($0) / Double(days)) }
+
+        var forecast: [ManagerPlanCurve.Point] = []
+        if todayDay > 0 && todayDay < days {
+            let predicted = meta.prediction.map(Double.init) ?? doneNow / Double(todayDay) * Double(days)
+            forecast = [.init(day: todayDay, value: doneNow), .init(day: days, value: max(doneNow, predicted))]
+        }
+
+        return ManagerPlanCurve(
+            days: days,
+            todayDay: todayDay,
+            goal: goal,
+            done: doneNow,
+            actual: actual,
+            ideal: ideal,
+            forecast: forecast
+        )
+    }
+
+    private var planSignature: String {
+        guard let curve = planCurve else { return "none" }
+        return "\(curve.days)|\(curve.todayDay)|\(Int(curve.goal))|" + curve.actual.map { "\(Int($0.value))" }.joined(separator: ",")
+    }
+
+    private func playPlanDraw() {
+        guard planSignature != drawnPlanKey || planReveal < 1 else { return }
+        drawnPlanKey = planSignature
+        resetThenAnimate(
+            reset: { planReveal = 0 },
+            animation: .spring(response: 1.1, dampingFraction: 0.86),
+            to: { planReveal = 1 }
+        )
+    }
+
+    /// Reset a animace musí proběhnout v různých snímcích, jinak je SwiftUI
+    /// sloučí a graf se vůbec nepřekreslí.
+    private func resetThenAnimate(reset: @escaping () -> Void, animation: Animation, to target: @escaping () -> Void) {
+        var instant = Transaction()
+        instant.disablesAnimations = true
+        withTransaction(instant, reset)
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(30))
+            withAnimation(animation, target)
         }
     }
 
-    private func planFact(_ title: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(title)
-                .font(.caption2.weight(.medium))
+    /// Ideální počet služeb za den = měsíční cíl / počet dní v měsíci.
+    private var idealDailyPace: Double? {
+        guard let meta = viewModel.payload?.servicesMeta, meta.hasGoal else { return nil }
+        let days = Calendar.current.range(of: .day, in: .month, for: Date())?.count ?? 30
+        return Double(meta.teamGoal) / Double(max(1, days))
+    }
+
+    @ViewBuilder
+    private var planCard: some View {
+        if let meta = viewModel.payload?.servicesMeta {
+            let title = meta.monthName.isEmpty ? "Plán služeb" : "Plán služeb · \(meta.monthName)"
+            svCard(title, onTap: { selectedTab = .performance }) {
+                if meta.hasGoal, let curve = planCurve {
+                    planHeadline(meta, curve: curve)
+                    planBar(curve)
+                    planStatus(meta, curve: curve)
+
+                    HStack(spacing: 14) {
+                        progressLegend("Skutečnost", svCoral, dashed: false)
+                        progressLegend("Ideální tempo", svAccent, dashed: true)
+                        if !curve.forecast.isEmpty {
+                            progressLegend("Odhad", .secondary, dashed: true)
+                        }
+                    }
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 2)
+
+                    planChart(curve)
+                        .id(drawnPlanKey)
+                        .transaction { $0.animation = nil }
+                        .frame(height: 176)
+                        .mask(alignment: .leading) {
+                            GeometryReader { geo in
+                                Rectangle()
+                                    .frame(width: max(0, geo.size.width * planReveal))
+                            }
+                        }
+
+                    if !meta.categoryGoals.isEmpty {
+                        planCategoryGoals(meta.categoryGoals, curve: curve)
+                    }
+                } else {
+                    HStack(spacing: 12) {
+                        Image(systemName: "target")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(svAccent)
+                            .frame(width: 44, height: 44)
+                            .background(svAccent.opacity(0.14), in: Circle())
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Cíl služeb zatím není nastavený")
+                                .font(.subheadline.weight(.semibold))
+                            Text("Hotovo tento měsíc: \(meta.monthTotal) služeb. Cíl nastavíš v přehledu na webu.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            .onAppear { playPlanDraw() }
+            .onChange(of: planSignature) { _, _ in playPlanDraw() }
+        }
+    }
+
+    /// „312 z 400 služeb · 78 %“
+    private func planHeadline(_ meta: ManagerOverviewServicesMeta, curve: ManagerPlanCurve) -> some View {
+        let pct = max(0, meta.planPct ?? Int((curve.done / max(1, curve.goal) * 100).rounded()))
+        return HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text("\(meta.monthTotal)")
+                .font(.system(size: 46, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .tracking(-1.5)
+            Text("z \(meta.teamGoal) služeb")
+                .font(.subheadline.weight(.medium))
                 .foregroundStyle(.secondary)
-            Text(value)
-                .font(.subheadline.weight(.bold).monospacedDigit())
-                .lineLimit(1)
-                .minimumScaleFactor(0.65)
+            Spacer(minLength: 6)
+            Text("\(Int((Double(pct) * planReveal).rounded())) %")
+                .font(.system(.title3, design: .rounded).weight(.bold))
+                .monospacedDigit()
+                .foregroundStyle(planColor(pct))
+                .contentTransition(.numericText(value: Double(pct) * planReveal))
+        }
+    }
+
+    /// Pruh plnění: barva = hotovo, žlutá ryska = kde bychom ideálně měli být dnes.
+    private func planBar(_ curve: ManagerPlanCurve) -> some View {
+        let donePart = min(1, curve.done / max(1, curve.goal))
+        let idealPart = min(1, curve.goal * Double(curve.todayDay) / Double(curve.days) / max(1, curve.goal))
+        let idealNow = Int((curve.goal * Double(curve.todayDay) / Double(curve.days)).rounded())
+        return VStack(alignment: .leading, spacing: 6) {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.primary.opacity(0.08))
+                    Capsule()
+                        .fill(LinearGradient(colors: [svCoral.opacity(0.75), svCoral], startPoint: .leading, endPoint: .trailing))
+                        .frame(width: max(0, geo.size.width * donePart * planReveal))
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(svAccent)
+                        .frame(width: 3, height: 20)
+                        .offset(x: max(0, min(geo.size.width - 3, geo.size.width * idealPart - 1.5)))
+                        .opacity(planReveal)
+                }
+            }
+            .frame(height: 14)
+
+            HStack(spacing: 14) {
+                planKey(svCoral, "Hotovo \(Int(curve.done))")
+                planKey(svAccent, "Ideálně dnes \(idealNow)")
+                Spacer(minLength: 0)
+                Text("Cíl \(Int(curve.goal))")
+                    .foregroundStyle(.secondary)
+            }
+            .font(.caption.weight(.semibold).monospacedDigit())
+        }
+    }
+
+    private func planKey(_ color: Color, _ text: String) -> some View {
+        HStack(spacing: 5) {
+            Circle().fill(color).frame(width: 7, height: 7)
+            Text(text).foregroundStyle(.primary)
+        }
+    }
+
+    /// Jedna jasná věta o stavu + co je potřeba udělat.
+    private func planStatus(_ meta: ManagerOverviewServicesMeta, curve: ManagerPlanCurve) -> some View {
+        let idealNow = curve.goal * Double(curve.todayDay) / Double(curve.days)
+        let gap = Int((curve.done - idealNow).rounded())
+        let reached = curve.done >= curve.goal
+        let ahead = gap >= 0
+        let tint = reached || ahead ? svGood : svBad
+        let headline: String = {
+            if reached { return "Cíl je splněný" }
+            if gap == 0 { return "Přesně na ideálním tempu" }
+            return ahead ? "Tým je o \(gap) služeb napřed" : "Tým je o \(-gap) služeb pozadu"
+        }()
+        let remaining = max(0, meta.remaining ?? (meta.teamGoal - meta.monthTotal))
+        let detail: String = {
+            if reached { return "Hotovo \(meta.monthTotal) z \(meta.teamGoal), skvělá práce." }
+            let days = daysLeftInMonth
+            if let needed = meta.neededDailyLabel, days > 0 {
+                return "Do cíle chybí \(remaining). Stačí \(needed) služeb denně · zbývá \(days) \(dayWord(days))."
+            }
+            return "Do cíle chybí \(remaining) služeb."
+        }()
+        return HStack(alignment: .top, spacing: 12) {
+            Image(systemName: reached ? "checkmark.seal.fill" : (ahead ? "hare.fill" : "tortoise.fill"))
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(tint)
+                .frame(width: 34, height: 34)
+                .background(tint.opacity(0.14), in: Circle())
+            VStack(alignment: .leading, spacing: 2) {
+                Text(headline)
+                    .font(.subheadline.weight(.semibold))
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func planCategoryGoals(_ goals: [ManagerOverviewCategoryGoal], curve: ManagerPlanCurve) -> some View {
+        let idealShare = min(1, Double(curve.todayDay) / Double(curve.days))
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("Cíle podle služeb")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+            ForEach(goals) { cat in
+                HStack(spacing: 10) {
+                    Text(cat.label)
+                        .font(.footnote.weight(.medium))
+                        .lineLimit(1)
+                        .frame(width: 92, alignment: .leading)
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.primary.opacity(0.07))
+                            Capsule()
+                                .fill(planColor(cat.pct))
+                                .frame(width: geo.size.width * CGFloat(max(0, min(100, cat.pct))) / 100 * planReveal)
+                            Rectangle()
+                                .fill(svAccent)
+                                .frame(width: 2, height: 10)
+                                .offset(x: max(0, geo.size.width * idealShare - 1))
+                        }
+                    }
+                    .frame(height: 6)
+                    Text("\(cat.done)/\(cat.goal)")
+                        .font(.caption.weight(.bold).monospacedDigit())
+                        .frame(minWidth: 46, alignment: .trailing)
+                }
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    private func dayWord(_ count: Int) -> String {
+        if count == 1 { return "den" }
+        if count >= 2 && count <= 4 { return "dny" }
+        return "dní"
+    }
+
+    private func planChart(_ curve: ManagerPlanCurve) -> some View {
+        let peak = max(curve.goal, curve.actual.map(\.value).max() ?? 0, curve.forecast.map(\.value).max() ?? 0)
+        let top = max(1, peak * 1.08)
+        let idealToday = curve.goal * Double(curve.todayDay) / Double(curve.days)
+        let ticks = Array(Set([1, 10, 20, curve.days].filter { $0 <= curve.days })).sorted()
+        return Chart {
+            ForEach(curve.ideal) { point in
+                LineMark(
+                    x: .value("Den", point.day),
+                    y: .value("Služby", point.value),
+                    series: .value("Řada", "ideal")
+                )
+                .foregroundStyle(svAccent)
+                .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, dash: [6, 5]))
+            }
+            ForEach(curve.forecast) { point in
+                LineMark(
+                    x: .value("Den", point.day),
+                    y: .value("Služby", point.value),
+                    series: .value("Řada", "forecast")
+                )
+                .foregroundStyle(Color.secondary.opacity(0.7))
+                .lineStyle(StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [2, 4]))
+            }
+            ForEach(curve.actual) { point in
+                AreaMark(
+                    x: .value("Den", point.day),
+                    y: .value("Služby", point.value),
+                    series: .value("Řada", "actual")
+                )
+                .foregroundStyle(
+                    LinearGradient(colors: [svCoral.opacity(0.26), svCoral.opacity(0.02)], startPoint: .top, endPoint: .bottom)
+                )
+                .interpolationMethod(.monotone)
+                LineMark(
+                    x: .value("Den", point.day),
+                    y: .value("Služby", point.value),
+                    series: .value("Řada", "actual")
+                )
+                .foregroundStyle(svCoral)
+                .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+                .interpolationMethod(.monotone)
+            }
+            RuleMark(y: .value("Cíl", curve.goal))
+                .foregroundStyle(svAccent.opacity(0.35))
+                .lineStyle(StrokeStyle(lineWidth: 1))
+                .annotation(position: .top, alignment: .leading, spacing: 2) {
+                    Text("Cíl \(Int(curve.goal))")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.secondary)
+                }
+            if curve.todayDay > 0 {
+                RuleMark(x: .value("Den", curve.todayDay))
+                    .foregroundStyle(Color.primary.opacity(0.18))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                PointMark(x: .value("Den", curve.todayDay), y: .value("Služby", idealToday))
+                    .foregroundStyle(svAccent)
+                    .symbolSize(46)
+                PointMark(x: .value("Den", curve.todayDay), y: .value("Služby", curve.done))
+                    .foregroundStyle(svCoral)
+                    .symbolSize(70)
+                    .annotation(position: .top, spacing: 4) {
+                        Text("\(Int(curve.done))")
+                            .font(.caption2.weight(.heavy).monospacedDigit())
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(svCoral.opacity(0.18), in: Capsule())
+                    }
+            }
+        }
+        .chartYScale(domain: 0...top)
+        .chartXScale(domain: 0...curve.days)
+        .chartXAxis {
+            AxisMarks(values: ticks) { value in
+                AxisValueLabel {
+                    if let day = value.as(Int.self) {
+                        Text("\(day).")
+                            .font(.caption2.weight(.semibold))
+                    }
+                }
+            }
+        }
+        .chartYAxis {
+            AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { value in
+                AxisGridLine()
+                AxisValueLabel {
+                    if let number = value.as(Double.self) {
+                        Text("\(Int(number))")
+                            .font(.caption2.monospacedDigit())
+                    }
+                }
+            }
+        }
+        .chartLegend(.hidden)
+        .chartPlotStyle { plot in
+            plot.padding(.top, 14)
         }
     }
 
@@ -449,7 +857,11 @@ struct ManagerHomeView: View {
         if let slices = viewModel.payload?.servicesBreakdown, !slices.isEmpty {
             let total = viewModel.payload?.servicesMeta?.total ?? slices.reduce(0) { $0 + $1.count }
             let active = slices.filter { $0.count > 0 }.count
-            svCard("Rozpad na služby", onTap: { selectedTab = .performance }) {
+            svCard("Rozpad na služby", onTap: { mixRoute = ManagerServicesMixRoute(key: nil) }) {
+                Button {
+                    bump()
+                    mixRoute = ManagerServicesMixRoute(key: nil)
+                } label: {
                 HStack(alignment: .bottom, spacing: 12) {
                     Text("\(total)")
                         .font(.system(size: 46, weight: .semibold, design: .rounded))
@@ -463,12 +875,20 @@ struct ManagerHomeView: View {
                             .foregroundStyle(.secondary)
                     }
                     .padding(.bottom, 4)
+                    Spacer(minLength: 0)
                 }
+                .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
 
                 stackedServicesBar(slices)
 
                 VStack(spacing: 12) {
                     ForEach(slices) { slice in
+                        Button {
+                            bump()
+                            mixRoute = ManagerServicesMixRoute(key: slice.key)
+                        } label: {
                         HStack(spacing: 10) {
                             Circle()
                                 .fill(Color(hex: slice.color))
@@ -498,8 +918,52 @@ struct ManagerHomeView: View {
                                 .font(.caption.weight(.semibold).monospacedDigit())
                                 .foregroundStyle(.secondary)
                                 .frame(width: 38, alignment: .trailing)
+                            Image(systemName: "chevron.right")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(.tertiary)
                         }
                         .opacity(slice.count > 0 ? 1 : 0.5)
+                        .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Aktivita po dnech – heatmapa jako na webu.
+    @ViewBuilder
+    private var heatmapCard: some View {
+        if let heat = viewModel.heatmap, !heat.weeks.isEmpty {
+            svCard("Aktivita po dnech") {
+                Text("\(heat.total) služeb · \(heat.weeks.count) týdnů")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, -8)
+                if heat.total == 0 {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Zatím žádné služby")
+                            .font(.subheadline.weight(.semibold))
+                        Text("Jakmile tým začne dělat služby, uvidíš tady, ve kterých dnech.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    ManagerActivityHeatmapGrid(heatmap: heat, tint: svCoral) { cell in
+                        heatmapDay = ManagerHeatmapDayRoute(date: cell.date)
+                    }
+                    HStack(alignment: .center, spacing: 8) {
+                        if !heat.bestWeekday.isEmpty {
+                            (Text("Nejsilnější den: ") + Text(heat.bestWeekday).bold()
+                                + Text(" · ⌀ \(String(format: "%.1f", heat.bestWeekdayAvg).replacingOccurrences(of: ".", with: ","))"))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
+                        Spacer(minLength: 4)
+                        ManagerHeatmapLegend(tint: svCoral)
                     }
                 }
             }
@@ -549,15 +1013,28 @@ struct ManagerHomeView: View {
 
     private func progressChart(_ progress: ManagerOverviewProgress) -> some View {
         let points = progress.points
+        let daily = idealDailyPace
+        let ideal: [ManagerPlanCurve.Point] = daily.map { pace in
+            points.map { ManagerPlanCurve.Point(day: $0.index, value: pace * Double($0.index + 1)) }
+        } ?? []
         let peak = points.map { max($0.current ?? 0, $0.previous ?? 0) }.max() ?? 0
-        let top = max(1, peak)
+        let top = max(1, max(Double(peak), ideal.last?.value ?? 0) * 1.05)
         let axisIndexes = progressAxisIndexes(count: points.count, today: progress.todayIndex)
         return Chart {
+            ForEach(ideal) { point in
+                LineMark(
+                    x: .value("Den", point.day),
+                    y: .value("Služby", point.value),
+                    series: .value("Řada", "ideal")
+                )
+                .foregroundStyle(svAccent)
+                .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, dash: [6, 5]))
+            }
             ForEach(points) { point in
                 if let value = point.previous {
                     LineMark(
                         x: .value("Den", point.index),
-                        y: .value("Služby", value),
+                        y: .value("Služby", Double(value)),
                         series: .value("Řada", "previous")
                     )
                     .foregroundStyle(Color.secondary.opacity(0.9))
@@ -569,7 +1046,7 @@ struct ManagerHomeView: View {
                 if let value = point.current {
                     AreaMark(
                         x: .value("Den", point.index),
-                        y: .value("Služby", value),
+                        y: .value("Služby", Double(value)),
                         series: .value("Řada", "current")
                     )
                     .foregroundStyle(
@@ -582,7 +1059,7 @@ struct ManagerHomeView: View {
                     .interpolationMethod(.catmullRom)
                     LineMark(
                         x: .value("Den", point.index),
-                        y: .value("Služby", value),
+                        y: .value("Služby", Double(value)),
                         series: .value("Řada", "current")
                     )
                     .foregroundStyle(svCoral)
@@ -590,7 +1067,7 @@ struct ManagerHomeView: View {
                     .interpolationMethod(.catmullRom)
                     PointMark(
                         x: .value("Den", point.index),
-                        y: .value("Služby", value)
+                        y: .value("Služby", Double(value))
                     )
                     .foregroundStyle(svCoral)
                     .symbolSize(42)
@@ -618,8 +1095,8 @@ struct ManagerHomeView: View {
             AxisMarks(position: .leading) { value in
                 AxisGridLine()
                 AxisValueLabel {
-                    if let number = value.as(Int.self) {
-                        Text("\(number)")
+                    if let number = value.as(Double.self) {
+                        Text("\(Int(number))")
                             .font(.caption2.monospacedDigit())
                     }
                 }
@@ -653,10 +1130,23 @@ struct ManagerHomeView: View {
         return progress.labels.joined(separator: ",") + "|" + current + "|" + previous
     }
 
-    private func playProgressDraw() {
-        chartReveal = 0
-        withAnimation(.easeOut(duration: 1.05)) {
-            chartReveal = 1
+    /// Po načtení nových dat: nový klíč = nový Chart, vykreslený zleva doprava.
+    private func redrawProgressIfNeeded() {
+        let key = "\(viewModel.period.rawValue)|" + progressSignature
+        if key != drawnProgressKey || chartReveal < 1 {
+            drawnProgressKey = key
+            resetThenAnimate(
+                reset: { chartReveal = 0 },
+                animation: .easeOut(duration: 0.95),
+                to: { chartReveal = 1 }
+            )
+        }
+    }
+
+    /// Při přepnutí období starý graf rychle schovat, dokud nedorazí nová data.
+    private func hideProgressChart() {
+        withAnimation(.easeOut(duration: 0.18)) {
+            chartReveal = 0
         }
     }
 
@@ -708,237 +1198,6 @@ struct ManagerHomeView: View {
         }
     }
 
-    @ViewBuilder
-    private var activityBento: some View {
-        if let activities = viewModel.payload?.activities, !activities.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                sectionTitle("Aktivita", trailing: "Otevřít výkon")
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible())], spacing: 10) {
-                    ForEach(activities.prefix(6)) { item in
-                        Button {
-                            bump()
-                            selectedTab = .performance
-                        } label: {
-                            VStack(alignment: .leading, spacing: 10) {
-                                HStack {
-                                    Image(systemName: activityIcon(item.label))
-                                        .font(.subheadline.weight(.bold))
-                                        .foregroundStyle(svCoral)
-                                    Spacer()
-                                    deltaChip(item.delta, up: item.up)
-                                }
-                                Text(item.value)
-                                    .font(.system(.title2, design: .rounded).weight(.bold))
-                                    .foregroundStyle(.primary)
-                                Text(item.label)
-                                    .font(.caption.weight(.medium))
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                            .padding(14)
-                            .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
-                            .background(surface(radius: 18))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var teamCarousel: some View {
-        if let people = viewModel.payload?.salespeople, !people.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                Button {
-                    bump()
-                    showTeamList = true
-                } label: {
-                    sectionTitle("Tým", trailing: "Zobrazit všechny")
-                }
-                .buttonStyle(.plain)
-
-                ScrollView(.horizontal) {
-                    LazyHStack(spacing: 10) {
-                        ForEach(people) { person in
-                            Button {
-                                bump()
-                                selectedPersonID = ManagerHomePersonRoute(id: person.id)
-                            } label: {
-                                VStack(alignment: .leading, spacing: 12) {
-                                    avatarView(url: person.avatarURL, initials: person.initials, size: 46)
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text(person.name)
-                                            .font(.subheadline.weight(.bold))
-                                            .foregroundStyle(.primary)
-                                            .lineLimit(1)
-                                        Text(person.commission)
-                                            .font(.headline.weight(.bold).monospacedDigit())
-                                            .foregroundStyle(svCoral)
-                                        Text("\(person.services) služeb · \(person.planLabel)")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                    }
-                                }
-                                .padding(14)
-                                .frame(width: 168, alignment: .leading)
-                                .background(surface(tint: .purple, radius: 20))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .scrollTargetLayout()
-                }
-                .scrollIndicators(.hidden)
-                .scrollTargetBehavior(.viewAligned)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var attentionCard: some View {
-        if let people = viewModel.payload?.riskPeople, !people.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                sectionTitle("Vyžaduje pozornost")
-                VStack(spacing: 0) {
-                    ForEach(Array(people.enumerated()), id: \.element.id) { index, person in
-                    Button {
-                        bump()
-                        selectedPersonID = ManagerHomePersonRoute(id: person.id)
-                    } label: {
-                        HStack(spacing: 12) {
-                            avatarView(url: person.avatarURL, initials: person.initials, size: 36)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(person.name)
-                                    .foregroundStyle(.primary)
-                                Text(person.reason)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            if !person.metric.isEmpty {
-                                Text(person.metric)
-                                    .font(.caption.weight(.bold).monospacedDigit())
-                                    .foregroundStyle(person.level == "risk" ? Color.red : Color.orange)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(
-                                        (person.level == "risk" ? Color.red : Color.orange).opacity(0.1),
-                                        in: Capsule()
-                                    )
-                            }
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(.tertiary)
-                        }
-                        .padding(.vertical, 11)
-                    }
-                    .buttonStyle(.plain)
-                    if index < people.count - 1 {
-                        Divider().padding(.leading, 48)
-                    }
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 4)
-                .background(surface(tint: .orange, radius: 22))
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var dealWarsCard: some View {
-        if let leaders = viewModel.payload?.leaderboard, !leaders.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                Button {
-                    bump()
-                    showDealWars = true
-                } label: {
-                    sectionTitle("Deal Wars", trailing: "Celý žebříček")
-                }
-                .buttonStyle(.plain)
-
-                HStack(alignment: .bottom, spacing: 8) {
-                    ForEach(Array(leaders.prefix(3).enumerated()), id: \.element.id) { index, leader in
-                        let displayed = leaders.count >= 3 ? [leaders[1], leaders[0], leaders[2]][index] : leader
-                        Button {
-                            bump()
-                            selectedPersonID = ManagerHomePersonRoute(id: displayed.id)
-                        } label: {
-                            VStack(spacing: 8) {
-                                ZStack(alignment: .topTrailing) {
-                                    avatarView(
-                                        url: displayed.avatarURL,
-                                        initials: displayed.initials,
-                                        size: displayed.place == 1 ? 58 : 46
-                                    )
-                                    Text("\(displayed.place)")
-                                        .font(.caption2.bold())
-                                        .foregroundStyle(.white)
-                                        .frame(width: 20, height: 20)
-                                        .background(placeColor(displayed.place), in: Circle())
-                                        .offset(x: 3, y: -3)
-                                }
-                                Text(displayed.name)
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-                                Text(displayed.amount)
-                                    .font(.caption2.weight(.bold).monospacedDigit())
-                                    .foregroundStyle(.secondary)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, displayed.place == 1 ? 16 : 12)
-                            .background(Color.primary.opacity(displayed.place == 1 ? 0.055 : 0.025), in: RoundedRectangle(cornerRadius: 16))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(12)
-                .background(surface(tint: brandGold, radius: 22))
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var localitiesCard: some View {
-        if let loc = viewModel.payload?.localities, loc.available {
-            VStack(alignment: .leading, spacing: 12) {
-                sectionTitle("Lokality", trailing: "Spravovat")
-                Button {
-                    bump()
-                    selectedTab = .localities
-                } label: {
-                    HStack(spacing: 8) {
-                        localityMetric("Celkem", loc.total, .primary)
-                        localityMetric("Přiřazené", loc.assigned, .blue)
-                        localityMetric("Volné", loc.unassigned, loc.unassigned > 0 ? .orange : .green)
-                        localityMetric("Hotovo", loc.done, .green)
-                    }
-                    .padding(14)
-                    .background(surface(tint: .teal, radius: 22))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-
-    private func sectionTitle(_ title: String, trailing: String? = nil) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(title)
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(.primary)
-            Spacer()
-            if let trailing {
-                Text(trailing)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(.horizontal, 2)
-    }
-
     private func stackedServicesBar(_ slices: [ManagerOverviewServiceSlice]) -> some View {
         let parts = slices.filter { $0.count > 0 }
         let total = parts.reduce(0) { $0 + $1.count }
@@ -961,20 +1220,6 @@ struct ManagerHomeView: View {
         .frame(height: 12)
         .clipShape(Capsule())
         .background(Color.primary.opacity(0.06), in: Capsule())
-    }
-
-    private func localityMetric(_ title: String, _ value: Int, _ color: Color) -> some View {
-        VStack(spacing: 4) {
-            Text("\(value)")
-                .font(.headline.bold().monospacedDigit())
-                .foregroundStyle(color)
-            Text(title)
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-        }
-        .frame(maxWidth: .infinity)
     }
 
     private var glassFill: Color {
@@ -1009,38 +1254,6 @@ struct ManagerHomeView: View {
             .shadow(color: .black.opacity(isDark ? 0.35 : 0.10), radius: 18, y: 10)
     }
 
-    private func deltaChip(_ text: String, up: Bool?, onDark: Bool = false) -> some View {
-        let color: Color = {
-            if up == true { return svGood }
-            if up == false { return svBad }
-            return .secondary
-        }()
-        return HStack(spacing: 3) {
-            Image(systemName: up == true ? "arrow.up" : (up == false ? "arrow.down" : "minus"))
-                .font(.system(size: 8, weight: .bold))
-            Text(text)
-                .font(.caption2.weight(.bold))
-        }
-        .foregroundStyle(onDark ? Color.white : color)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 3)
-        .background((onDark ? Color.white : color).opacity(0.12), in: Capsule())
-    }
-
-    private func avatarView(url: URL?, initials: String, size: CGFloat) -> some View {
-        Group {
-            if let url {
-                AuthenticatedProfileImageView(url: url, token: authState.authToken, size: size)
-            } else {
-                Text(initials)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.white)
-                    .frame(width: size, height: size)
-                    .background(Color.orange.gradient, in: Circle())
-            }
-        }
-    }
-
     private func bump() {
         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
     }
@@ -1054,17 +1267,6 @@ struct ManagerHomeView: View {
         default:
             break
         }
-    }
-
-    private func activityIcon(_ label: String) -> String {
-        let key = label.lowercased()
-        if key.contains("navol") { return "phone.fill" }
-        if key.contains("schůz") || key.contains("schuz") { return "person.2.fill" }
-        if key.contains("prodej") { return "cart.fill" }
-        if key.contains("objedn") { return "doc.text.fill" }
-        if key.contains("služ") || key.contains("sluz") { return "wifi" }
-        if key.contains("ček") || key.contains("cek") { return "clock.fill" }
-        return "chart.bar.fill"
     }
 
     private func alertIcon(_ tone: String) -> String {
@@ -1081,20 +1283,6 @@ struct ManagerHomeView: View {
         }
     }
 
-    private func placeColor(_ place: Int) -> Color {
-        switch place {
-        case 1: return .orange
-        case 2: return .gray
-        case 3: return Color(red: 0.72, green: 0.45, blue: 0.2)
-        default: return .secondary
-        }
-    }
-
-    private func memberWord(_ count: Int) -> String {
-        if count == 1 { return "člen" }
-        if count >= 2 && count <= 4 { return "členové" }
-        return "členů"
-    }
 }
 
 private extension Color {
@@ -1112,6 +1300,44 @@ private extension Color {
     }
 }
 
-private struct ManagerHomePersonRoute: Identifiable, Hashable {
-    let id: Int
+/// Křivka plánu služeb: osa X = den v měsíci (0 = začátek), osa Y = kumulativní počet služeb.
+struct ManagerPlanCurve {
+    struct Point: Identifiable {
+        var id: Int { day }
+        let day: Int
+        let value: Double
+    }
+
+    let days: Int
+    let todayDay: Int
+    let goal: Double
+    let done: Double
+    let actual: [Point]
+    let ideal: [Point]
+    let forecast: [Point]
+}
+
+/// Jemný nájezd karty při prvním zobrazení (fade + posun zdola).
+private struct HomeCardAppear: ViewModifier {
+    let order: Int
+    @State private var shown = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(shown || reduceMotion ? 1 : 0)
+            .offset(y: shown || reduceMotion ? 0 : 18)
+            .onAppear {
+                guard !shown else { return }
+                withAnimation(.spring(response: 0.55, dampingFraction: 0.85).delay(Double(min(order, 6)) * 0.06)) {
+                    shown = true
+                }
+            }
+    }
+}
+
+private extension View {
+    func homeCardAppear(_ order: Int) -> some View {
+        modifier(HomeCardAppear(order: order))
+    }
 }

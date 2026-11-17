@@ -237,6 +237,11 @@ struct ProvikartApp: App {
         return Date().timeIntervalSince(at) >= 5
     }
 
+    /// Aplikace je schovaná pod biometrickým zámkem (pro efekt odemčení).
+    private var isUnlockRevealPending: Bool {
+        shouldShowBiometricOverlay && scenePhase == .active
+    }
+
     private var shouldShowBiometricOverlay: Bool {
         guard authState.isLoggedIn else { return false }
         if showBiometricVerification || needsImmediateBiometricOnResume { return true }
@@ -302,6 +307,10 @@ struct ProvikartApp: App {
                 if !showLaunchScreen || launchesIntoLogin {
                     rootContent
                         .opacity(showLaunchScreen && !isHandingOffToLogin ? 0 : 1)
+                        // Pod zámkem je aplikace lehce oddálená a rozmazaná,
+                        // po odemčení se plynule „přiblíží“ na místo.
+                        .scaleEffect(isUnlockRevealPending ? 0.94 : 1)
+                        .blur(radius: isUnlockRevealPending ? 10 : 0)
                         .allowsHitTesting(!showLaunchScreen)
                 }
                 if showLaunchScreen {
@@ -321,7 +330,7 @@ struct ProvikartApp: App {
                 }
                 if shouldShowBiometricOverlay {
                     BiometricVerificationView(onSuccess: {
-                        withAnimation(.easeInOut(duration: 0.35)) {
+                        withAnimation(.spring(response: 0.55, dampingFraction: 0.9)) {
                             showBiometricVerification = false
                             hasVerifiedBiometricThisSession = true
                             sessionUnlock.unlock()
@@ -331,7 +340,10 @@ struct ProvikartApp: App {
                             LuckyChestController.shared.resumeIfNeeded()
                         }
                     })
-                    .transition(.opacity)
+                    .transition(.asymmetric(
+                        insertion: .opacity,
+                        removal: .opacity.combined(with: .scale(scale: 1.1))
+                    ))
                     .zIndex(3)
                 }
             }

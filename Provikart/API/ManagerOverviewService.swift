@@ -312,18 +312,276 @@ struct ManagerOverviewSummary: Decodable, Equatable {
     }
 }
 
+/// Aktivita po dnech – heatmapa služeb (týdny jako sloupce, po–ne jako řádky).
+struct ManagerOverviewHeatmap: Decodable, Equatable {
+    struct Cell: Decodable, Equatable, Identifiable {
+        var id: String { date }
+        let date: String
+        let count: Int
+        let level: Int
+        let future: Bool
+
+        enum CodingKeys: String, CodingKey { case date, count, level, future }
+
+        init(date: String, count: Int, level: Int, future: Bool) {
+            self.date = date
+            self.count = count
+            self.level = level
+            self.future = future
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            date = (try? c.decode(String.self, forKey: .date)) ?? UUID().uuidString
+            count = c.decodeFlexibleInt(forKey: .count) ?? 0
+            level = c.decodeFlexibleInt(forKey: .level) ?? 0
+            future = c.decodeFlexibleOptionalBool(forKey: .future) ?? false
+        }
+    }
+
+    struct Month: Decodable, Equatable {
+        let col: Int
+        let label: String
+
+        enum CodingKeys: String, CodingKey { case col, label }
+
+        init(col: Int, label: String) {
+            self.col = col
+            self.label = label
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            col = c.decodeFlexibleInt(forKey: .col) ?? 0
+            label = (try? c.decode(String.self, forKey: .label)) ?? ""
+        }
+    }
+
+    struct Count: Decodable, Equatable, Identifiable {
+        var id: String { (key ?? "") + name }
+        let key: String?
+        let name: String
+        let color: String?
+        let count: Int
+
+        enum CodingKeys: String, CodingKey { case key, label, name, color, count }
+
+        init(key: String?, name: String, color: String?, count: Int) {
+            self.key = key
+            self.name = name
+            self.color = color
+            self.count = count
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            key = try? c.decodeIfPresent(String.self, forKey: .key)
+            name = (try? c.decode(String.self, forKey: .label)) ?? (try? c.decode(String.self, forKey: .name)) ?? ""
+            color = try? c.decodeIfPresent(String.self, forKey: .color)
+            count = c.decodeFlexibleInt(forKey: .count) ?? 0
+        }
+    }
+
+    struct Day: Decodable, Equatable {
+        let title: String
+        let total: Int
+        let cats: [Count]
+        let people: [Count]
+        let weekdayAvg: Double
+        let rank: Int
+        let activeDays: Int
+        let share: Int
+
+        enum CodingKeys: String, CodingKey {
+            case title, total, cats, people, rank, share
+            case weekdayAvg = "weekday_avg"
+            case activeDays = "active_days"
+        }
+
+        init(title: String, total: Int, cats: [Count], people: [Count], weekdayAvg: Double, rank: Int, activeDays: Int, share: Int) {
+            self.title = title
+            self.total = total
+            self.cats = cats
+            self.people = people
+            self.weekdayAvg = weekdayAvg
+            self.rank = rank
+            self.activeDays = activeDays
+            self.share = share
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            title = (try? c.decode(String.self, forKey: .title)) ?? ""
+            total = c.decodeFlexibleInt(forKey: .total) ?? 0
+            cats = (try? c.decode([Count].self, forKey: .cats)) ?? []
+            people = (try? c.decode([Count].self, forKey: .people)) ?? []
+            weekdayAvg = c.decodeFlexibleDouble(forKey: .weekdayAvg) ?? 0
+            rank = c.decodeFlexibleInt(forKey: .rank) ?? 0
+            activeDays = c.decodeFlexibleInt(forKey: .activeDays) ?? 0
+            share = c.decodeFlexibleInt(forKey: .share) ?? 0
+        }
+    }
+
+    let weeks: [[Cell]]
+    let months: [Month]
+    let total: Int
+    let max: Int
+    let bestWeekday: String
+    let bestWeekdayAvg: Double
+    let weekdayTotals: [Int]
+    let days: [String: Day]
+
+    enum CodingKeys: String, CodingKey {
+        case weeks, months, total, max, days
+        case bestWeekday = "best_weekday"
+        case bestWeekdayAvg = "best_weekday_avg"
+        case weekdayTotals = "weekday_totals"
+    }
+
+    init(weeks: [[Cell]], months: [Month], total: Int, max: Int, bestWeekday: String, bestWeekdayAvg: Double, weekdayTotals: [Int], days: [String: Day]) {
+        self.weeks = weeks
+        self.months = months
+        self.total = total
+        self.max = max
+        self.bestWeekday = bestWeekday
+        self.bestWeekdayAvg = bestWeekdayAvg
+        self.weekdayTotals = weekdayTotals
+        self.days = days
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        weeks = (try? c.decode([[Cell]].self, forKey: .weeks)) ?? []
+        months = (try? c.decode([Month].self, forKey: .months)) ?? []
+        total = c.decodeFlexibleInt(forKey: .total) ?? 0
+        max = c.decodeFlexibleInt(forKey: .max) ?? 0
+        bestWeekday = (try? c.decode(String.self, forKey: .bestWeekday)) ?? ""
+        bestWeekdayAvg = c.decodeFlexibleDouble(forKey: .bestWeekdayAvg) ?? 0
+        weekdayTotals = (try? c.decode([Int].self, forKey: .weekdayTotals)) ?? []
+        days = (try? c.decode([String: Day].self, forKey: .days)) ?? [:]
+    }
+}
+
+/// Detail rozpadu služeb (stejná data jako modal na webu).
+struct ManagerOverviewMixDetail: Decodable, Equatable {
+    struct Bucket: Decodable, Equatable, Identifiable {
+        var id: String { tip.isEmpty ? label : tip }
+        let label: String
+        let tip: String
+        let by: [String: Int]
+
+        enum CodingKeys: String, CodingKey { case label, tip, by }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            label = (try? c.decode(String.self, forKey: .label)) ?? ""
+            tip = (try? c.decode(String.self, forKey: .tip)) ?? ""
+            by = c.decodeIntMap(forKey: .by)
+        }
+    }
+
+    struct Person: Decodable, Equatable, Identifiable {
+        let id: Int
+        let name: String
+        let by: [String: Int]
+        let prev: [String: Int]
+
+        enum CodingKeys: String, CodingKey { case id, name, by, prev }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = c.decodeFlexibleInt(forKey: .id) ?? 0
+            name = (try? c.decode(String.self, forKey: .name)) ?? ""
+            by = c.decodeIntMap(forKey: .by)
+            prev = c.decodeIntMap(forKey: .prev)
+        }
+    }
+
+    struct Category: Decodable, Equatable, Identifiable {
+        var id: String { key }
+        let key: String
+        let label: String
+        let hint: String
+        let count: Int
+        let prev: Int
+
+        enum CodingKeys: String, CodingKey { case key, label, hint, count, prev }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            key = (try? c.decode(String.self, forKey: .key)) ?? UUID().uuidString
+            label = (try? c.decode(String.self, forKey: .label)) ?? ""
+            hint = (try? c.decode(String.self, forKey: .hint)) ?? ""
+            count = c.decodeFlexibleInt(forKey: .count) ?? 0
+            prev = c.decodeFlexibleInt(forKey: .prev) ?? 0
+        }
+    }
+
+    let timeline: [Bucket]
+    let people: [Person]
+    let cats: [Category]
+
+    enum CodingKeys: String, CodingKey { case timeline, people, cats }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        timeline = (try? c.decode([Bucket].self, forKey: .timeline)) ?? []
+        people = (try? c.decode([Person].self, forKey: .people)) ?? []
+        cats = (try? c.decode([Category].self, forKey: .cats)) ?? []
+    }
+}
+
+struct ManagerOverviewCategoryGoal: Decodable, Identifiable, Equatable {
+    var id: String { key }
+    let key: String
+    let label: String
+    let goal: Int
+    let done: Int
+    let pct: Int
+
+    enum CodingKeys: String, CodingKey {
+        case key, label, goal, done, pct
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        key = (try? c.decode(String.self, forKey: .key)) ?? UUID().uuidString
+        label = (try? c.decode(String.self, forKey: .label)) ?? ""
+        goal = c.decodeFlexibleInt(forKey: .goal) ?? 0
+        done = c.decodeFlexibleInt(forKey: .done) ?? 0
+        pct = c.decodeFlexibleInt(forKey: .pct) ?? 0
+    }
+}
+
 struct ManagerOverviewServicesMeta: Decodable, Equatable {
     let total: Int
     let delta: String
     let deltaUp: Bool?
     let monthTotal: Int
     let monthName: String
+    /// Týmový cíl služeb na měsíc (plán služeb, ne provize).
+    let hasGoal: Bool
+    let teamGoal: Int
+    let planPct: Int?
+    let remaining: Int?
+    let neededDailyLabel: String?
+    let prediction: Int?
+    let paceStatus: String
+    let paceStatusLabel: String
+    let categoryGoals: [ManagerOverviewCategoryGoal]
 
     enum CodingKeys: String, CodingKey {
-        case total, delta
+        case total, delta, remaining, prediction
         case deltaUp = "delta_up"
         case monthTotal = "month_total"
         case monthName = "month_name"
+        case hasGoal = "has_goal"
+        case teamGoal = "team_goal"
+        case planPct = "plan_pct"
+        case neededDailyLabel = "needed_daily_label"
+        case paceStatus = "pace_status"
+        case paceStatusLabel = "pace_status_label"
+        case categoryGoals = "category_goals"
     }
 
     init(from decoder: Decoder) throws {
@@ -333,6 +591,15 @@ struct ManagerOverviewServicesMeta: Decodable, Equatable {
         deltaUp = c.decodeFlexibleOptionalBool(forKey: .deltaUp)
         monthTotal = c.decodeFlexibleInt(forKey: .monthTotal) ?? 0
         monthName = (try? c.decode(String.self, forKey: .monthName)) ?? ""
+        teamGoal = c.decodeFlexibleInt(forKey: .teamGoal) ?? 0
+        hasGoal = (c.decodeFlexibleOptionalBool(forKey: .hasGoal) ?? false) && teamGoal > 0
+        planPct = c.decodeFlexibleInt(forKey: .planPct)
+        remaining = c.decodeFlexibleInt(forKey: .remaining)
+        neededDailyLabel = try? c.decodeIfPresent(String.self, forKey: .neededDailyLabel)
+        prediction = c.decodeFlexibleInt(forKey: .prediction)
+        paceStatus = (try? c.decode(String.self, forKey: .paceStatus)) ?? ""
+        paceStatusLabel = (try? c.decode(String.self, forKey: .paceStatusLabel)) ?? ""
+        categoryGoals = (try? c.decode([ManagerOverviewCategoryGoal].self, forKey: .categoryGoals)) ?? []
     }
 }
 
@@ -433,8 +700,12 @@ struct ManagerOverviewPayload: Decodable {
     let alerts: [ManagerOverviewAlert]
     let tasksDueTodayCount: Int
     let progress: ManagerOverviewProgress?
+    let mixDetail: ManagerOverviewMixDetail?
+    let heatmap: ManagerOverviewHeatmap?
 
     enum CodingKeys: String, CodingKey {
+        case mixDetail = "services_mix_detail"
+        case heatmap
         case memberCount = "member_count"
         case kpis, activities, salespeople, leaderboard, localities, summary, alerts, progress
         case riskPeople = "risk_people"
@@ -458,6 +729,8 @@ struct ManagerOverviewPayload: Decodable {
         alerts = (try? c.decode([ManagerOverviewAlert].self, forKey: .alerts)) ?? []
         tasksDueTodayCount = c.decodeFlexibleInt(forKey: .tasksDueTodayCount) ?? 0
         progress = try? c.decodeIfPresent(ManagerOverviewProgress.self, forKey: .progress)
+        mixDetail = try? c.decodeIfPresent(ManagerOverviewMixDetail.self, forKey: .mixDetail)
+        heatmap = try? c.decodeIfPresent(ManagerOverviewHeatmap.self, forKey: .heatmap)
     }
 }
 
@@ -543,6 +816,13 @@ private extension KeyedDecodingContainer {
             if let v = Double(normalized) { return v }
         }
         return nil
+    }
+
+    func decodeIntMap(forKey key: Key) -> [String: Int] {
+        if let map = try? decode([String: Int].self, forKey: key) { return map }
+        if let map = try? decode([String: Double].self, forKey: key) { return map.mapValues { Int($0) } }
+        if let map = try? decode([String: String].self, forKey: key) { return map.compactMapValues { Int($0) } }
+        return [:]
     }
 
     func decodeNullableInts(forKey key: Key) -> [Int?] {
