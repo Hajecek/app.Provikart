@@ -28,7 +28,8 @@ final class ManagerHomeViewModel: ObservableObject {
     private var heatmapFetchedAt: Date?
     private var heatmapLoading = false
 
-    /// Aktivita po dnech – z API, jinak z Výkonu týmu; zobrazené okno jako web.
+    /// Aktivita po dnech – z API, jinak z Výkonu týmu. Čísla za 26 týdnů jako web,
+    /// mřížka zkrácená na posledních 14 týdnů.
     var heatmap: ManagerOverviewHeatmap? {
         (payload?.heatmap ?? fallbackHeatmap).map { ManagerHeatmapBuilder.window($0) }
     }
@@ -943,7 +944,7 @@ struct ManagerHomeView: View {
     private var heatmapCard: some View {
         if let heat = viewModel.heatmap, !heat.weeks.isEmpty {
             svCard("Aktivita po dnech") {
-                Text("\(heat.total) služeb · \(heat.weeks.count) týdnů")
+                Text("\(heat.total) služeb · \(ManagerHeatmapBuilder.weeks) týdnů")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .padding(.top, -8)

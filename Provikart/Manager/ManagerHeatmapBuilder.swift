@@ -14,7 +14,7 @@ import Foundation
 enum ManagerHeatmapBuilder {
     /// Stejně jako web: data a sytost barev za 26 týdnů…
     static let weeks = 26
-    /// …a zobrazené okno jako web na střední šířce (14 týdnů).
+    /// …ale na telefonu se zobrazí jen posledních 14 týdnů, aby se mřížka vešla.
     static let visibleWeeks = 14
 
     private static let dayNames = ["Pondělí", "Úterý", "Středa", "Čtvrtek", "Pátek", "Sobota", "Neděle"]
@@ -201,22 +201,13 @@ enum ManagerHeatmapBuilder {
         )
     }
 
-    /// Okno posledních `count` týdnů – součty, měsíce a nejsilnější den
-    /// se přepočítají jen za okno (jako na webu), úrovně barev zůstávají z celé řady.
+    /// Zobrazí jen posledních `count` týdnů, aby se mřížka vešla na telefon.
+    /// Všechna čísla (celkem, součty po dnech v týdnu, nejsilnější den, úrovně barev)
+    /// zůstávají spočítaná za celých 26 týdnů – stejně jako na webu.
     static func window(_ heat: ManagerOverviewHeatmap, lastWeeks count: Int = visibleWeeks) -> ManagerOverviewHeatmap {
         guard heat.weeks.count > count else { return heat }
         let from = heat.weeks.count - count
         let weeks = Array(heat.weeks[from...])
-        var totals = Array(repeating: 0, count: 7)
-        var dayCounts = Array(repeating: 0, count: 7)
-        var total = 0
-        for column in weeks {
-            for (index, cell) in column.enumerated() where index < 7 && !cell.future {
-                totals[index] += cell.count
-                dayCounts[index] += 1
-                total += cell.count
-            }
-        }
         var months: [ManagerOverviewHeatmap.Month] = []
         var lastMonth: String?
         for (index, column) in weeks.enumerated() {
@@ -227,23 +218,14 @@ enum ManagerHeatmapBuilder {
                 lastMonth = month
             }
         }
-        var bestIndex = 0
-        var bestAvg = 0.0
-        for index in 0..<7 {
-            let avg = dayCounts[index] > 0 ? Double(totals[index]) / Double(dayCounts[index]) : 0
-            if avg > bestAvg {
-                bestAvg = avg
-                bestIndex = index
-            }
-        }
         return ManagerOverviewHeatmap(
             weeks: weeks,
             months: months,
-            total: total,
+            total: heat.total,
             max: heat.max,
-            bestWeekday: bestAvg > 0 ? dayNames[bestIndex] : "",
-            bestWeekdayAvg: (bestAvg * 10).rounded() / 10,
-            weekdayTotals: totals,
+            bestWeekday: heat.bestWeekday,
+            bestWeekdayAvg: heat.bestWeekdayAvg,
+            weekdayTotals: heat.weekdayTotals,
             days: heat.days
         )
     }
