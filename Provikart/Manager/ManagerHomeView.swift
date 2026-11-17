@@ -28,9 +28,9 @@ final class ManagerHomeViewModel: ObservableObject {
     private var heatmapFetchedAt: Date?
     private var heatmapLoading = false
 
-    /// Aktivita po dnech – z API, jinak z Výkonu týmu.
+    /// Aktivita po dnech – z API, jinak z Výkonu týmu; zobrazené okno jako web.
     var heatmap: ManagerOverviewHeatmap? {
-        payload?.heatmap ?? fallbackHeatmap
+        (payload?.heatmap ?? fallbackHeatmap).map { ManagerHeatmapBuilder.window($0) }
     }
 
     func load(token: String?, silent: Bool = false) async {
@@ -91,6 +91,8 @@ final class ManagerHomeViewModel: ObservableObject {
 
         let months = ManagerHeatmapBuilder.monthsToFetch()
         let service = performanceService
+        // Role členů: web počítá jen obchodníky, manažery a adminy vynechává.
+        async let profiles = try? TeamProfileService().fetchProfiles(token: token, includeSelf: true)
         let payloads = await withTaskGroup(of: ManagerTeamPerformancePayload?.self) { group in
             for month in months {
                 group.addTask { try? await service.fetchPerformance(token: token, month: month) }
@@ -102,7 +104,11 @@ final class ManagerHomeViewModel: ObservableObject {
             return out
         }
         guard !payloads.isEmpty else { return }
-        fallbackHeatmap = ManagerHeatmapBuilder.build(from: payloads)
+        let excluded = Set((await profiles ?? []).filter { profile in
+            let role = (profile.role ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return role == "manager" || role == "admin"
+        }.map(\.id))
+        fallbackHeatmap = ManagerHeatmapBuilder.build(from: payloads, excludingUserIds: excluded)
         heatmapFetchedAt = Date()
     }
 }

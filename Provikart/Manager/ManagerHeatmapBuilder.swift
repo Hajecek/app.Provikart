@@ -5,12 +5,17 @@
 //  Složí heatmapu „Aktivita po dnech“ z dat Výkonu týmu (manager_performance.php),
 //  když ji přehled (manager_overview.php) zatím neposílá. Výpočet odpovídá webu:
 //  týdny po–ne, úroveň 1–4 podle maxima, součty po dnech v týdnu, detail dne.
+//  Stejně jako web bere jen automatický rozpad z objednávek (auto_breakdown) –
+//  bez ručních přepisů – a jen obchodníky (manažery a adminy vynechá).
 //
 
 import Foundation
 
 enum ManagerHeatmapBuilder {
-    static let weeks = 18
+    /// Stejně jako web: data a sytost barev za 26 týdnů…
+    static let weeks = 26
+    /// …a zobrazené okno jako web na střední šířce (14 týdnů).
+    static let visibleWeeks = 14
 
     private static let dayNames = ["Pondělí", "Úterý", "Středa", "Čtvrtek", "Pátek", "Sobota", "Neděle"]
     private static let monthShort = ["Led", "Úno", "Bře", "Dub", "Kvě", "Čvn", "Čvc", "Srp", "Zář", "Říj", "Lis", "Pro"]
@@ -69,7 +74,11 @@ enum ManagerHeatmapBuilder {
         return out
     }
 
-    static func build(from payloads: [ManagerTeamPerformancePayload], today: Date = Date()) -> ManagerOverviewHeatmap {
+    static func build(
+        from payloads: [ManagerTeamPerformancePayload],
+        excludingUserIds excluded: Set<Int> = [],
+        today: Date = Date()
+    ) -> ManagerOverviewHeatmap {
         let cal = calendar
         let todayStart = cal.startOfDay(for: today)
         let start = startDate(today: today)
@@ -79,19 +88,18 @@ enum ManagerHeatmapBuilder {
         var byDayCat: [String: [String: Int]] = [:]
         var byDayUser: [String: [String: Int]] = [:]
         for payload in payloads {
-            for user in payload.users {
+            for user in payload.users where !excluded.contains(user.userId) {
                 let name = displayName(user)
                 for (day, entry) in user.performance {
-                    let breakdown = entry.breakdown ?? entry.autoBreakdown
-                    let count = entry.servicesCount ?? breakdown?.total ?? 0
+                    // Jako web: součet kategorií z objednávek, ruční zápis se nepočítá.
+                    guard let breakdown = entry.autoBreakdown else { continue }
+                    let count = breakdown.total
                     guard count > 0 else { continue }
                     byDay[day, default: 0] += count
                     byDayUser[day, default: [:]][name, default: 0] += count
-                    if let breakdown {
-                        for cat in categories {
-                            let value = cat.value(breakdown)
-                            if value > 0 { byDayCat[day, default: [:]][cat.key, default: 0] += value }
-                        }
+                    for cat in categories {
+                        let value = cat.value(breakdown)
+                        if value > 0 { byDayCat[day, default: [:]][cat.key, default: 0] += value }
                     }
                 }
             }
@@ -190,6 +198,53 @@ enum ManagerHeatmapBuilder {
             bestWeekdayAvg: (bestAvg * 10).rounded() / 10,
             weekdayTotals: weekdayTotals,
             days: days
+        )
+    }
+
+    /// Okno posledních `count` týdnů – součty, měsíce a nejsilnější den
+    /// se přepočítají jen za okno (jako na webu), úrovně barev zůstávají z celé řady.
+    static func window(_ heat: ManagerOverviewHeatmap, lastWeeks count: Int = visibleWeeks) -> ManagerOverviewHeatmap {
+        guard heat.weeks.count > count else { return heat }
+        let from = heat.weeks.count - count
+        let weeks = Array(heat.weeks[from...])
+        var totals = Array(repeating: 0, count: 7)
+        var dayCounts = Array(repeating: 0, count: 7)
+        var total = 0
+        for column in weeks {
+            for (index, cell) in column.enumerated() where index < 7 && !cell.future {
+                totals[index] += cell.count
+                dayCounts[index] += 1
+                total += cell.count
+            }
+        }
+        var months: [ManagerOverviewHeatmap.Month] = []
+        var lastMonth: String?
+        for (index, column) in weeks.enumerated() {
+            guard let first = column.first else { continue }
+            let month = String(first.date.dropFirst(5).prefix(2))
+            if month != lastMonth, let number = Int(month), (1...12).contains(number) {
+                months.append(.init(col: index, label: monthShort[number - 1]))
+                lastMonth = month
+            }
+        }
+        var bestIndex = 0
+        var bestAvg = 0.0
+        for index in 0..<7 {
+            let avg = dayCounts[index] > 0 ? Double(totals[index]) / Double(dayCounts[index]) : 0
+            if avg > bestAvg {
+                bestAvg = avg
+                bestIndex = index
+            }
+        }
+        return ManagerOverviewHeatmap(
+            weeks: weeks,
+            months: months,
+            total: total,
+            max: heat.max,
+            bestWeekday: bestAvg > 0 ? dayNames[bestIndex] : "",
+            bestWeekdayAvg: (bestAvg * 10).rounded() / 10,
+            weekdayTotals: totals,
+            days: heat.days
         )
     }
 
