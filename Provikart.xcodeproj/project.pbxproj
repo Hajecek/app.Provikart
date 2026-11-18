@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0726DB072F5219D2000CC7F6 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 0726DB062F5219D2000CC7F6 /* FirebaseMessaging */; };
+		AE11AB032F6A0001000AE11A /* ElevenLabs in Frameworks */ = {isa = PBXBuildFile; productRef = AE11AB022F6A0001000AE11A /* ElevenLabs */; };
 		078298702F5EEA3B005CB0C9 /* ProvikartWatch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 078298502F5EEA3A005CB0C9 /* ProvikartWatch Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		07FAA3352F55074E00FDE731 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 07FAA3342F55074E00FDE731 /* WidgetKit.framework */; };
 		07FAA3372F55074E00FDE731 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 07FAA3362F55074E00FDE731 /* SwiftUI.framework */; };
@@ -185,6 +186,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				0726DB072F5219D2000CC7F6 /* FirebaseMessaging in Frameworks */,
+				AE11AB032F6A0001000AE11A /* ElevenLabs in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -346,6 +348,7 @@
 			name = Provikart;
 			packageProductDependencies = (
 				0726DB062F5219D2000CC7F6 /* FirebaseMessaging */,
+				AE11AB022F6A0001000AE11A /* ElevenLabs */,
 			);
 			productName = Provikart;
 			productReference = 07EB0A2B2E16A17200204AFA /* Provikart.app */;
@@ -468,6 +471,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				0726DB052F5219D2000CC7F6 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				AE11AB012F6A0001000AE11A /* XCRemoteSwiftPackageReference "elevenlabs-swift-sdk" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 07EB0A2C2E16A17200204AFA /* Products */;
@@ -909,7 +913,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Provikart/Provikart.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = W6R3HZD7R4;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -918,7 +922,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Provikart potřebuje foťák, aby šlo vyfotit rodinný dům a fotku uložit k lokalitě.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Provikart používá Face ID pro rychlé a bezpečné ověření identity při návratu do aplikace.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Aplikace potřebuje přístup k mikrofonu pro hlasové vyhledávání a nahrávání.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Provikart potřebuje mikrofon pro hlasové vyhledávání, diktování a hovor s asistentkou Aikou.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Provikart ukládá obrázek Lucky Box karty do tvé galerie, abys ho mohl sdílet s kamarády.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Aplikace používá rozpoznávání řeči pro přepis diktovaného textu objednávky.";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
@@ -950,7 +954,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Provikart/Provikart.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = W6R3HZD7R4;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -959,7 +963,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Provikart potřebuje foťák, aby šlo vyfotit rodinný dům a fotku uložit k lokalitě.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Provikart používá Face ID pro rychlé a bezpečné ověření identity při návratu do aplikace.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Aplikace potřebuje přístup k mikrofonu pro hlasové vyhledávání a nahrávání.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Provikart potřebuje mikrofon pro hlasové vyhledávání, diktování a hovor s asistentkou Aikou.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Provikart ukládá obrázek Lucky Box karty do tvé galerie, abys ho mohl sdílet s kamarády.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Aplikace používá rozpoznávání řeči pro přepis diktovaného textu objednávky.";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
@@ -1206,6 +1210,14 @@
 				minimumVersion = 12.10.0;
 			};
 		};
+		AE11AB012F6A0001000AE11A /* XCRemoteSwiftPackageReference "elevenlabs-swift-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/elevenlabs/elevenlabs-swift-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.4.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1213,6 +1225,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 0726DB052F5219D2000CC7F6 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseMessaging;
+		};
+		AE11AB022F6A0001000AE11A /* ElevenLabs */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AE11AB012F6A0001000AE11A /* XCRemoteSwiftPackageReference "elevenlabs-swift-sdk" */;
+			productName = ElevenLabs;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

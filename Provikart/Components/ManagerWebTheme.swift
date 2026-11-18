@@ -56,11 +56,14 @@ struct ManagerGlassFill: ShapeStyle {
     }
 }
 
-/// Logo v horní liště manažerských obrazovek.
+/// Logo v horní liště manažerských obrazovek + koule asistentky AIKA.
 struct ManagerToolbarLogo: View {
     var body: some View {
-        ProvikartBrandLogoView(style: .large)
-            .fixedSize()
+        HStack(spacing: 16) {
+            ProvikartBrandLogoView(style: .large)
+            AikaToolbarButton()
+        }
+        .fixedSize()
     }
 }
 
