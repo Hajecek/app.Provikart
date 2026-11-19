@@ -79,6 +79,10 @@ enum WidgetDataStore {
         reloadManagerWidgetTimelines()
     }
 
+    static var isNationalManager: Bool {
+        suite?.string(forKey: Keys.userRole) == UserRole.nationalManager.rawValue
+    }
+
     static var isManager: Bool {
         suite?.string(forKey: Keys.userRole) == UserRole.manager.rawValue
     }

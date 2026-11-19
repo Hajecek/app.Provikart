@@ -122,6 +122,9 @@ enum NotificationChannel: String, CaseIterable, Identifiable {
                 .managerAttendance,
                 .managerGeneral
             ]
+        case .nationalManager:
+            // Národní manažer zatím nemá vlastní push kanály (web je u něj taky nemá).
+            return []
         case .user, .unknown:
             return [
                 .userOrders,

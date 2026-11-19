@@ -46,7 +46,10 @@ enum CommissionBackgroundRefresh {
         }
         Task {
             let success: Bool
-            if WidgetDataStore.isManager {
+            if WidgetDataStore.isNationalManager {
+                // Národní manažer nemá provizi ani týmové widgety.
+                success = true
+            } else if WidgetDataStore.isManager {
                 await ManagerWidgetRefresh.refreshAll(token: token)
                 success = true
             } else {

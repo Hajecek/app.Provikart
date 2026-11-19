@@ -13,6 +13,7 @@ import SwiftUI
 import Combine
 import AVFoundation
 import ElevenLabs
+import LiveKit
 
 struct AikaTranscriptLine: Identifiable, Equatable {
     enum Role: String { case user, assistant }
@@ -90,19 +91,21 @@ final class AikaCallEngine: ObservableObject {
     // MARK: - Připojení
 
     private func connect(api: AikaAPI, generation gen: Int) async {
+        // Token hovoru se stahuje už během dotazu na mikrofon – start je o jeden síťový krok rychlejší.
+        async let pendingSession = api.startSession()
         let granted = await AVAudioApplication.requestRecordPermission()
         guard gen == generation, inCall else { return }
         guard granted else {
             finish(message: "Bez přístupu k mikrofonu to nepůjde. Povol mikrofon v Nastavení → Provikart.")
             return
         }
+        // Mikrofon a hlasové zpracování se nahřejí hned, souběžně se stahováním tokenu –
+        // jinak by se zapínaly až po připojení k ElevenLabs a první slova by se ztratila / zasekla.
+        Self.prewarmMicrophone()
 
         let session: AikaSession
         do {
-            async let s = api.startSession()
-            async let t = (try? api.toolNames()) ?? []
-            session = try await s
-            toolNames = Set(await t)
+            session = try await pendingSession
         } catch {
             guard gen == generation else { return }
             finish(message: (error as? AikaAPIError)?.message ?? "Nepodařilo se spojit se serverem. Zkontroluj připojení.")
@@ -294,7 +297,30 @@ final class AikaCallEngine: ObservableObject {
         isMuted = false
         level = 0
         state = .idle
+        Self.releaseMicrophone()
         if let message { notice = message }
+    }
+
+    // MARK: - Mikrofon předem
+
+    /// Spustí nahrávací cestu (mikrofon + hlasové zpracování) ještě před připojením, ztlumeně.
+    /// SDK ElevenLabs by to udělalo až po připojení k místnosti – to je ta prodleva na začátku.
+    nonisolated static func prewarmMicrophone() {
+        #if !targetEnvironment(simulator)
+        Task.detached(priority: .userInitiated) {
+            do { try await LiveKit.AudioManager.shared.setRecordingAlwaysPreparedMode(true) }
+            catch { print("[AIKA] Mikrofon se nepodařilo připravit předem: \(error)") }
+        }
+        #endif
+    }
+
+    /// Po hovoru mikrofon uvolnit, ať nesvítí oranžová tečka a nežere baterii.
+    nonisolated static func releaseMicrophone() {
+        #if !targetEnvironment(simulator)
+        Task.detached(priority: .utility) {
+            try? await LiveKit.AudioManager.shared.setRecordingAlwaysPreparedMode(false)
+        }
+        #endif
     }
 
     // MARK: - Hlasitost pro kouli

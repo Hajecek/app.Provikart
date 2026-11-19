@@ -133,22 +133,15 @@ final class ManagerLocationsViewModel: ObservableObject {
     @Published var attendanceByUser: [Int: ManagerAttendanceUser] = [:]
     @Published var isLoading = false
     @Published var errorMessage: String?
+    /// Předpočítané stavy – nepočítají se znovu při každém překreslení.
+    @Published private(set) var statusByUser: [Int: ManagerLocationReportStatus] = [:]
+    @Published private(set) var filledCount = 0
+    @Published private(set) var absentCount = 0
+    @Published private(set) var missingCount = 0
 
     private let locationsService = ManagerLocationsService()
     private let membersService = ManagerTeamMembersService()
     private let attendanceService = ManagerAttendanceService()
-
-    var filledCount: Int {
-        members.filter { isReported(for: $0) }.count
-    }
-
-    var absentCount: Int {
-        members.filter { isAbsent(for: $0) }.count
-    }
-
-    var missingCount: Int {
-        members.filter { isMissingLocation(for: $0) }.count
-    }
 
     var completionRate: Double {
         guard !members.isEmpty else { return 0 }
@@ -160,9 +153,11 @@ final class ManagerLocationsViewModel: ObservableObject {
             members = []
             locationsByUser = [:]
             attendanceByUser = [:]
+            recomputeStatuses()
             errorMessage = "Nejste přihlášeni."
             return
         }
+        let requestedDate = selectedDate
         isLoading = true
         errorMessage = nil
         do {
@@ -172,13 +167,17 @@ final class ManagerLocationsViewModel: ObservableObject {
             async let fetchedLocations = locationsService.fetchLocations(token: token, workDate: date)
             async let fetchedAttendance = attendanceService.fetchAttendance(token: token, month: month, includeSelf: true)
             let (membersPayload, locationsPayload, attendancePayload) = try await (fetchedMembers, fetchedLocations, fetchedAttendance)
+            // Mezitím se změnilo datum – starší odpověď nepřepíše novější.
+            guard requestedDate == selectedDate else { return }
             members = membersPayload
             locationsByUser = Dictionary(grouping: locationsPayload, by: { $0.userId })
             attendanceByUser = attendancePayload.users.reduce(into: [:]) { result, user in
                 result[user.userId] = user
             }
+            recomputeStatuses()
             isLoading = false
         } catch {
+            guard requestedDate == selectedDate else { return }
             isLoading = false
             guard !Self.isCancellation(error) else { return }
             // Při chybě nemažeme stávající data (např. cancel z pull-to-refresh).
@@ -262,7 +261,30 @@ final class ManagerLocationsViewModel: ObservableObject {
     }
 
     func locationStatus(for member: ManagerTeamMember) -> ManagerLocationReportStatus {
-        if let absence = absenceStatus(for: member) {
+        statusByUser[member.id] ?? computeStatus(for: member)
+    }
+
+    private func recomputeStatuses() {
+        let day = Self.apiDateFormatter.string(from: selectedDate)
+        var statuses: [Int: ManagerLocationReportStatus] = [:]
+        var filled = 0, absent = 0, missing = 0
+        for member in members {
+            let status = computeStatus(for: member, day: day)
+            statuses[member.id] = status
+            switch status {
+            case .reported: filled += 1
+            case .absent: absent += 1
+            case .missing: missing += 1
+            }
+        }
+        statusByUser = statuses
+        filledCount = filled
+        absentCount = absent
+        missingCount = missing
+    }
+
+    private func computeStatus(for member: ManagerTeamMember, day: String? = nil) -> ManagerLocationReportStatus {
+        if let absence = absenceStatus(for: member, day: day ?? Self.apiDateFormatter.string(from: selectedDate)) {
             return .absent(absence)
         }
         if hasLocation(for: member) {
@@ -288,8 +310,7 @@ final class ManagerLocationsViewModel: ObservableObject {
         selectedDate = updated
     }
 
-    private func absenceStatus(for member: ManagerTeamMember) -> String? {
-        let day = Self.apiDateFormatter.string(from: selectedDate)
+    private func absenceStatus(for member: ManagerTeamMember, day: String) -> String? {
         guard let entry = attendanceByUser[member.id]?.attendance[day] else {
             return nil
         }
@@ -400,15 +421,11 @@ struct ManagerLocationsSheetView: View {
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
             }
-            .onChange(of: viewModel.selectedDate) { _, _ in
-                Task {
-                    await viewModel.load(token: authState.authToken)
-                }
-            }
             .refreshable {
                 await viewModel.load(token: authState.authToken)
             }
-            .task {
+            // Při změně data se předchozí načítání zruší (žádné souběžné požadavky).
+            .task(id: viewModel.selectedDate) {
                 await viewModel.load(token: authState.authToken)
             }
         }
@@ -658,7 +675,8 @@ struct ManagerLocationsSheetView: View {
     }
 
     private var membersSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let filteredMembers = filteredMembers
+        return VStack(alignment: .leading, spacing: 10) {
             if filteredMembers.isEmpty {
                 ContentUnavailableView {
                     Label("Žádné výsledky", systemImage: "magnifyingglass")

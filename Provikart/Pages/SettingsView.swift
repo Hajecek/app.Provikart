@@ -48,8 +48,13 @@ struct SettingsView: View {
         authState.currentRole == .manager
     }
 
+    private var isNationalManagerRole: Bool {
+        authState.currentRole == .nationalManager
+    }
+
     private var notificationRole: UserRole {
-        isManagerRole ? .manager : .user
+        if isNationalManagerRole { return .nationalManager }
+        return isManagerRole ? .manager : .user
     }
 
     private var notificationChannels: [NotificationChannel] {
@@ -94,6 +99,7 @@ struct SettingsView: View {
 
             notificationsSection
 
+            if !isNationalManagerRole {
             Section {
                 if isManagerRole {
                     NavigationLink {
@@ -115,6 +121,7 @@ struct SettingsView: View {
                 Text("Live Activity")
             } footer: {
                 Text(liveActivityFooter)
+            }
             }
 
             Section {

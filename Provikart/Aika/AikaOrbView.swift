@@ -94,6 +94,8 @@ private struct AikaOrbMetalView: UIViewRepresentable {
         view.framebufferOnly = true
         view.preferredFramesPerSecond = 60
         view.isUserInteractionEnabled = false
+        // Žádný Metal HUD (počítadlo FPS) nad koulí.
+        (view.layer as? CAMetalLayer)?.developerHUDProperties = ["mode": "disabled"]
         view.delegate = context.coordinator
         return view
     }

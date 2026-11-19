@@ -29,6 +29,10 @@ struct AikaView: View {
     @EnvironmentObject private var authState: AuthState
     @StateObject private var engine = AikaCallEngine()
     @State private var showTranscript = false
+    /// Když je Aika záložkou ve spodním menu, lišta záložek zůstává vidět.
+    var keepsTabBar = false
+    /// Je-li nastaveno, v liště vlevo je tlačítko „Domů“ (Aika jako záložka bez spodního menu).
+    var onClose: (() -> Void)? = nil
 
     var body: some View {
         ZStack {
@@ -84,6 +88,19 @@ struct AikaView: View {
         .animation(.easeOut(duration: 0.25), value: engine.notice)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            if let onClose {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        engine.stop()
+                        onClose()
+                    } label: {
+                        Label("Domů", systemImage: "chevron.left")
+                            .labelStyle(.titleAndIcon)
+                            .foregroundStyle(AikaStyle.text)
+                    }
+                    .accessibilityLabel("Zpět domů")
+                }
+            }
             ToolbarItem(placement: .principal) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text("Aika").font(.system(size: 18, weight: .bold))
@@ -108,7 +125,7 @@ struct AikaView: View {
         }
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
-        .toolbar(.hidden, for: .tabBar)
+        .toolbar(keepsTabBar ? .visible : .hidden, for: .tabBar)
         .sheet(isPresented: $showTranscript) { transcriptSheet }
         .onAppear { engine.start(token: authState.authToken) }
         .onDisappear { engine.stop() }

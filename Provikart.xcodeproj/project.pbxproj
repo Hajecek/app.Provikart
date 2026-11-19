@@ -8,11 +8,11 @@
 
 /* Begin PBXBuildFile section */
 		0726DB072F5219D2000CC7F6 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 0726DB062F5219D2000CC7F6 /* FirebaseMessaging */; };
-		AE11AB032F6A0001000AE11A /* ElevenLabs in Frameworks */ = {isa = PBXBuildFile; productRef = AE11AB022F6A0001000AE11A /* ElevenLabs */; };
 		078298702F5EEA3B005CB0C9 /* ProvikartWatch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 078298502F5EEA3A005CB0C9 /* ProvikartWatch Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		07FAA3352F55074E00FDE731 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 07FAA3342F55074E00FDE731 /* WidgetKit.framework */; };
 		07FAA3372F55074E00FDE731 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 07FAA3362F55074E00FDE731 /* SwiftUI.framework */; };
 		07FAA3482F55074F00FDE731 /* ProvikartWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 07FAA3322F55074E00FDE731 /* ProvikartWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		AE11AB032F6A0001000AE11A /* ElevenLabs in Frameworks */ = {isa = PBXBuildFile; productRef = AE11AB022F6A0001000AE11A /* ElevenLabs */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -913,7 +913,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Provikart/Provikart.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = W6R3HZD7R4;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -954,7 +954,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Provikart/Provikart.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = W6R3HZD7R4;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;

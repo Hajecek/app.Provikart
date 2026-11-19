@@ -80,6 +80,8 @@ struct ContentView: View {
             await ManagerWidgetRefresh.refreshAll(token: token)
             return
         }
+        // Národní manažer nemá provizi ani týmové widgety.
+        if authState.currentRole == .nationalManager { return }
 
         do {
             let response = try await commissionService.fetchCommission(token: token)

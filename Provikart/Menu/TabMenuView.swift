@@ -37,6 +37,10 @@ struct TabMenuView: View {
             ManagerTabMenuView()
                 .environmentObject(authState)
                 .environmentObject(appLoginApprovalState)
+        case .nationalManager:
+            NationalManagerTabMenuView()
+                .environmentObject(authState)
+                .environmentObject(appLoginApprovalState)
         case .user:
             EmployeeTabMenuView()
                 .environmentObject(authState)

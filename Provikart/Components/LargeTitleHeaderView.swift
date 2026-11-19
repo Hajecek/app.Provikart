@@ -13,12 +13,16 @@ struct AuthenticatedProfileImageView: View {
     /// Jedna velikost pro layout i výřez — vyhni se `.frame` zvenku (jinak se špatně ořezává).
     var size: CGFloat = 44
 
+    @Environment(\.displayScale) private var displayScale
     @State private var image: UIImage?
+    @State private var imageURL: URL?
     @State private var loadFailed = false
+
+    private var pixelSize: CGFloat { size * max(displayScale, 2) }
 
     var body: some View {
         Group {
-            if let image {
+            if let image = (imageURL == url ? image : nil) ?? ProfileImageLoader.shared.cachedImage(url: url, pixelSize: pixelSize) {
                 ZStack {
                     Circle()
                         .fill(Color(uiColor: .systemBackground))
@@ -58,39 +62,25 @@ struct AuthenticatedProfileImageView: View {
     }
 
     private func loadImage() async {
-        loadFailed = false
-        image = nil
-        let urlsToTry = [url] + (fallbackURL.map { [$0] } ?? [])
-        for tryURL in urlsToTry {
-                var requestURL = tryURL
-            if let token, var comp = URLComponents(url: tryURL, resolvingAgainstBaseURL: false) {
-                let existing = comp.queryItems ?? []
-                comp.queryItems = existing + [URLQueryItem(name: "token", value: token)]
-                if let withToken = comp.url { requestURL = withToken }
-            }
-            var request = URLRequest(url: requestURL)
-            request.httpMethod = "GET"
-            if let token {
-                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            }
-            print("[Avatar] Načítám: \(requestURL.absoluteString.prefix(80))…, token: \(token != nil ? "ano" : "ne")")
-            do {
-                let (data, response) = try await URLSession.shared.authAwareData(for: request)
-                let http = response as? HTTPURLResponse
-                let code = http?.statusCode ?? -1
-                if (200...299).contains(code), let img = UIImage(data: data) {
-                    print("[Avatar] OK – načteno \(data.count) bajtů z \(tryURL.absoluteString)")
-                    await MainActor.run {
-                        image = img
-                    }
-                    return
-                }
-                print("[Avatar] HTTP \(code) pro \(tryURL.absoluteString), zkouším další URL…")
-            } catch {
-                print("[Avatar] Chyba pro \(tryURL.absoluteString): \(error.localizedDescription)")
-            }
+        let loader = ProfileImageLoader.shared
+        let pixelSize = pixelSize
+        if let cached = loader.cachedImage(url: url, pixelSize: pixelSize) {
+            image = cached
+            imageURL = url
+            loadFailed = false
+            return
         }
-        loadFailed = true
+        // Nemažeme už zobrazený obrázek – žádné problikávání spinneru při překreslení.
+        loadFailed = false
+        let urlsToTry = [url] + (fallbackURL.map { [$0] } ?? [])
+        let loaded = await loader.image(urls: urlsToTry, token: token, pixelSize: pixelSize)
+        guard !Task.isCancelled else { return }
+        if let loaded {
+            image = loaded
+            imageURL = url
+        } else if image == nil || imageURL != url {
+            loadFailed = true
+        }
     }
 }
 

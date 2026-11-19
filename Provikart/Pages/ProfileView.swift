@@ -143,6 +143,7 @@ struct ProfileView: View {
     private var isManagerRole: Bool {
         switch authState.currentRole {
         case .manager: return true
+        case .nationalManager: return false
         case .user, .unknown:
             let raw = authState.currentUser?.role?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -157,6 +158,7 @@ struct ProfileView: View {
             .lowercased()
         switch raw {
         case "manager": return "Manažer"
+        case "national_manager": return "Národní manažer"
         case "admin": return "Administrátor"
         case "user", "employee": return "Uživatel"
         default:
