@@ -97,16 +97,22 @@ struct AikaView: View {
                     .accessibilityLabel("Zpět domů")
                 }
             }
-            // Nativní spodní lišta: režim (segmenty) a v Tréninku fáze (menu)
+            // Nativní spodní lišta: obyčejná tlačítka toolbaru (menu) – režim, v Tréninku i fáze
             ToolbarItem(placement: .bottomBar) {
-                Picker("Režim Aiky", selection: Binding(
-                    get: { engine.mode },
-                    set: { engine.switchMode($0, token: authState.authToken) }
-                )) {
-                    ForEach(AikaMode.allCases) { Text($0.title).tag($0) }
+                Menu {
+                    Picker("Režim Aiky", selection: Binding(
+                        get: { engine.mode },
+                        set: { engine.switchMode($0, token: authState.authToken) }
+                    )) {
+                        ForEach(AikaMode.allCases) { item in
+                            Label(item.title, systemImage: item == .trenink ? "figure.walk" : "sparkles").tag(item)
+                        }
+                    }
+                } label: {
+                    Label(engine.mode.title, systemImage: engine.mode == .trenink ? "figure.walk" : "sparkles")
+                        .labelStyle(.titleAndIcon)
                 }
-                .pickerStyle(.segmented)
-                .frame(width: 210)
+                .accessibilityLabel("Režim Aiky: \(engine.mode.title)")
             }
             if engine.mode == .trenink {
                 ToolbarSpacer(.flexible, placement: .bottomBar)
@@ -119,7 +125,7 @@ struct AikaView: View {
                             ForEach(AikaTrainingPhase.allCases) { Text($0.title).tag($0) }
                         }
                     } label: {
-                        Label(engine.phase.title, systemImage: "figure.walk")
+                        Label(engine.phase.title, systemImage: "list.bullet")
                             .labelStyle(.titleAndIcon)
                     }
                     .accessibilityLabel("Fáze tréninku: \(engine.phase.title)")
