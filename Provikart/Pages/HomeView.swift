@@ -217,6 +217,14 @@ struct HomeView: View {
                     }
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
+                    // Aika – trénink pro obchodníky zatím jen jako upoutávka
+                    NavigationLink {
+                        AikaComingSoonView()
+                    } label: {
+                        AikaOrbView(level: 0.35, glow: false, zoom: 0.66, spin: 1.8, training: true, fps: 24)
+                            .frame(width: 28, height: 28)
+                    }
+                    .accessibilityLabel("Aika")
                     NavigationLink {
                         CollectiblesCollectionView()
                             .environmentObject(authState)

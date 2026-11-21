@@ -32,7 +32,11 @@ final class AikaCallEngine: ObservableObject {
     @Published private(set) var transcript: [AikaTranscriptLine] = []
     @Published var notice: String?
     /// Asistent (data týmu) nebo Trénink (zákazník u dveří).
-    @Published private(set) var mode: AikaMode = .asistent
+    /// Poslední zvolený režim platí i po novém spuštění aplikace.
+    @Published private(set) var mode: AikaMode = AikaMode(rawValue: UserDefaults.standard.string(forKey: AikaCallEngine.modeKey) ?? "") ?? .asistent {
+        didSet { UserDefaults.standard.set(mode.rawValue, forKey: AikaCallEngine.modeKey) }
+    }
+    private static let modeKey = "AikaMode"
 
     private var conversation: Conversation?
     private var api: AikaAPI?

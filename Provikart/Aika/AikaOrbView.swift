@@ -77,11 +77,13 @@ struct AikaOrbView: View {
     var spin: Float = 0
     /// Trénink: teplé barvy zákazníka.
     var training: Bool = false
+    /// Snímky za sekundu; malé ozdobné koule (lišta) stačí kreslit pomaleji – šetří baterii.
+    var fps: Int = 60
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        AikaOrbMetalView(state: state, level: level, reduced: reduceMotion, training: training, extra: SIMD4(glow ? 1 : 0, zoom, reduceMotion ? 0 : spin, 0))
+        AikaOrbMetalView(state: state, level: level, reduced: reduceMotion, training: training, fps: fps, extra: SIMD4(glow ? 1 : 0, zoom, reduceMotion ? 0 : spin, 0))
             .aspectRatio(1, contentMode: .fit)
             .accessibilityHidden(true)
     }
@@ -93,6 +95,7 @@ private struct AikaOrbMetalView: UIViewRepresentable {
     let level: Double
     let reduced: Bool
     let training: Bool
+    let fps: Int
     let extra: SIMD4<Float>
 
     func makeCoordinator() -> AikaOrbRenderer { AikaOrbRenderer() }
@@ -105,7 +108,7 @@ private struct AikaOrbMetalView: UIViewRepresentable {
         view.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
         view.colorPixelFormat = .bgra8Unorm
         view.framebufferOnly = true
-        view.preferredFramesPerSecond = 60
+        view.preferredFramesPerSecond = fps
         view.isUserInteractionEnabled = false
         // Žádný Metal HUD (počítadlo FPS) nad koulí.
         (view.layer as? CAMetalLayer)?.developerHUDProperties = ["mode": "disabled"]
@@ -118,6 +121,7 @@ private struct AikaOrbMetalView: UIViewRepresentable {
         context.coordinator.target = level
         context.coordinator.reduced = reduced
         context.coordinator.training = training
+        if view.preferredFramesPerSecond != fps { view.preferredFramesPerSecond = fps }
         context.coordinator.extra = extra
     }
 }
@@ -206,7 +210,7 @@ struct AikaToolbarButton: View {
         } label: {
             // Bez záře (v liště by dělala tmavý čtverec), koule přes celý rámeček, velká jako logo (34 b).
             // Stálá „hlasitost“ 0.35 rozvlní okraj a zrychlí vzor, spin ji viditelně otáčí.
-            AikaOrbView(level: 0.35, glow: false, zoom: 0.66, spin: 1.8)
+            AikaOrbView(level: 0.35, glow: false, zoom: 0.66, spin: 1.8, fps: 24)
                 .frame(width: 34, height: 34)
                 .contentShape(Circle())
         }

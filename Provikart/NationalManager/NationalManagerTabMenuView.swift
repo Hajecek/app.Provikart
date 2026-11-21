@@ -128,7 +128,7 @@ struct TabBarAikaOrb: UIViewRepresentable {
             let bar = controller.tabBar
             tabBar = bar
 
-            let orb = AikaOrbView(level: 0.35, glow: false, zoom: 0.66, spin: 1.8)
+            let orb = AikaOrbView(level: 0.35, glow: false, zoom: 0.66, spin: 1.8, fps: 24)
                 .frame(width: TabBarAikaOrb.orbSize, height: TabBarAikaOrb.orbSize)
             let host = UIHostingController(rootView: AnyView(orb))
             host.view.backgroundColor = .clear
