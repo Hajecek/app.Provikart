@@ -37,6 +37,12 @@ final class AikaCallEngine: ObservableObject {
         didSet { UserDefaults.standard.set(mode.rawValue, forKey: AikaCallEngine.modeKey) }
     }
     private static let modeKey = "AikaMode"
+    /// Časovač: kdy hovor začal (u tréninku zazvoněním) a kdy skončil – po konci zůstane vidět délka.
+    @Published private(set) var callStartedAt: Date?
+    @Published private(set) var callEndedAt: Date?
+    /// Trénink: obchodník právě zvoní / čeká, až se otevřou dveře.
+    @Published private(set) var ringing = false
+    private var doorPlayer: AVAudioPlayer?
 
     private var conversation: Conversation?
     private var api: AikaAPI?
@@ -54,6 +60,8 @@ final class AikaCallEngine: ObservableObject {
     func start(token appToken: String?, mode newMode: AikaMode? = nil) {
         guard !inCall else { return }
         if let newMode { mode = newMode }
+        callStartedAt = Date()
+        callEndedAt = nil
         guard let token = AikaConfig.token(from: appToken), !token.isEmpty else {
             notice = "Nejsi přihlášený. Přihlas se znovu."
             return
@@ -84,6 +92,8 @@ final class AikaCallEngine: ObservableObject {
         if wasInCall { stop() }
         mode = newMode
         transcript = []
+        callStartedAt = nil
+        callEndedAt = nil
         notice = nil
         if wasInCall { start(token: appToken, mode: newMode) }
     }
@@ -118,10 +128,6 @@ final class AikaCallEngine: ObservableObject {
             finish(message: "Bez přístupu k mikrofonu to nepůjde. Povol mikrofon v Nastavení → Provikart.")
             return
         }
-        // Mikrofon a hlasové zpracování se nahřejí hned, souběžně se stahováním tokenu –
-        // jinak by se zapínaly až po připojení k ElevenLabs a první slova by se ztratila / zasekla.
-        Self.prewarmMicrophone()
-
         let session: AikaSession
         do {
             session = try await pendingSession
@@ -131,6 +137,21 @@ final class AikaCallEngine: ObservableObject {
             return
         }
         guard gen == generation, inCall, !Task.isCancelled else { return }
+
+        // Trénink: obchodník zazvoní, chvíli čeká a pak se otevřou dveře – teprve potom se zákazník ozve.
+        if callMode == .trenink, let bell = session.zvonek {
+            ringing = true
+            await Self.playToEnd("zvonek-" + bell)
+            try? await Task.sleep(nanoseconds: UInt64.random(in: 600_000_000...1_500_000_000))
+            ringing = false
+            guard gen == generation, inCall, !Task.isCancelled else { return }
+            doorPlayer = Self.player("dvere")
+            doorPlayer?.play()
+        }
+
+        // Mikrofon a hlasové zpracování se nahřejí před připojením k ElevenLabs,
+        // jinak by se zapínaly až po připojení a první slova by se ztratila / zasekla.
+        Self.prewarmMicrophone()
 
         #if targetEnvironment(simulator)
         // Simulátor neumí hlasové zpracování iOS (VPIO) → audio engine hlásí −3010 a mikrofon se nezapne.
@@ -230,7 +251,8 @@ final class AikaCallEngine: ObservableObject {
                     AikaTranscriptLine(
                         id: $0.id,
                         role: $0.role == .user ? .user : .assistant,
-                        text: $0.content,
+                        // výrazové značky pro hlas ([sighs], [laughs] …) do přepisu nepatří
+                        text: $0.content.replacingOccurrences(of: #"\[[A-Za-z ]{2,24}\]\s*"#, with: "", options: .regularExpression),
                         final: true
                     )
                 }
@@ -310,6 +332,9 @@ final class AikaCallEngine: ObservableObject {
 
     private func finish(message: String? = nil) {
         generation += 1
+        ringing = false
+        doorPlayer = nil
+        if callStartedAt != nil, callEndedAt == nil { callEndedAt = Date() }
         subscriptions.removeAll()
         toolTasks.values.forEach { $0.cancel() }
         toolTasks.removeAll()
@@ -328,6 +353,26 @@ final class AikaCallEngine: ObservableObject {
 
     /// Spustí nahrávací cestu (mikrofon + hlasové zpracování) ještě před připojením, ztlumeně.
     /// SDK ElevenLabs by to udělalo až po připojení k místnosti – to je ta prodleva na začátku.
+    // MARK: - Zvuky u dveří (trénink)
+
+    private static func player(_ name: String) -> AVAudioPlayer? {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "mp3")
+                ?? Bundle.main.url(forResource: name, withExtension: "mp3", subdirectory: "Sounds") else { return nil }
+        // zvonek se má ozvat i při tichém režimu, LiveKit si pak session přenastaví pro hovor
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+        try? AVAudioSession.sharedInstance().setActive(true)
+        let p = try? AVAudioPlayer(contentsOf: url)
+        p?.prepareToPlay()
+        return p
+    }
+
+    /// Přehraje zvuk a počká na jeho konec.
+    private static func playToEnd(_ name: String) async {
+        guard let p = player(name) else { return }
+        p.play()
+        try? await Task.sleep(nanoseconds: UInt64(max(0.3, p.duration) * 1_000_000_000))
+    }
+
     nonisolated static func prewarmMicrophone() {
         #if !targetEnvironment(simulator)
         Task.detached(priority: .userInitiated) {

@@ -53,6 +53,8 @@ struct AikaSession: Sendable {
     let dynamicVariables: [String: String]
     /// Trénink: hlas zákazníka vylosovaný serverem (muž / žena) – posílá se jako override.
     let voiceId: String?
+    /// Trénink: zvuk zvonku, který se přehraje před otevřením dveří (dingdong, gong, bzucak, stary).
+    let zvonek: String?
 }
 
 struct AikaAPIError: LocalizedError {
@@ -129,7 +131,8 @@ struct AikaAPI: Sendable {
             conversationId: json["conversation_id"] as? String,
             agentId: json["agent_id"] as? String,
             dynamicVariables: vars,
-            voiceId: (json["voice_id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            voiceId: (json["voice_id"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+            zvonek: (json["zvonek"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         )
     }
 

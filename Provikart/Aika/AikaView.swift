@@ -103,11 +103,15 @@ struct AikaView: View {
                 }
             }
             ToolbarItem(placement: .principal) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("Aika").font(.system(size: 18, weight: .bold))
-                    Text("VOICE").font(.system(size: 12, weight: .medium)).tracking(1.5).foregroundStyle(AikaStyle.muted)
+                if let started = engine.callStartedAt {
+                    callTimer(started: started, ended: engine.callEndedAt)
+                } else {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text("Aika").font(.system(size: 18, weight: .bold))
+                        Text("VOICE").font(.system(size: 12, weight: .medium)).tracking(1.5).foregroundStyle(AikaStyle.muted)
+                    }
+                    .foregroundStyle(AikaStyle.text)
                 }
-                .foregroundStyle(AikaStyle.text)
             }
             if !engine.transcript.isEmpty {
                 // přepis je v horní liště, ať se neplete s přepínačem režimu
@@ -173,6 +177,28 @@ struct AikaView: View {
         .glassPill()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Režim Aiky")
+    }
+
+    // MARK: - Časovač hovoru (po konci zůstane délka)
+
+    private func callTimer(started: Date, ended: Date?) -> some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let secs = max(0, Int((ended ?? context.date).timeIntervalSince(started)))
+            HStack(spacing: 7) {
+                if ended == nil {
+                    Circle().fill(Color(red: 1, green: 77 / 255, blue: 106 / 255)).frame(width: 7, height: 7)
+                }
+                Text(String(format: "%02d:%02d", secs / 60, secs % 60))
+                    .font(.system(size: 17, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(ended == nil ? AikaStyle.text : AikaStyle.muted)
+                if engine.ringing {
+                    Text("zvoníš…").font(.system(size: 13)).foregroundStyle(AikaStyle.muted)
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Délka hovoru \(secs / 60) minut \(secs % 60) sekund")
+        }
     }
 
     // MARK: - Přepis (tlačítko v horní liště)
