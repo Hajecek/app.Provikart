@@ -14,6 +14,7 @@ import Combine
 import AVFoundation
 import ElevenLabs
 import LiveKit
+import os
 
 struct AikaTranscriptLine: Identifiable, Equatable {
     enum Role: String { case user, assistant }
@@ -101,7 +102,8 @@ final class AikaCallEngine: ObservableObject {
     /// Přepnutí režimu: běžící hovor skončí dřív, než začne nový (nikdy dva hovory naráz).
     func switchMode(_ newMode: AikaMode, token appToken: String?) {
         guard newMode != mode else { return }
-        if inCall { stop() }
+        Log.aika.info("Přepínám režim \(self.mode.rawValue, privacy: .public) → \(newMode.rawValue, privacy: .public)")
+        if inCall { stop(keepMicrophone: true) }
         mode = newMode
         transcript = []
         callStartedAt = nil
@@ -115,16 +117,18 @@ final class AikaCallEngine: ObservableObject {
     func switchPhase(_ newPhase: AikaTrainingPhase, token appToken: String?) {
         guard newPhase != phase else { return }
         guard mode == .trenink else { phase = newPhase; return }
-        if inCall { stop() }
+        if inCall { stop(keepMicrophone: true) }
         phase = newPhase
         transcript = []
         start(token: appToken)
     }
 
-    func stop() {
+    /// `keepMicrophone`: při přepnutí režimu/fáze zůstane mikrofon připravený – další hovor naváže hned
+    /// a audio engine se zbytečně dvakrát nerestartuje.
+    func stop(keepMicrophone: Bool = false) {
         userEnded = true
         startTask?.cancel()
-        finish(ending: conversation)
+        finish(ending: conversation, releaseMicrophone: !keepMicrophone)
     }
 
     func toggleMute() {
@@ -142,8 +146,11 @@ final class AikaCallEngine: ObservableObject {
     private func connect(api: AikaAPI, mode callMode: AikaMode, phase callPhase: AikaTrainingPhase, after previousTeardown: Task<Void, Never>?, generation gen: Int) async {
         // Token hovoru se stahuje už během dotazu na mikrofon – start je o jeden síťový krok rychlejší.
         async let pendingSession = api.startSession(mode: callMode, phase: callPhase)
-        // Při přepnutí režimu musí starý hovor úplně skončit, než se sáhne na audio.
-        await previousTeardown?.value
+        // Při přepnutí režimu musí starý hovor skončit, než se sáhne na audio – ale nejdéle 2 s,
+        // ať se přepnutí nikdy nezasekne na dobíhajícím odpojení.
+        let switchStart = Date()
+        if let previousTeardown { await Self.wait(for: previousTeardown, atMost: 2) }
+        Log.aika.info("Starý hovor uklizen za \(Date().timeIntervalSince(switchStart), format: .fixed(precision: 2), privacy: .public) s")
         let granted = await AVAudioApplication.requestRecordPermission()
         guard gen == generation, inCall else { return }
         guard granted else {
@@ -212,6 +219,7 @@ final class AikaCallEngine: ObservableObject {
                 await conv.endConversation()
                 return
             }
+            Log.aika.info("Hovor \(callMode.rawValue, privacy: .public) připojen za \(Date().timeIntervalSince(switchStart), format: .fixed(precision: 2), privacy: .public) s")
             conversation = conv
             bind(conv, generation: gen)
             startLevelLoop(generation: gen)
@@ -377,7 +385,7 @@ final class AikaCallEngine: ObservableObject {
         }
     }
 
-    private func finish(message: String? = nil, ending conv: Conversation? = nil) {
+    private func finish(message: String? = nil, ending conv: Conversation? = nil, releaseMicrophone: Bool = true) {
         generation += 1
         ringing = false
         doorPlayer = nil
@@ -400,7 +408,7 @@ final class AikaCallEngine: ObservableObject {
             await previous?.value
             await oldStart?.value
             if let conv { await conv.endConversation() }
-            await Self.releaseMicrophone()
+            if releaseMicrophone { await Self.releaseMicrophone() }
         }
         if let message { notice = message }
     }
@@ -414,12 +422,28 @@ final class AikaCallEngine: ObservableObject {
     private static func player(_ name: String) -> AVAudioPlayer? {
         guard let url = Bundle.main.url(forResource: name, withExtension: "mp3")
                 ?? Bundle.main.url(forResource: name, withExtension: "mp3", subdirectory: "Sounds") else { return nil }
-        // zvonek se má ozvat i při tichém režimu, LiveKit si pak session přenastaví pro hovor
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
-        try? AVAudioSession.sharedInstance().setActive(true)
+        // Zvonek se má ozvat i při tichém režimu. Když je session už nastavená pro hovor
+        // (přepnutí z Asistenta), nesahat na ni – přepnutí na .playback by vypnulo připravený mikrofon.
+        let session = AVAudioSession.sharedInstance()
+        if session.category != .playAndRecord {
+            try? session.setCategory(.playback, mode: .default)
+            try? session.setActive(true)
+        }
         let p = try? AVAudioPlayer(contentsOf: url)
         p?.prepareToPlay()
         return p
+    }
+
+    /// Počká na úlohu, ale nejdéle `seconds` sekund.
+    private static func wait(for task: Task<Void, Never>, atMost seconds: Double) async {
+        // (task group by čekal i na nedokončenou úlohu – proto jednoduchý příznak)
+        let done = OSAllocatedUnfairLock(initialState: false)
+        Task { await task.value; done.withLock { $0 = true } }
+        var waited = 0.0
+        while waited < seconds, !done.withLock({ $0 }) {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            waited += 0.05
+        }
     }
 
     /// Přehraje zvuk a počká na jeho konec.
