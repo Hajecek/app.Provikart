@@ -46,6 +46,22 @@ enum AikaMode: String, CaseIterable, Identifiable, Sendable {
     var agentLabel: String { self == .asistent ? "AIKA" : "ZÁKAZNÍK" }
 }
 
+/// Fáze tréninku: u dveří (dostat se dovnitř), uvnitř (zjišťování potřeb), námitky (po nabídce).
+enum AikaTrainingPhase: String, CaseIterable, Identifiable, Sendable {
+    case nominace
+    case uvnitr
+    case namitky
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .nominace: "Nominace"
+        case .uvnitr: "Uvnitř"
+        case .namitky: "Námitky"
+        }
+    }
+}
+
 struct AikaSession: Sendable {
     let token: String
     let conversationId: String?
@@ -114,8 +130,8 @@ struct AikaAPI: Sendable {
         throw AikaAPIError(message: serverMsg?.isEmpty == false ? serverMsg! : fallback, status: status)
     }
 
-    func startSession(mode: AikaMode = .asistent) async throws -> AikaSession {
-        let json = try await send(request("/aika/api/session.php", method: "POST", body: ["transport": "webrtc", "rezim": mode.rawValue]))
+    func startSession(mode: AikaMode = .asistent, phase: AikaTrainingPhase = .nominace) async throws -> AikaSession {
+        let json = try await send(request("/aika/api/session.php", method: "POST", body: ["transport": "webrtc", "rezim": mode.rawValue, "faze": phase.rawValue]))
         guard let token = json["token"] as? String, !token.isEmpty else {
             throw AikaAPIError(message: "Server nevrátil token hovoru.", status: 200)
         }

@@ -32,6 +32,7 @@ struct AikaView: View {
     @StateObject private var engine = AikaCallEngine()
     @State private var showTranscript = false
     @Namespace private var modeAnimation
+    @Namespace private var phaseAnimation
     /// Když je Aika záložkou ve spodním menu, lišta záložek zůstává vidět.
     var keepsTabBar = false
     /// Je-li nastaveno, v liště vlevo je tlačítko „Domů“ (Aika jako záložka bez spodního menu).
@@ -48,7 +49,14 @@ struct AikaView: View {
             .ignoresSafeArea()
 
             VStack(spacing: 6) {
-                modeSwitch
+                VStack(spacing: 8) {
+                    modeSwitch
+                    if engine.mode == .trenink {
+                        phaseSwitch
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
+                }
+                .animation(.snappy(duration: 0.28), value: engine.mode)
                 .padding(.top, 4)
                 .padding(.horizontal, 16)
 
@@ -199,6 +207,41 @@ struct AikaView: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Délka hovoru \(secs / 60) minut \(secs % 60) sekund")
         }
+    }
+
+    // MARK: - Fáze tréninku (menší přepínač pod hlavním)
+
+    private var phaseSwitch: some View {
+        HStack(spacing: 2) {
+            ForEach(AikaTrainingPhase.allCases) { item in
+                let selected = engine.phase == item
+                Button {
+                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    withAnimation(.snappy(duration: 0.28)) {
+                        engine.switchPhase(item, token: authState.authToken)
+                    }
+                } label: {
+                    Text(item.title)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(selected ? AikaStyle.onPill : Color.white.opacity(0.84))
+                        .padding(.horizontal, 13)
+                        .padding(.vertical, 7)
+                        .background {
+                            if selected {
+                                Capsule()
+                                    .fill(Color.white)
+                                    .matchedGeometryEffect(id: "phase", in: phaseAnimation)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+        }
+        .padding(3)
+        .glassPill()
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Fáze tréninku")
     }
 
     // MARK: - Přepis (tlačítko v horní liště)

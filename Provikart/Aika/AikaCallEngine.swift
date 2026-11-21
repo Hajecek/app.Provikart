@@ -37,6 +37,11 @@ final class AikaCallEngine: ObservableObject {
         didSet { UserDefaults.standard.set(mode.rawValue, forKey: AikaCallEngine.modeKey) }
     }
     private static let modeKey = "AikaMode"
+    /// Fáze tréninku – pamatuje se stejně jako režim.
+    @Published private(set) var phase: AikaTrainingPhase = AikaTrainingPhase(rawValue: UserDefaults.standard.string(forKey: AikaCallEngine.phaseKey) ?? "") ?? .nominace {
+        didSet { UserDefaults.standard.set(phase.rawValue, forKey: AikaCallEngine.phaseKey) }
+    }
+    private static let phaseKey = "AikaTrainingPhase"
     /// Časovač: kdy hovor začal (u tréninku zazvoněním) a kdy skončil – po konci zůstane vidět délka.
     @Published private(set) var callStartedAt: Date?
     @Published private(set) var callEndedAt: Date?
@@ -79,9 +84,10 @@ final class AikaCallEngine: ObservableObject {
         let api = AikaAPI(authToken: token)
         self.api = api
         let callMode = mode
+        let callPhase = phase
 
         startTask = Task { [weak self] in
-            await self?.connect(api: api, mode: callMode, generation: gen)
+            await self?.connect(api: api, mode: callMode, phase: callPhase, generation: gen)
         }
     }
 
@@ -96,6 +102,18 @@ final class AikaCallEngine: ObservableObject {
         callEndedAt = nil
         notice = nil
         if wasInCall { start(token: appToken, mode: newMode) }
+    }
+
+    /// Přepnutí fáze tréninku: běžící trénink skončí a začne znovu v nové fázi.
+    func switchPhase(_ newPhase: AikaTrainingPhase, token appToken: String?) {
+        guard newPhase != phase else { return }
+        let restart = inCall && mode == .trenink
+        if restart { stop() }
+        phase = newPhase
+        if restart {
+            transcript = []
+            start(token: appToken)
+        }
     }
 
     func stop() {
@@ -119,9 +137,9 @@ final class AikaCallEngine: ObservableObject {
 
     // MARK: - Připojení
 
-    private func connect(api: AikaAPI, mode callMode: AikaMode, generation gen: Int) async {
+    private func connect(api: AikaAPI, mode callMode: AikaMode, phase callPhase: AikaTrainingPhase, generation gen: Int) async {
         // Token hovoru se stahuje už během dotazu na mikrofon – start je o jeden síťový krok rychlejší.
-        async let pendingSession = api.startSession(mode: callMode)
+        async let pendingSession = api.startSession(mode: callMode, phase: callPhase)
         let granted = await AVAudioApplication.requestRecordPermission()
         guard gen == generation, inCall else { return }
         guard granted else {
