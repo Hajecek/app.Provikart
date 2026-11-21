@@ -1042,6 +1042,9 @@ struct HomeView: View {
                 if let goal = commissionGoal {
                     WidgetDataStore.saveCommissionGoal(goal)
                 }
+                if let servicesGoal {
+                    WidgetDataStore.saveUserServices(count: nil, goal: servicesGoal)
+                }
             }
         } catch {
             // Cíle nejsou kritické – při chybě zůstane výchozí 100k
@@ -1183,7 +1186,10 @@ struct HomeView: View {
         }
         do {
             let count = try await pendingCompletionService.fetchPendingCount(token: token)
-            await MainActor.run { pendingCompletionCount = count }
+            await MainActor.run {
+                pendingCompletionCount = count
+                WidgetDataStore.savePendingCompletions(count)
+            }
         } catch {
             await MainActor.run { pendingCompletionCount = 0 }
         }
@@ -1201,6 +1207,7 @@ struct HomeView: View {
             await MainActor.run {
                 servicesCount = count
                 PhoneSessionManager.shared.sendServicesCountUpdate(count: count)
+                WidgetDataStore.saveUserServices(count: count)
             }
         } catch {
             await MainActor.run { servicesCount = nil }

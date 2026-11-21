@@ -43,6 +43,10 @@ enum WidgetDataStore {
         static let managerProblemsPreview = "widget_manager_problems_preview"
         static let managerTodayServices = "widget_manager_today_services"
         static let managerTodayServicesDay = "widget_manager_today_services_day"
+        static let pendingCompletions = "widget_pending_completions"
+        static let userServicesCount = "widget_user_services_count"
+        static let userServicesGoal = "widget_user_services_goal"
+        static let managerPerformance = "widget_manager_performance"
     }
 
     private static let dayKeyFormatter: DateFormatter = {
@@ -200,6 +204,9 @@ enum WidgetDataStore {
         suite?.removeObject(forKey: Keys.monthLabel)
         suite?.removeObject(forKey: Keys.lastUpdated)
         suite?.removeObject(forKey: Keys.commissionGoal)
+        suite?.removeObject(forKey: Keys.pendingCompletions)
+        suite?.removeObject(forKey: Keys.userServicesCount)
+        suite?.removeObject(forKey: Keys.userServicesGoal)
         CommissionResponse.clearCached()
         WidgetCenter.shared.reloadTimelines(ofKind: widgetKindCommission)
     }
@@ -216,6 +223,108 @@ enum WidgetDataStore {
         WidgetCenter.shared.reloadTimelines(ofKind: widgetKindReports)
     }
 
+    // MARK: - Data pro Live Activity obchodníka
+
+    /// Poslední uložená provize (z App Group), např. pro ruční start Live Activity z Nastavení.
+    static func loadCommissionSnapshot() -> (commission: Double, currency: String, monthLabel: String?)? {
+        guard let raw = suite?.object(forKey: Keys.commission) as? NSNumber else { return nil }
+        let currency = suite?.string(forKey: Keys.currency) ?? "Kč"
+        return (raw.doubleValue, currency, suite?.string(forKey: Keys.monthLabel))
+    }
+
+    static var userServicesCount: Int? {
+        (suite?.object(forKey: Keys.userServicesCount) as? NSNumber)?.intValue
+    }
+
+    static var userServicesGoal: Int? {
+        (suite?.object(forKey: Keys.userServicesGoal) as? NSNumber)?.intValue
+    }
+
+    /// Uloží služby za měsíc (a případně cíl) a promítne je do běžící Live Activity.
+    static func saveUserServices(count: Int?, goal: Int? = nil) {
+        if let count { suite?.set(NSNumber(value: count), forKey: Keys.userServicesCount) }
+        if let goal { suite?.set(NSNumber(value: goal), forKey: Keys.userServicesGoal) }
+        CommissionLiveActivityManager.refreshRunning()
+    }
+
+    // MARK: - Výkon týmu pro Live Activity manažera
+
+    struct ManagerPerformanceSnapshot: Codable, Equatable {
+        var monthServices: Int
+        var dailyServices: [Int]
+        var dailyLabels: [String]
+        var topPerformerName: String?
+        var topPerformerServices: Int
+        var monthLabel: String?
+    }
+
+    static var managerPerformance: ManagerPerformanceSnapshot? {
+        guard let data = suite?.data(forKey: Keys.managerPerformance) else { return nil }
+        return try? JSONDecoder().decode(ManagerPerformanceSnapshot.self, from: data)
+    }
+
+    static func saveManagerPerformance(_ snapshot: ManagerPerformanceSnapshot) {
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        suite?.set(data, forKey: Keys.managerPerformance)
+    }
+
+    /// Počet položek čekajících na dokončení (nil = zatím nenačteno).
+    static var pendingCompletionsCount: Int? {
+        guard let raw = suite?.object(forKey: Keys.pendingCompletions) else { return nil }
+        return (raw as? NSNumber)?.intValue ?? raw as? Int
+    }
+
+    /// Uloží počet položek k dokončení a doplní ho do běžící Live Activity.
+    static func savePendingCompletions(_ count: Int?) {
+        if let count {
+            suite?.set(NSNumber(value: count), forKey: Keys.pendingCompletions)
+        } else {
+            suite?.removeObject(forKey: Keys.pendingCompletions)
+        }
+        CommissionLiveActivityManager.refreshRunning()
+    }
+
+    private struct InstallationItemRead: Decodable {
+        let installation_date: String
+        let installation_time: String?
+        let item_name: String
+    }
+
+    /// Dnešní instalace z uložených dat kalendáře: počet a nejbližší nadcházející.
+    static func todayInstallationsSummary(now: Date = Date()) -> (count: Int?, nextTime: String?, nextName: String?) {
+        guard let data = suite?.data(forKey: Keys.installations),
+              let items = try? JSONDecoder().decode([InstallationItemRead].self, from: data) else {
+            return (nil, nil, nil)
+        }
+        let todayISO = dayKeyFormatter.string(from: now)
+        let czech = DateFormatter()
+        czech.locale = Locale(identifier: "cs_CZ")
+        czech.dateFormat = "dd.MM.yyyy"
+        let todayCZ = czech.string(from: now)
+
+        let today = items.filter {
+            let day = $0.installation_date.trimmingCharacters(in: .whitespaces)
+            return day == todayISO || day == todayCZ
+        }
+        let nowTime: String = {
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "en_US_POSIX")
+            f.dateFormat = "HH:mm"
+            return f.string(from: now)
+        }()
+        let upcoming = today
+            .compactMap { item -> (String, String)? in
+                guard let raw = item.installation_time?.trimmingCharacters(in: .whitespaces), raw.count >= 4 else { return nil }
+                let hhmm = String(raw.prefix(5))
+                let padded = hhmm.count == 4 ? "0" + hhmm : hhmm
+                return (padded, item.item_name)
+            }
+            .filter { $0.0 >= nowTime }
+            .sorted { $0.0 < $1.0 }
+            .first
+        return (today.count, upcoming?.0, upcoming?.1)
+    }
+
     /// Uloží položky instalací pro widget (kalendář). Volá se z CalendarView po načtení.
     static func saveInstallations(items: [OrderItemByInstallationDate]) {
         let payload = items.map { item in
@@ -229,6 +338,7 @@ enum WidgetDataStore {
         guard let data = try? JSONEncoder().encode(payload) else { return }
         suite?.set(data, forKey: Keys.installations)
         WidgetCenter.shared.reloadTimelines(ofKind: widgetKindInstallations)
+        CommissionLiveActivityManager.refreshRunning()
     }
 
     /// Smaže data instalací (po odhlášení) a aktualizuje widget.
@@ -269,6 +379,7 @@ enum WidgetDataStore {
         suite?.removeObject(forKey: Keys.managerProblemsPreview)
         suite?.removeObject(forKey: Keys.managerTodayServices)
         suite?.removeObject(forKey: Keys.managerTodayServicesDay)
+        suite?.removeObject(forKey: Keys.managerPerformance)
         reloadManagerWidgetTimelines()
     }
 

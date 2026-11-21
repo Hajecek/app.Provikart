@@ -38,14 +38,21 @@ enum ManagerTeamLiveActivityManager {
     }
 
     static func currentState(kind: ManagerLiveActivityKind? = nil) -> ManagerTeamLiveActivityAttributes.ContentState {
-        ManagerTeamLiveActivityAttributes.ContentState(
+        let performance = WidgetDataStore.managerPerformance
+        return ManagerTeamLiveActivityAttributes.ContentState(
             kind: kind ?? selectedKind,
             todayServices: WidgetDataStore.managerTodayServicesCount,
             openProblems: WidgetDataStore.managerOpenProblemsCount ?? 0,
             teamSize: WidgetDataStore.managerTeamSize ?? 0,
             presentToday: WidgetDataStore.managerPresentTodayCount ?? 0,
             latestProblemLabel: WidgetDataStore.managerLatestProblemLabel,
-            dayLabel: displayDayFormatter.string(from: Date())
+            dayLabel: displayDayFormatter.string(from: Date()),
+            monthServices: performance?.monthServices ?? 0,
+            dailyServices: performance?.dailyServices ?? [],
+            dailyLabels: performance?.dailyLabels ?? [],
+            topPerformerName: performance?.topPerformerName,
+            topPerformerServices: performance?.topPerformerServices ?? 0,
+            monthLabel: performance?.monthLabel
         )
     }
 
@@ -84,8 +91,10 @@ enum ManagerTeamLiveActivityManager {
         guard isRunning else { return }
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
 
-        let content = makeContent(for: currentState())
         for activity in Activity<ManagerTeamLiveActivityAttributes>.activities {
+            let state = currentState(kind: activity.content.state.kind)
+            guard state != activity.content.state else { continue }
+            let content = makeContent(for: state)
             Task { await activity.update(content) }
         }
     }
@@ -102,7 +111,7 @@ enum ManagerTeamLiveActivityManager {
         ActivityContent(
             state: state,
             staleDate: Date().addingTimeInterval(staleInterval),
-            relevanceScore: state.kind == .todayServices ? 80 : 70
+            relevanceScore: state.kind == .teamOverview ? 70 : 80
         )
     }
 

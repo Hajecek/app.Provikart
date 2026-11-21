@@ -20,8 +20,18 @@ struct AikaOrbPalette {
     var swirl: Float
     var breath: Float
 
-    static func of(_ state: AikaOrbState) -> AikaOrbPalette {
-        switch state {
+    static func of(_ state: AikaOrbState, training: Bool = false) -> AikaOrbPalette {
+        if training {
+            // Trénink (Aika hraje zákazníka): teplé oranžovo-růžové barvy, stejné jako web (TRAINING_PALETTES).
+            switch state {
+            case .idle:       return .init(a: [0.95, 0.42, 0.25], b: [0.98, 0.30, 0.55], c: [1.00, 0.80, 0.45], swirl: 0.6, breath: 1.0)
+            case .connecting: return .init(a: [0.85, 0.45, 0.35], b: [0.95, 0.55, 0.55], c: [1.00, 0.85, 0.75], swirl: 1.6, breath: 0.6)
+            case .listening:  return .init(a: [0.98, 0.55, 0.20], b: [1.00, 0.75, 0.25], c: [1.00, 0.95, 0.60], swirl: 0.9, breath: 0.8)
+            case .thinking:   return .init(a: [0.85, 0.25, 0.45], b: [0.95, 0.40, 0.65], c: [1.00, 0.75, 0.85], swirl: 2.4, breath: 0.4)
+            case .speaking:   return .init(a: [1.00, 0.25, 0.35], b: [1.00, 0.50, 0.20], c: [1.00, 0.85, 0.55], swirl: 1.2, breath: 0.5)
+            }
+        }
+        return switch state {
         case .idle:       .init(a: [0.20, 0.32, 0.95], b: [0.55, 0.30, 0.98], c: [0.35, 0.85, 1.00], swirl: 0.6, breath: 1.0)
         case .connecting: .init(a: [0.25, 0.30, 0.80], b: [0.45, 0.45, 0.95], c: [0.80, 0.85, 1.00], swirl: 1.6, breath: 0.6)
         case .listening:  .init(a: [0.05, 0.55, 0.90], b: [0.10, 0.85, 0.85], c: [0.65, 1.00, 0.95], swirl: 0.9, breath: 0.8)
@@ -38,10 +48,10 @@ final class AikaOrbAnimator {
     private(set) var clock: Double = 0
     private var last: Date?
 
-    func step(now: Date, state: AikaOrbState, target: Double, reduced: Bool) {
+    func step(now: Date, state: AikaOrbState, target: Double, reduced: Bool, training: Bool = false) {
         let dt = min(0.05, last.map { now.timeIntervalSince($0) } ?? 0)
         last = now
-        let pal = AikaOrbPalette.of(state)
+        let pal = AikaOrbPalette.of(state, training: training)
         let k = Float(1 - exp(-dt * 3.5))
         cur.a += (pal.a - cur.a) * k
         cur.b += (pal.b - cur.b) * k
@@ -65,11 +75,13 @@ struct AikaOrbView: View {
     var zoom: Float = 1
     /// Rychlost otáčení vzoru (rad/s „hodin“ shaderu), 0 = bez otáčení.
     var spin: Float = 0
+    /// Trénink: teplé barvy zákazníka.
+    var training: Bool = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        AikaOrbMetalView(state: state, level: level, reduced: reduceMotion, extra: SIMD4(glow ? 1 : 0, zoom, reduceMotion ? 0 : spin, 0))
+        AikaOrbMetalView(state: state, level: level, reduced: reduceMotion, training: training, extra: SIMD4(glow ? 1 : 0, zoom, reduceMotion ? 0 : spin, 0))
             .aspectRatio(1, contentMode: .fit)
             .accessibilityHidden(true)
     }
@@ -80,6 +92,7 @@ private struct AikaOrbMetalView: UIViewRepresentable {
     let state: AikaOrbState
     let level: Double
     let reduced: Bool
+    let training: Bool
     let extra: SIMD4<Float>
 
     func makeCoordinator() -> AikaOrbRenderer { AikaOrbRenderer() }
@@ -104,6 +117,7 @@ private struct AikaOrbMetalView: UIViewRepresentable {
         context.coordinator.state = state
         context.coordinator.target = level
         context.coordinator.reduced = reduced
+        context.coordinator.training = training
         context.coordinator.extra = extra
     }
 }
@@ -143,6 +157,7 @@ final class AikaOrbRenderer: NSObject, MTKViewDelegate {
     var state: AikaOrbState = .idle
     var target: Double = 0
     var reduced = false
+    var training = false
     var extra = SIMD4<Float>(1, 1, 0, 0)
     private let animator = AikaOrbAnimator()
 
@@ -154,7 +169,7 @@ final class AikaOrbRenderer: NSObject, MTKViewDelegate {
               let drawable = view.currentDrawable,
               let buffer = shared.queue.makeCommandBuffer(),
               let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return }
-        animator.step(now: Date(), state: state, target: target, reduced: reduced)
+        animator.step(now: Date(), state: state, target: target, reduced: reduced, training: training)
         let cur = animator.cur
         let size = view.drawableSize
         var u = Uniforms(

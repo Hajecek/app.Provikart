@@ -31,6 +31,8 @@ final class AikaCallEngine: ObservableObject {
     @Published private(set) var isMuted = false
     @Published private(set) var transcript: [AikaTranscriptLine] = []
     @Published var notice: String?
+    /// Asistent (data týmu) nebo Trénink (zákazník u dveří).
+    @Published private(set) var mode: AikaMode = .asistent
 
     private var conversation: Conversation?
     private var api: AikaAPI?
@@ -45,8 +47,9 @@ final class AikaCallEngine: ObservableObject {
     /// Zvyšuje se s každým hovorem – zpětná volání ze starého hovoru se ignorují.
     private var generation = 0
 
-    func start(token appToken: String?) {
+    func start(token appToken: String?, mode newMode: AikaMode? = nil) {
         guard !inCall else { return }
+        if let newMode { mode = newMode }
         guard let token = AikaConfig.token(from: appToken), !token.isEmpty else {
             notice = "Nejsi přihlášený. Přihlas se znovu."
             return
@@ -63,10 +66,22 @@ final class AikaCallEngine: ObservableObject {
         state = .connecting
         let api = AikaAPI(authToken: token)
         self.api = api
+        let callMode = mode
 
         startTask = Task { [weak self] in
-            await self?.connect(api: api, generation: gen)
+            await self?.connect(api: api, mode: callMode, generation: gen)
         }
+    }
+
+    /// Přepnutí režimu: běžící hovor skončí dřív, než začne nový (nikdy dva hovory naráz).
+    func switchMode(_ newMode: AikaMode, token appToken: String?) {
+        guard newMode != mode else { return }
+        let wasInCall = inCall
+        if wasInCall { stop() }
+        mode = newMode
+        transcript = []
+        notice = nil
+        if wasInCall { start(token: appToken, mode: newMode) }
     }
 
     func stop() {
@@ -90,9 +105,9 @@ final class AikaCallEngine: ObservableObject {
 
     // MARK: - Připojení
 
-    private func connect(api: AikaAPI, generation gen: Int) async {
+    private func connect(api: AikaAPI, mode callMode: AikaMode, generation gen: Int) async {
         // Token hovoru se stahuje už během dotazu na mikrofon – start je o jeden síťový krok rychlejší.
-        async let pendingSession = api.startSession()
+        async let pendingSession = api.startSession(mode: callMode)
         let granted = await AVAudioApplication.requestRecordPermission()
         guard gen == generation, inCall else { return }
         guard granted else {
@@ -120,7 +135,11 @@ final class AikaCallEngine: ObservableObject {
         let audio = AudioPipelineConfiguration.default
         #endif
 
+        // Trénink: hlas zákazníka vylosoval server; zákazník nemá žádné nástroje.
+        let tts: TTSOverrides? = callMode == .trenink ? session.voiceId.map { TTSOverrides(voiceId: $0) } : nil
+
         let config = ConversationConfig(
+            ttsOverrides: tts,
             dynamicVariables: session.dynamicVariables,
             onDisconnect: { [weak self] reason in
                 Task { @MainActor in self?.handleDisconnect(reason, generation: gen) }

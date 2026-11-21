@@ -67,14 +67,55 @@ struct SettingsView: View {
         return "\(version) (\(build))"
     }
 
-    private var liveActivityToggleTitle: String {
-        "Provize na Lock Screenu a v Dynamic Island"
+    private var liveActivityRole: LiveActivityStudioView.Role {
+        if isNationalManagerRole { return .national }
+        return isManagerRole ? .manager : .user
+    }
+
+    /// Řádek s právě vybranou variantou – ikona v barvě varianty jako v Dynamic Island.
+    private var liveActivityRow: some View {
+        let (title, symbol, tint) = liveActivitySelection
+        return HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.black)
+                Image(systemName: symbol)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(tint)
+            }
+            .frame(width: 30, height: 30)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Lock Screen a Dynamic Island")
+                Text(liveActivityEnabled ? title : "Vypnuto")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var liveActivitySelection: (String, String, Color) {
+        switch liveActivityRole {
+        case .user:
+            let kind = CommissionLiveActivityManager.selectedKind
+            return (kind.title, kind.symbolName, kind.islandTint)
+        case .manager:
+            let kind = ManagerTeamLiveActivityManager.selectedKind
+            return (kind.title, kind.symbolName, kind.islandTint)
+        case .national:
+            let kind = NationalLiveActivityManager.selectedKind
+            return (kind.title, kind.symbolName, kind.islandTint)
+        }
     }
 
     private var liveActivityFooter: String {
-        isManagerRole
-            ? "Vyberte, co chcete vidět na Lock Screenu a v Dynamic Island, a spusťte to přímo z aplikace."
-            : "Když je zapnuto, aplikace zobrazí aktuální provizi a postup k cíli na Lock Screenu a v Dynamic Island."
+        switch liveActivityRole {
+        case .national:
+            return "Vyberte přehled sítě, hlášení obchodníků nebo objednávky ke kontrole a podívejte se, jak budou vypadat v Dynamic Island."
+        case .manager:
+            return "Vyberte služby dnes, přehled týmu nebo výkon týmu a spusťte to přímo z aplikace."
+        case .user:
+            return "Vyberte provizi, výkon nebo svůj den a podívejte se, jak budou vypadat v Dynamic Island."
+        }
     }
 
     private var notificationsFooter: String {
@@ -99,29 +140,16 @@ struct SettingsView: View {
 
             notificationsSection
 
-            if !isNationalManagerRole {
             Section {
-                if isManagerRole {
-                    NavigationLink {
-                        ManagerLiveActivitySetupView()
-                    } label: {
-                        Label("Lock Screen a Dynamic Island", systemImage: "platter.filled.top.and.bottom.iphone")
-                    }
-                } else {
-                    Toggle(isOn: $liveActivityEnabled) {
-                        Label(liveActivityToggleTitle, systemImage: "livephoto")
-                    }
-                    .onChange(of: liveActivityEnabled) { _, enabled in
-                        if !enabled {
-                            CommissionLiveActivityManager.endAll()
-                        }
-                    }
+                NavigationLink {
+                    LiveActivityStudioView(role: liveActivityRole)
+                } label: {
+                    liveActivityRow
                 }
             } header: {
                 Text("Live Activity")
             } footer: {
                 Text(liveActivityFooter)
-            }
             }
 
             Section {

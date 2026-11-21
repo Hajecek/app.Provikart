@@ -60,8 +60,9 @@ enum ManagerWidgetRefresh {
             )
         }
 
-        if let todayServices {
-            WidgetDataStore.saveManagerTodayServices(todayServices)
+        if let performance = todayServices {
+            WidgetDataStore.saveManagerTodayServices(performance.today)
+            WidgetDataStore.saveManagerPerformance(performance.snapshot)
         }
 
         ManagerTeamLiveActivityManager.refreshRunning()
@@ -73,12 +74,77 @@ enum ManagerWidgetRefresh {
         let absentNames: [String]
     }
 
-    private static func fetchTodayServices(token: String) async -> Int? {
+    private struct PerformanceSummary {
+        let today: Int
+        let snapshot: WidgetDataStore.ManagerPerformanceSnapshot
+    }
+
+    /// Výkon týmu za měsíc: dnešek, součet měsíce, posledních 7 dní a nejlepší obchodník.
+    private static func fetchTodayServices(token: String) async -> PerformanceSummary? {
         let month = monthFormatter.string(from: Date())
         guard let payload = try? await performanceService.fetchPerformance(token: token, month: month) else {
             return nil
         }
-        return payload.todayServicesCount
+        return PerformanceSummary(today: payload.todayServicesCount, snapshot: performanceSnapshot(from: payload))
+    }
+
+    private static let weekdayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "cs_CZ")
+        f.dateFormat = "EEEEEE"
+        return f
+    }()
+
+    private static let monthNameFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "cs_CZ")
+        f.dateFormat = "LLLL"
+        return f
+    }()
+
+    static func performanceSnapshot(from payload: ManagerTeamPerformancePayload) -> WidgetDataStore.ManagerPerformanceSnapshot {
+        let todayKey = payload.todayDate.isEmpty ? dayFormatter.string(from: Date()) : payload.todayDate
+        let pastDays = payload.days.filter { $0 <= todayKey }.sorted().suffix(7)
+
+        var daily: [Int] = []
+        var labels: [String] = []
+        for day in pastDays {
+            var total = payload.users.reduce(0) { $0 + ($1.performance[day]?.servicesCount ?? 0) }
+            if day == todayKey { total = max(total, payload.todayServicesCount) }
+            daily.append(total)
+            if let date = dayFormatter.date(from: day) {
+                labels.append(weekdayFormatter.string(from: date).capitalized)
+            } else {
+                labels.append(String(day.suffix(2)))
+            }
+        }
+
+        let top = payload.users.max { $0.total < $1.total }
+        let topName = top.flatMap { $0.total > 0 ? shortName($0) : nil }
+
+        return WidgetDataStore.ManagerPerformanceSnapshot(
+            monthServices: payload.users.reduce(0) { $0 + $1.total },
+            dailyServices: daily,
+            dailyLabels: labels,
+            topPerformerName: topName,
+            topPerformerServices: top?.total ?? 0,
+            monthLabel: monthNameFormatter.string(from: Date()).capitalized
+        )
+    }
+
+    /// „Jana Krátká“ → „Jana K.“ – krátké jméno se vejde do kapsle v Islandu.
+    private static func shortName(_ user: ManagerPerformanceUser) -> String {
+        let first = user.firstname?.trimmingCharacters(in: .whitespaces) ?? ""
+        let last = user.lastname?.trimmingCharacters(in: .whitespaces) ?? ""
+        if !first.isEmpty {
+            return last.isEmpty ? first : "\(first) \(last.prefix(1))."
+        }
+        let parts = user.name.split(separator: " ")
+        guard let head = parts.first else { return user.name }
+        if parts.count > 1, let initial = parts[1].first {
+            return "\(head) \(initial)."
+        }
+        return String(head)
     }
 
     private static func fetchReports(token: String) async -> [UserReport]? {

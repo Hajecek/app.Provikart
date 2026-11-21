@@ -14,6 +14,8 @@ private enum AikaStyle {
     static let text = Color(red: 238 / 255, green: 240 / 255, blue: 1)           // #eef0ff
     static let muted = Color(red: 141 / 255, green: 147 / 255, blue: 181 / 255)  // #8d93b5
     static let line = Color.white.opacity(0.08)
+    /// Text na bílé výplni pilulky.
+    static let onPill = Color(red: 16 / 255, green: 18 / 255, blue: 42 / 255)
 
     static func dot(_ state: AikaOrbState) -> Color {
         switch state {
@@ -29,6 +31,7 @@ struct AikaView: View {
     @EnvironmentObject private var authState: AuthState
     @StateObject private var engine = AikaCallEngine()
     @State private var showTranscript = false
+    @Namespace private var modeAnimation
     /// Když je Aika záložkou ve spodním menu, lišta záložek zůstává vidět.
     var keepsTabBar = false
     /// Je-li nastaveno, v liště vlevo je tlačítko „Domů“ (Aika jako záložka bez spodního menu).
@@ -45,23 +48,27 @@ struct AikaView: View {
             .ignoresSafeArea()
 
             VStack(spacing: 6) {
-                if !engine.transcript.isEmpty {
-                    transcriptPill
-                        .padding(.top, 4)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
+                HStack(spacing: 10) {
+                    modeSwitch
+                    if !engine.transcript.isEmpty {
+                        transcriptPill
+                            .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                    }
                 }
+                .padding(.top, 4)
+                .padding(.horizontal, 16)
 
                 Spacer(minLength: 0)
 
                 Button {
                     if !engine.inCall { engine.start(token: authState.authToken) }
                 } label: {
-                    AikaOrbView(state: engine.state, level: engine.level)
+                    AikaOrbView(state: engine.state, level: engine.level, training: engine.mode == .trenink)
                         .frame(maxWidth: 520)
                 }
                 .buttonStyle(.plain)
                 .disabled(engine.inCall)
-                .accessibilityLabel(engine.inCall ? "Aika" : "Začít hovor s Aikou")
+                .accessibilityLabel(engine.inCall ? "Aika" : (engine.mode == .trenink ? "Začít trénink se zákazníkem" : "Začít hovor s Aikou"))
 
                 Spacer(minLength: 0)
             }
@@ -133,26 +140,64 @@ struct AikaView: View {
 
     // MARK: - Přepis
 
+    // MARK: - Přepínač Asistent | Trénink (styl přepínače období v manažerském Přehledu)
+
+    private var modeSwitch: some View {
+        HStack(spacing: 4) {
+            ForEach(AikaMode.allCases) { item in
+                let selected = engine.mode == item
+                Button {
+                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    withAnimation(.snappy(duration: 0.28)) {
+                        engine.switchMode(item, token: authState.authToken)
+                    }
+                } label: {
+                    Text(item.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(selected ? AikaStyle.onPill : Color.white.opacity(0.84))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 9)
+                        .background {
+                            if selected {
+                                Capsule()
+                                    .fill(Color.white)
+                                    .matchedGeometryEffect(id: "mode", in: modeAnimation)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+        }
+        .padding(4)
+        .glassPill()
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Režim Aiky")
+    }
+
+    // MARK: - Přepis (skleněná pilulka)
+
     private var transcriptPill: some View {
         Button { showTranscript = true } label: {
-            HStack(spacing: 9) {
+            HStack(spacing: 8) {
                 Circle().fill(AikaStyle.dot(engine.state)).frame(width: 7, height: 7)
-                Text("Přepis").font(.system(size: 13))
+                Text("Přepis").font(.subheadline.weight(.semibold))
                 Text("\(engine.transcript.count)")
-                    .font(.system(size: 11))
-                    .foregroundStyle(AikaStyle.muted)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 1)
-                    .background(Color.white.opacity(0.08), in: Capsule())
+                    .font(.caption.weight(.bold))
+                    .monospacedDigit()
+                    .foregroundStyle(AikaStyle.onPill)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(Color.white, in: Capsule())
             }
-            .foregroundStyle(Color(red: 214 / 255, green: 217 / 255, blue: 245 / 255))
-            .padding(.leading, 12)
-            .padding(.trailing, 14)
-            .padding(.vertical, 8)
-            .background(.ultraThinMaterial.opacity(0.4), in: Capsule())
-            .overlay(Capsule().strokeBorder(AikaStyle.line))
+            .foregroundStyle(AikaStyle.text)
+            .padding(.leading, 14)
+            .padding(.trailing, 4)
+            .padding(.vertical, 4)
+            .glassPill()
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Přepis, \(engine.transcript.count) zpráv")
     }
 
     private var transcriptSheet: some View {
@@ -179,7 +224,7 @@ struct AikaView: View {
         let isUser = line.role == .user
         let empty = line.text.isEmpty
         return VStack(alignment: isUser ? .trailing : .leading, spacing: 3) {
-            Text(isUser ? "TY" : "AIKA")
+            Text(isUser ? "TY" : engine.mode.agentLabel)
                 .font(.system(size: 10))
                 .tracking(1.5)
                 .foregroundStyle(AikaStyle.muted)
@@ -189,12 +234,27 @@ struct AikaView: View {
                 .foregroundStyle(empty ? AikaStyle.muted : AikaStyle.text)
                 .multilineTextAlignment(isUser ? .trailing : .leading)
         }
-        .padding(.horizontal, 13)
-        .padding(.vertical, 9)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
         .background(
-            isUser ? Color(red: 47 / 255, green: 224 / 255, blue: 212 / 255).opacity(0.1)
-                   : Color(red: 124 / 255, green: 92 / 255, blue: 1).opacity(0.14),
-            in: RoundedRectangle(cornerRadius: 14)
+            isUser ? Color(red: 47 / 255, green: 224 / 255, blue: 212 / 255).opacity(0.12)
+                   : (engine.mode == .trenink ? Color(red: 1, green: 122 / 255, blue: 89 / 255).opacity(0.16)
+                                              : Color(red: 124 / 255, green: 92 / 255, blue: 1).opacity(0.16)),
+            in: UnevenRoundedRectangle(
+                topLeadingRadius: 18,
+                bottomLeadingRadius: isUser ? 18 : 6,
+                bottomTrailingRadius: isUser ? 6 : 18,
+                topTrailingRadius: 18
+            )
+        )
+        .overlay(
+            UnevenRoundedRectangle(
+                topLeadingRadius: 18,
+                bottomLeadingRadius: isUser ? 18 : 6,
+                bottomTrailingRadius: isUser ? 6 : 18,
+                topTrailingRadius: 18
+            )
+            .strokeBorder(Color.white.opacity(0.08))
         )
         .frame(maxWidth: 320, alignment: isUser ? .trailing : .leading)
         .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
@@ -205,5 +265,19 @@ struct AikaView: View {
     NavigationStack {
         AikaView()
             .environmentObject(AuthState())
+    }
+}
+
+private extension View {
+    /// Skleněná kapsle jako přepínač období v manažerském Přehledu (materiál + jemný obrys).
+    func glassPill() -> some View {
+        self
+            .background(.ultraThinMaterial, in: Capsule())
+            .background(
+                LinearGradient(colors: [Color.white.opacity(0.12), Color.white.opacity(0.04)], startPoint: .top, endPoint: .bottom),
+                in: Capsule()
+            )
+            .overlay(Capsule().strokeBorder(Color.white.opacity(0.16)))
+            .shadow(color: .black.opacity(0.35), radius: 12, y: 6)
     }
 }

@@ -369,6 +369,8 @@ struct ProvikartApp: App {
                 hasVerifiedBiometricThisSession = false
                 CommissionLiveActivityManager.endAll()
                 ManagerTeamLiveActivityManager.endAll()
+                NationalLiveActivityManager.endAll()
+                NationalLiveActivityManager.clearSnapshot()
                 WidgetDataStore.clearCommission()
                 WidgetDataStore.clearReports()
                 WidgetDataStore.clearInstallations()

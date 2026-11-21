@@ -81,8 +81,27 @@ final class NationalDashboardViewModel: ObservableObject {
             errorMessage = firstError.localizedDescription
         } else {
             errorMessage = nil
+            updateLiveActivity()
         }
         didLoad = true
+    }
+
+    /// Promítne přehled do Live Activity (Lock Screen + Dynamic Island).
+    private func updateLiveActivity() {
+        NationalLiveActivityManager.update(
+            NationalLiveActivityAttributes.ContentState(
+                salesReported: salesReported,
+                salesExpected: max(salesTotal - salesAbsent, 0),
+                ordersToCheck: ordersCreated + ordersOpen,
+                localitiesDone: facets.done,
+                localitiesTotal: facets.total,
+                unassignedLocalities: facets.unassignedManager,
+                salesAbsent: salesAbsent,
+                ordersCreated: ordersCreated,
+                ordersOpen: ordersOpen,
+                ordersCompleted: ordersCompleted
+            )
+        )
     }
 }
 
