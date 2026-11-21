@@ -31,8 +31,6 @@ struct AikaView: View {
     @EnvironmentObject private var authState: AuthState
     @StateObject private var engine = AikaCallEngine()
     @State private var showTranscript = false
-    @Namespace private var modeAnimation
-    @Namespace private var phaseAnimation
     /// Když je Aika záložkou ve spodním menu, lišta záložek zůstává vidět.
     var keepsTabBar = false
     /// Je-li nastaveno, v liště vlevo je tlačítko „Domů“ (Aika jako záložka bez spodního menu).
@@ -62,18 +60,6 @@ struct AikaView: View {
                 .accessibilityLabel(engine.inCall ? "Aika" : (engine.mode == .trenink ? "Začít trénink se zákazníkem" : "Začít hovor s Aikou"))
 
                 Spacer(minLength: 0)
-
-                // Volby dole na dosah palce: fáze tréninku (jen v Tréninku) nad přepínačem Asistent | Trénink
-                VStack(spacing: 8) {
-                    if engine.mode == .trenink {
-                        phaseSwitch
-                            .transition(.opacity.combined(with: .move(edge: .bottom)))
-                    }
-                    modeSwitch
-                }
-                .animation(.snappy(duration: 0.28), value: engine.mode)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 10)
             }
 
             if let notice = engine.notice {
@@ -87,7 +73,7 @@ struct AikaView: View {
                         .background(Color(red: 26 / 255, green: 29 / 255, blue: 58 / 255), in: RoundedRectangle(cornerRadius: 12))
                         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color(red: 1, green: 107 / 255, blue: 129 / 255).opacity(0.4)))
                         .padding(.horizontal, 20)
-                        .padding(.bottom, 130)
+                        .padding(.bottom, 24)
                         .onTapGesture { engine.notice = nil }
                 }
                 .transition(.opacity)
@@ -109,6 +95,34 @@ struct AikaView: View {
                             .foregroundStyle(AikaStyle.text)
                     }
                     .accessibilityLabel("Zpět domů")
+                }
+            }
+            // Nativní spodní lišta: režim (segmenty) a v Tréninku fáze (menu)
+            ToolbarItem(placement: .bottomBar) {
+                Picker("Režim Aiky", selection: Binding(
+                    get: { engine.mode },
+                    set: { engine.switchMode($0, token: authState.authToken) }
+                )) {
+                    ForEach(AikaMode.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 210)
+            }
+            if engine.mode == .trenink {
+                ToolbarSpacer(.flexible, placement: .bottomBar)
+                ToolbarItem(placement: .bottomBar) {
+                    Menu {
+                        Picker("Fáze tréninku", selection: Binding(
+                            get: { engine.phase },
+                            set: { engine.switchPhase($0, token: authState.authToken) }
+                        )) {
+                            ForEach(AikaTrainingPhase.allCases) { Text($0.title).tag($0) }
+                        }
+                    } label: {
+                        Label(engine.phase.title, systemImage: "figure.walk")
+                            .labelStyle(.titleAndIcon)
+                    }
+                    .accessibilityLabel("Fáze tréninku: \(engine.phase.title)")
                 }
             }
             ToolbarItem(placement: .principal) {
@@ -147,46 +161,12 @@ struct AikaView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar(keepsTabBar ? .visible : .hidden, for: .tabBar)
         .sheet(isPresented: $showTranscript) { transcriptSheet }
-        // Hovor se nespouští sám – nejdřív si vybereš režim / fázi a klepneš na kouli.
+        // Asistent se rovnou ozve; v Tréninku se hovor spojí a zákazník čeká, až promluvíš ty.
+        .onAppear { engine.start(token: authState.authToken) }
         .onDisappear { engine.stop() }
     }
 
     // MARK: - Přepis
-
-    // MARK: - Přepínač Asistent | Trénink (styl přepínače období v manažerském Přehledu)
-
-    private var modeSwitch: some View {
-        HStack(spacing: 4) {
-            ForEach(AikaMode.allCases) { item in
-                let selected = engine.mode == item
-                Button {
-                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
-                    withAnimation(.snappy(duration: 0.28)) {
-                        engine.switchMode(item, token: authState.authToken)
-                    }
-                } label: {
-                    Text(item.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(selected ? AikaStyle.onPill : Color.white.opacity(0.84))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 9)
-                        .background {
-                            if selected {
-                                Capsule()
-                                    .fill(Color.white)
-                                    .matchedGeometryEffect(id: "mode", in: modeAnimation)
-                            }
-                        }
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(selected ? .isSelected : [])
-            }
-        }
-        .padding(4)
-        .glassPill()
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Režim Aiky")
-    }
 
     // MARK: - Časovač hovoru (po konci zůstane délka)
 
@@ -208,41 +188,6 @@ struct AikaView: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Délka hovoru \(secs / 60) minut \(secs % 60) sekund")
         }
-    }
-
-    // MARK: - Fáze tréninku (menší přepínač pod hlavním)
-
-    private var phaseSwitch: some View {
-        HStack(spacing: 2) {
-            ForEach(AikaTrainingPhase.allCases) { item in
-                let selected = engine.phase == item
-                Button {
-                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
-                    withAnimation(.snappy(duration: 0.28)) {
-                        engine.switchPhase(item, token: authState.authToken)
-                    }
-                } label: {
-                    Text(item.title)
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(selected ? AikaStyle.onPill : Color.white.opacity(0.84))
-                        .padding(.horizontal, 13)
-                        .padding(.vertical, 7)
-                        .background {
-                            if selected {
-                                Capsule()
-                                    .fill(Color.white)
-                                    .matchedGeometryEffect(id: "phase", in: phaseAnimation)
-                            }
-                        }
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(selected ? .isSelected : [])
-            }
-        }
-        .padding(3)
-        .glassPill()
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Fáze tréninku")
     }
 
     // MARK: - Přepis (tlačítko v horní liště)
@@ -325,19 +270,5 @@ struct AikaView: View {
     NavigationStack {
         AikaView()
             .environmentObject(AuthState())
-    }
-}
-
-private extension View {
-    /// Skleněná kapsle jako přepínač období v manažerském Přehledu (materiál + jemný obrys).
-    func glassPill() -> some View {
-        self
-            .background(.ultraThinMaterial, in: Capsule())
-            .background(
-                LinearGradient(colors: [Color.white.opacity(0.12), Color.white.opacity(0.04)], startPoint: .top, endPoint: .bottom),
-                in: Capsule()
-            )
-            .overlay(Capsule().strokeBorder(Color.white.opacity(0.16)))
-            .shadow(color: .black.opacity(0.35), radius: 12, y: 6)
     }
 }

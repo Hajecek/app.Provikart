@@ -94,26 +94,24 @@ final class AikaCallEngine: ObservableObject {
     /// Přepnutí režimu: běžící hovor skončí dřív, než začne nový (nikdy dva hovory naráz).
     func switchMode(_ newMode: AikaMode, token appToken: String?) {
         guard newMode != mode else { return }
-        let wasInCall = inCall
-        if wasInCall { stop() }
+        if inCall { stop() }
         mode = newMode
         transcript = []
         callStartedAt = nil
         callEndedAt = nil
         notice = nil
-        if wasInCall { start(token: appToken, mode: newMode) }
+        // Asistent se hned ozve, Trénink se spojí a čeká na obchodníka.
+        start(token: appToken, mode: newMode)
     }
 
     /// Přepnutí fáze tréninku: běžící trénink skončí a začne znovu v nové fázi.
     func switchPhase(_ newPhase: AikaTrainingPhase, token appToken: String?) {
         guard newPhase != phase else { return }
-        let restart = inCall && mode == .trenink
-        if restart { stop() }
+        guard mode == .trenink else { phase = newPhase; return }
+        if inCall { stop() }
         phase = newPhase
-        if restart {
-            transcript = []
-            start(token: appToken)
-        }
+        transcript = []
+        start(token: appToken)
     }
 
     func stop() {
