@@ -56,6 +56,9 @@ final class AikaCallEngine: ObservableObject {
     private var toolNames: Set<String> = []
     private var subscriptions = Set<AnyCancellable>()
     private var startTask: Task<Void, Never>?
+    /// Úklid předchozího hovoru (konec místnosti + uvolnění mikrofonu). Nový hovor na něj počká,
+    /// jinak by dobíhající konec starého hovoru vypnul audio novému (sdílený LiveKit AudioManager).
+    private var teardownTask: Task<Void, Never>?
     private var levelTask: Task<Void, Never>?
     private var toolTasks: [String: Task<Void, Never>] = [:]
     private var vad: Double = 0
@@ -88,9 +91,10 @@ final class AikaCallEngine: ObservableObject {
         self.api = api
         let callMode = mode
         let callPhase = phase
+        let previousTeardown = teardownTask
 
         startTask = Task { [weak self] in
-            await self?.connect(api: api, mode: callMode, phase: callPhase, generation: gen)
+            await self?.connect(api: api, mode: callMode, phase: callPhase, after: previousTeardown, generation: gen)
         }
     }
 
@@ -120,10 +124,7 @@ final class AikaCallEngine: ObservableObject {
     func stop() {
         userEnded = true
         startTask?.cancel()
-        startTask = nil
-        let conv = conversation
-        finish()
-        if let conv { Task { await conv.endConversation() } }
+        finish(ending: conversation)
     }
 
     func toggleMute() {
@@ -138,9 +139,11 @@ final class AikaCallEngine: ObservableObject {
 
     // MARK: - Připojení
 
-    private func connect(api: AikaAPI, mode callMode: AikaMode, phase callPhase: AikaTrainingPhase, generation gen: Int) async {
+    private func connect(api: AikaAPI, mode callMode: AikaMode, phase callPhase: AikaTrainingPhase, after previousTeardown: Task<Void, Never>?, generation gen: Int) async {
         // Token hovoru se stahuje už během dotazu na mikrofon – start je o jeden síťový krok rychlejší.
         async let pendingSession = api.startSession(mode: callMode, phase: callPhase)
+        // Při přepnutí režimu musí starý hovor úplně skončit, než se sáhne na audio.
+        await previousTeardown?.value
         let granted = await AVAudioApplication.requestRecordPermission()
         guard gen == generation, inCall else { return }
         guard granted else {
@@ -374,7 +377,7 @@ final class AikaCallEngine: ObservableObject {
         }
     }
 
-    private func finish(message: String? = nil) {
+    private func finish(message: String? = nil, ending conv: Conversation? = nil) {
         generation += 1
         ringing = false
         doorPlayer = nil
@@ -389,7 +392,16 @@ final class AikaCallEngine: ObservableObject {
         isMuted = false
         level = 0
         state = .idle
-        Self.releaseMicrophone()
+        let previous = teardownTask
+        // Rozběhnuté připojení starého hovoru se musí dokončit (a samo ukončit), než začne nový.
+        let oldStart = startTask
+        startTask = nil
+        teardownTask = Task {
+            await previous?.value
+            await oldStart?.value
+            if let conv { await conv.endConversation() }
+            await Self.releaseMicrophone()
+        }
         if let message { notice = message }
     }
 
@@ -427,11 +439,9 @@ final class AikaCallEngine: ObservableObject {
     }
 
     /// Po hovoru mikrofon uvolnit, ať nesvítí oranžová tečka a nežere baterii.
-    nonisolated static func releaseMicrophone() {
+    nonisolated static func releaseMicrophone() async {
         #if !targetEnvironment(simulator)
-        Task.detached(priority: .utility) {
-            try? await LiveKit.AudioManager.shared.setRecordingAlwaysPreparedMode(false)
-        }
+        try? await LiveKit.AudioManager.shared.setRecordingAlwaysPreparedMode(false)
         #endif
     }
 
