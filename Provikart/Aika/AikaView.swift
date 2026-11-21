@@ -48,13 +48,7 @@ struct AikaView: View {
             .ignoresSafeArea()
 
             VStack(spacing: 6) {
-                HStack(spacing: 10) {
-                    modeSwitch
-                    if !engine.transcript.isEmpty {
-                        transcriptPill
-                            .transition(.opacity.combined(with: .scale(scale: 0.9)))
-                    }
-                }
+                modeSwitch
                 .padding(.top, 4)
                 .padding(.horizontal, 16)
 
@@ -114,6 +108,12 @@ struct AikaView: View {
                     Text("VOICE").font(.system(size: 12, weight: .medium)).tracking(1.5).foregroundStyle(AikaStyle.muted)
                 }
                 .foregroundStyle(AikaStyle.text)
+            }
+            if !engine.transcript.isEmpty {
+                // přepis je v horní liště, ať se neplete s přepínačem režimu
+                ToolbarItem(placement: .topBarTrailing) {
+                    transcriptButton
+                }
             }
             if engine.inCall {
                 ToolbarItemGroup(placement: .topBarTrailing) {
@@ -175,28 +175,18 @@ struct AikaView: View {
         .accessibilityLabel("Režim Aiky")
     }
 
-    // MARK: - Přepis (skleněná pilulka)
+    // MARK: - Přepis (tlačítko v horní liště)
 
-    private var transcriptPill: some View {
+    private var transcriptButton: some View {
         Button { showTranscript = true } label: {
-            HStack(spacing: 8) {
-                Circle().fill(AikaStyle.dot(engine.state)).frame(width: 7, height: 7)
-                Text("Přepis").font(.subheadline.weight(.semibold))
+            HStack(spacing: 5) {
+                Image(systemName: "text.bubble")
                 Text("\(engine.transcript.count)")
-                    .font(.caption.weight(.bold))
+                    .font(.subheadline.weight(.semibold))
                     .monospacedDigit()
-                    .foregroundStyle(AikaStyle.onPill)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(Color.white, in: Capsule())
             }
-            .foregroundStyle(AikaStyle.text)
-            .padding(.leading, 14)
-            .padding(.trailing, 4)
-            .padding(.vertical, 4)
-            .glassPill()
+            .foregroundStyle(Color(red: 201 / 255, green: 205 / 255, blue: 240 / 255))
         }
-        .buttonStyle(.plain)
         .accessibilityLabel("Přepis, \(engine.transcript.count) zpráv")
     }
 
