@@ -67,13 +67,14 @@ private struct LoginRequestCountdownView: View {
 }
 
 /// Jak zobrazit čekající přihlášení: sheet, jen accessory (po přetažení), nebo nic.
-enum LoginApprovalPresentation {
+enum LoginApprovalPresentation: Equatable {
     case sheet(AppLoginRequest)
     case accessory
     case none
 }
 
 /// Stav čekajících požadavků na přihlášení – sdílený v aplikaci pro zobrazení sheetu.
+@MainActor
 final class AppLoginApprovalState: ObservableObject {
     @Published private(set) var pendingRequests: [AppLoginRequest] = []
     /// Jedna hodnota: sheet / accessory / none – při zavření sheetu jen přepneme na .accessory, žádný race.
@@ -98,7 +99,9 @@ final class AppLoginApprovalState: ObservableObject {
     }
 
     private let service = AppLoginRequestService()
-    private var pollTask: Task<Void, Never>?
+    private let poller = LivePoller(name: "Schvalování přihlášení")
+    private var pollingKey: String?
+    private var lastLoggedError: String?
     /// Čas prvního přijetí požadavku (persistovaný do UserDefaults, aby po restartu appky byl odpočet správný).
     private var requestReceivedAt: [String: Date] = [:]
 
@@ -120,48 +123,55 @@ final class AppLoginApprovalState: ObservableObject {
         return Date(timeInterval: loginRequestTimeoutSeconds, since: received)
     }
 
-    /// Načte čekající požadavky (volá se z pollingu – nekanceluje task).
-    func fetchPending(username: String, token: String?) {
+    /// Načte čekající požadavky. Volá se z pollingu – další tick čeká na dokončení,
+    /// takže se requesty nepředbíhají a po `stopPolling()` už nic nepřepíše stav.
+    func fetchPending(username: String, token: String?) async {
         guard !username.isEmpty else { return }
-        Task { @MainActor in
-            do {
-                let list = try await service.fetchPendingRequests(username: username, token: token)
-                loadRequestReceivedAt()
-                let now = Date()
-                for r in list {
-                    if requestReceivedAt[r.request_id] == nil {
-                        requestReceivedAt[r.request_id] = now
-                    }
+        do {
+            let list = try await service.fetchPendingRequests(username: username, token: token)
+            guard !Task.isCancelled else { return }
+            lastLoggedError = nil
+            loadRequestReceivedAt()
+            let now = Date()
+            for r in list {
+                if requestReceivedAt[r.request_id] == nil {
+                    requestReceivedAt[r.request_id] = now
                 }
-                requestReceivedAt = requestReceivedAt.filter { id, _ in list.contains(where: { $0.request_id == id }) }
-                saveRequestReceivedAt()
-                pendingRequests = list
-                errorMessage = nil
+            }
+            requestReceivedAt = requestReceivedAt.filter { id, _ in list.contains(where: { $0.request_id == id }) }
+            saveRequestReceivedAt()
+            // Přiřazovat jen při změně – jinak by každý tick (2 s) překreslil celou appku.
+            if pendingRequests != list { pendingRequests = list }
+            if errorMessage != nil { errorMessage = nil }
 
-                if list.isEmpty {
-                    // Reset – nic nečeká, můžeme zapomenout, že uživatel zavřel sheet.
-                    userDismissedSheetUntilInteraction = false
-                    presentation = .none
-                } else {
-                    switch presentation {
-                    case .accessory:
-                        // Zůstaň v accessory, dokud si to uživatel sám neotevře.
-                        break
-                    case .sheet:
-                        // Už se něco zobrazuje, jen držíme aktuální list
-                        break
-                    case .none:
-                        if userDismissedSheetUntilInteraction && !isInSheetDismissalTransition {
-                            // Po uživatelském zavření zobraz accessory (ne během přechodu po swipe/tap).
-                            presentation = .accessory
-                        } else if !isInSheetDismissalTransition, let first = list.first {
-                            presentation = .sheet(first)
-                        }
+            if list.isEmpty {
+                // Reset – nic nečeká, můžeme zapomenout, že uživatel zavřel sheet.
+                userDismissedSheetUntilInteraction = false
+                if presentation != .none { presentation = .none }
+            } else {
+                switch presentation {
+                case .accessory:
+                    // Zůstaň v accessory, dokud si to uživatel sám neotevře.
+                    break
+                case .sheet:
+                    // Už se něco zobrazuje, jen držíme aktuální list
+                    break
+                case .none:
+                    if userDismissedSheetUntilInteraction && !isInSheetDismissalTransition {
+                        // Po uživatelském zavření zobraz accessory (ne během přechodu po swipe/tap).
+                        presentation = .accessory
+                    } else if !isInSheetDismissalTransition, let first = list.first {
+                        presentation = .sheet(first)
                     }
                 }
-            } catch {
-                errorMessage = error.localizedDescription
-                print("[AppLogin] Pending error: \(error)")
+            }
+        } catch {
+            guard !error.isCancellation else { return }
+            errorMessage = error.localizedDescription
+            // Při výpadku sítě by se chyba opakovala každé 2 s – logujeme jen změnu.
+            if lastLoggedError != error.localizedDescription {
+                lastLoggedError = error.localizedDescription
+                Log.auth.error("Schvalování přihlášení – načtení selhalo: \(error.localizedDescription, privacy: .public)")
             }
         }
     }
@@ -235,18 +245,17 @@ final class AppLoginApprovalState: ObservableObject {
 
     func startPolling(username: String, token: String?, interval: TimeInterval = 2) {
         guard !username.isEmpty else { return }
-        pollTask?.cancel()
-        pollTask = Task { @MainActor in
-            while !Task.isCancelled {
-                fetchPending(username: username, token: token)
-                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
-            }
+        // Opakované volání se stejnými údaji (onAppear + scenePhase) polling nerestartuje.
+        if poller.isRunning, pollingKey == "\(username)|\(token ?? "")" { return }
+        pollingKey = "\(username)|\(token ?? "")"
+        poller.start(every: interval) { [weak self] in
+            await self?.fetchPending(username: username, token: token)
         }
     }
 
     func stopPolling() {
-        pollTask?.cancel()
-        pollTask = nil
+        poller.stop()
+        pollingKey = nil
     }
 }
 

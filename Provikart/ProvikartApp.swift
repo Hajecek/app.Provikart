@@ -36,7 +36,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
           if settings.authorizationStatus == .authorized {
             UserDefaults.standard.set(true, forKey: "Provikart.notificationsEnabled")
             application.registerForRemoteNotifications()
-            print("[FCM] Notifikace již povoleny, registruji na APNS…")
+            Log.push.debug("Notifikace povoleny – registruji APNs")
           }
         }
       }
@@ -47,17 +47,16 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
   func application(_ application: UIApplication,
                     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-    print("[FCM] APNS token přijat (\(deviceToken.count) B), předávám FCM…")
     Messaging.messaging().apnsToken = deviceToken
 
     Messaging.messaging().token { [weak self] token, error in
       DispatchQueue.main.async {
         if let error = error {
-          print("[FCM] Chyba při načtení tokenu: \(error.localizedDescription)")
+          Log.push.error("FCM token se nepodařilo načíst: \(error.localizedDescription, privacy: .public)")
           return
         }
         if let token = token {
-          print("[FCM] ✅ FCM token: \(token)")
+          Log.push.info("APNs + FCM token připraven (\(token.suffix(8), privacy: .private)…)")
           self?.sendFCMTokenToBackend(fcmToken: token)
         }
         self?.syncNotificationTopics()
@@ -68,8 +67,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
   /// Na simulátoru se volá místo didRegister… – APNS tam není k dispozici.
   func application(_ application: UIApplication,
                     didFailToRegisterForRemoteNotificationsWithError error: Error) {
-    print("[FCM] ⚠️ APNS registrace selhala (pravděpodobně simulátor): \(error.localizedDescription)")
-    print("[FCM] FCM token získaš jen na reálném zařízení (iPhone/iPad).")
+    Log.push.notice("APNs registrace selhala (na simulátoru normální): \(error.localizedDescription, privacy: .public)")
   }
 
   func subscribeToAllUsers() {
@@ -78,7 +76,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
   func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
     let userInfo = notification.request.content.userInfo
-    print("[FCM] Notifikace při běhu aplikace: \(userInfo)")
+    Log.push.info("Push v popředí: \(Self.pushSummary(userInfo), privacy: .public)")
     guard NotificationPreferencesStore.shared.shouldPresent(
       userInfo: userInfo,
       role: UserRole(apiValue: currentUserRole)
@@ -97,7 +95,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
   func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
     let userInfo = response.notification.request.content.userInfo
-    print("[FCM] Reakce na notifikaci: \(userInfo)")
+    Log.push.info("Klepnutí na push: \(Self.pushSummary(userInfo), privacy: .public)")
     // Badge se nezvyšuje při klepnutí – už se zvýšil při doručení.
     NotificationCenter.default.post(name: Notification.Name("didReceiveRemoteNotification"), object: nil, userInfo: userInfo as? [String: Any])
     completionHandler()
@@ -109,7 +107,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     didReceiveRemoteNotification userInfo: [AnyHashable: Any],
     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
   ) {
-    print("[FCM] Remote notification (background/fetch): \(userInfo)")
+    Log.push.info("Push na pozadí: \(Self.pushSummary(userInfo), privacy: .public)")
     let allowed = NotificationPreferencesStore.shared.shouldPresent(
       userInfo: userInfo,
       role: UserRole(apiValue: currentUserRole)
@@ -129,11 +127,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
   }
 
   func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
-    if let token = fcmToken {
-      print("[FCM] Registration token: \(token)")
-      // Na backend neposíláme tady – ukládáme až po přihlášení v updateUserInfo.
-    } else {
-      print("[FCM] Registration token je nil")
+    // Na backend neposíláme tady – ukládáme až po přihlášení v updateUserInfo.
+    if fcmToken == nil {
+      Log.push.notice("FCM registration token je nil")
     }
   }
 
@@ -141,7 +137,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
   /// Tělo: { "token": "<fcm>", "token_api": "<api>", "notification_preferences": { ... } }
   func sendFCMTokenToBackend(fcmToken: String) {
     guard let apiToken = authToken, !apiToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-      print("[FCM] Přeskočeno – uživatel není přihlášen (chybí API token)")
+      Log.push.debug("FCM token neodesílám – uživatel není přihlášen")
       return
     }
     guard let url = URL(string: updateFCMTokenURL) else { return }
@@ -163,14 +159,14 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
     URLSession.shared.dataTask(with: request) { data, response, error in
       if let error = error {
-        print("[FCM] Chyba odeslání tokenu na backend: \(error.localizedDescription)")
+        Log.push.error("FCM token se nepodařilo odeslat: \(error.localizedDescription, privacy: .public)")
         return
       }
       let code = (response as? HTTPURLResponse)?.statusCode ?? 0
       if (200...299).contains(code) {
-        print("[FCM] FCM token odeslán na backend (OK)")
-      } else if let data = data, let body = String(data: data, encoding: .utf8) {
-        print("[FCM] Backend odpověděl \(code): \(body.prefix(200))")
+        Log.push.info("FCM token uložen na backendu")
+      } else {
+        Log.push.error("FCM token – backend HTTP \(code, privacy: .public): \(Log.preview(data ?? Data(), limit: 200), privacy: .private)")
       }
     }.resume()
   }
@@ -210,7 +206,16 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     currentUserRole = nil
     authToken = nil
     AppIconBadgeSync.clear()
-    print("[FCM] Údaje uživatele v AppDelegate vymazány")
+    Log.push.debug("Údaje uživatele pro push vymazány")
+  }
+
+  /// Krátký popis push notifikace pro log (typ + titulek), bez celého payloadu.
+  private static func pushSummary(_ userInfo: [AnyHashable: Any]) -> String {
+    let aps = userInfo["aps"] as? [String: Any]
+    let alert = aps?["alert"] as? [String: Any]
+    let title = (alert?["title"] as? String) ?? (aps?["alert"] as? String) ?? "—"
+    let type = (userInfo["type"] as? String) ?? (userInfo["category"] as? String) ?? (aps?["category"] as? String)
+    return type.map { "[\($0)] \(title)" } ?? title
   }
 }
 

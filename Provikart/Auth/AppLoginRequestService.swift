@@ -13,7 +13,7 @@ private struct ErrorResponse: Codable {
 }
 
 /// Jeden čekající požadavek na přihlášení z webu (odpověď app_login_pending.php).
-struct AppLoginRequest: Codable, Identifiable {
+struct AppLoginRequest: Codable, Identifiable, Equatable {
     let id: Int
     let request_id: String
     let username: String

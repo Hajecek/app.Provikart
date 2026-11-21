@@ -15,7 +15,7 @@ enum AuthSession {
     /// Automatické odhlášení je vypnuté. Token v aplikaci platí, dokud se uživatel neodhlásí sám.
     static func handle(http: HTTPURLResponse, data: Data?) {
         guard http.statusCode == 401 || http.statusCode == 403 else { return }
-        print("[AuthSession] HTTP \(http.statusCode) – relace se ponechává, neodhlašuji")
+        Log.auth.notice("HTTP \(http.statusCode, privacy: .public) \(http.url?.path ?? "", privacy: .public) – relace se ponechává")
     }
 }
 

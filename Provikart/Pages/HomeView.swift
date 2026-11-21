@@ -286,7 +286,7 @@ struct HomeView: View {
             LuckyChestController.shared.resumeIfNeeded()
             refreshLuckyBoxStatus()
             maybeAutoPresentLuckyBox()
-            Task { await loadPerformanceReport(autoPresent: true) }
+            // Data (vč. hodnocení výkonu) po návratu obnoví `.liveRefresh`.
         }
         .task {
             LuckyChestController.shared.resumeIfNeeded()
@@ -307,23 +307,21 @@ struct HomeView: View {
             async let performanceReport: Void = loadPerformanceReport(autoPresent: true)
             _ = await (dealwars, goals, commission, pending, services, entries, qualificationLoad, performanceReport)
             await refreshLuckyBoxQuota()
-
-            // Periodické obnovení na pozadí (každých 5 s) – silent, bez blikání.
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
-                if Task.isCancelled { break }
-                refreshLuckyBoxStatus()
-                async let d: Void = loadDealwarsSummary()
-                async let g: Void = loadGoals()
-                async let c: Void = loadCommission(silent: true)
-                async let p: Void = loadPendingCompletion()
-                async let s: Void = loadServicesCount()
-                async let e: Void = loadEntryCardsCount()
-                async let q: Void = loadQualification()
-                async let report: Void = loadPerformanceReport(autoPresent: true)
-                _ = await (d, g, c, p, s, e, q, report)
-                await refreshLuckyBoxQuota()
-            }
+        }
+        // Realtime obnovení (5 s) – silent, bez blikání; v pozadí se pauzuje,
+        // po návratu do popředí proběhne hned.
+        .liveRefresh(every: 5) {
+            refreshLuckyBoxStatus()
+            async let d: Void = loadDealwarsSummary()
+            async let g: Void = loadGoals()
+            async let c: Void = loadCommission(silent: true)
+            async let p: Void = loadPendingCompletion()
+            async let s: Void = loadServicesCount()
+            async let e: Void = loadEntryCardsCount()
+            async let q: Void = loadQualification()
+            async let report: Void = loadPerformanceReport(autoPresent: true)
+            _ = await (d, g, c, p, s, e, q, report)
+            await refreshLuckyBoxQuota()
         }
         .refreshable {
             await loadGoals()

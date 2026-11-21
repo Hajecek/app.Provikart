@@ -151,7 +151,7 @@ final class AikaCallEngine: ObservableObject {
             startLevelLoop(generation: gen)
         } catch {
             guard gen == generation else { return }
-            print("[AIKA] Start hovoru selhal: \(error)")
+            Log.aika.error("Start hovoru selhal: \(String(describing: error), privacy: .public)")
             #if DEBUG
             finish(message: "Hovor se nepodařilo spustit. (\(error.localizedDescription))")
             #else
@@ -234,7 +234,7 @@ final class AikaCallEngine: ObservableObject {
     private func handleToolCall(_ call: ClientToolCallEvent, generation gen: Int) {
         guard gen == generation, let api else { return }
         if !toolNames.isEmpty && !toolNames.contains(call.toolName) {
-            print("[AIKA] Agent volá neznámý nástroj \(call.toolName) – přeposílám serveru.")
+            Log.aika.info("Neznámý nástroj \(call.toolName, privacy: .public) – přeposílám serveru")
         }
         let id = call.toolCallId
         toolTasks[id] = Task { [weak self] in
@@ -247,7 +247,7 @@ final class AikaCallEngine: ObservableObject {
                 if call.expectsResponse {
                     Task {
                         do { try await conv.sendToolResult(for: id, result: output) }
-                        catch { print("[AIKA] Výsledek nástroje se nepodařilo odeslat: \(error)") }
+                        catch { Log.aika.error("Výsledek nástroje se nepodařilo odeslat: \(String(describing: error), privacy: .public)") }
                     }
                 } else {
                     conv.markToolCallCompleted(id)
@@ -270,7 +270,7 @@ final class AikaCallEngine: ObservableObject {
 
     private func handleError(_ error: ConversationError, generation gen: Int) {
         guard gen == generation, inCall else { return }
-        print("[AIKA] Chyba hovoru: \(error)")
+        Log.aika.error("Chyba hovoru: \(String(describing: error), privacy: .public)")
         switch error {
         case .microphoneToggleFailed:
             notice = "Mikrofon se nepodařilo přepnout."
@@ -309,7 +309,7 @@ final class AikaCallEngine: ObservableObject {
         #if !targetEnvironment(simulator)
         Task.detached(priority: .userInitiated) {
             do { try await LiveKit.AudioManager.shared.setRecordingAlwaysPreparedMode(true) }
-            catch { print("[AIKA] Mikrofon se nepodařilo připravit předem: \(error)") }
+            catch { Log.aika.notice("Mikrofon se nepodařilo připravit předem: \(String(describing: error), privacy: .public)") }
         }
         #endif
     }

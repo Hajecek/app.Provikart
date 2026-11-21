@@ -61,7 +61,7 @@ final class OrderItemsConnectedStatsService {
                 }
                 return decoded.items
             } catch {
-                print("[OrderItemsConnectedStats] Error: \(error). Raw: \(String(data: data, encoding: .utf8)?.prefix(500) ?? "")")
+                Log.orders.error("Statistiky zapojení – chyba: \(String(describing: error), privacy: .public) | \(Log.preview(data), privacy: .private)")
                 throw OrderItemsConnectedStatsError.serverError(200, "Chyba při zpracování odpovědi")
             }
         case 401:

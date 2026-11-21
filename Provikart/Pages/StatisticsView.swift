@@ -145,14 +145,8 @@ struct StatisticsView: View {
     private var groupedByCategory: [ProductCategory: [SoldItemGroup]] {
         var byCategoryAndName: [ProductCategory: [String: (Int, Double)]] = [:]
         for cat in ProductCategory.allCases { byCategoryAndName[cat] = [:] }
-        var loggedTypes: Set<String> = []
         for item in itemsInMonth {
             let cat = ProductCategory.from(itemType: item.item_type) ?? categoryFromItemName(item.item_name)
-            let typeKey = item.item_type ?? "(nil)"
-            if !loggedTypes.contains(typeKey) {
-                loggedTypes.insert(typeKey)
-                print("[Stats] item_type=\(typeKey) item_name=\(item.item_name) → \(cat.rawValue)")
-            }
             let name = item.item_name.isEmpty ? "—" : item.item_name
             var t = byCategoryAndName[cat]![name] ?? (0, 0)
             t.0 += 1

@@ -595,7 +595,7 @@ private struct AIOrderFlowView: View {
                     } else {
                         let msg = response.error ?? "AI nevrátilo platná data."
                         errorMessage = friendlyAIErrorMessage(msg)
-                        print("[ProviKart AI] Chyba parse_order: \(msg)")
+                        Log.ai.notice("parse_order – AI nevrátilo platná data: \(msg, privacy: .public)")
                     }
                 }
             } catch {
@@ -603,8 +603,9 @@ private struct AIOrderFlowView: View {
                     isLoading = false
                     let raw = error.localizedDescription
                     errorMessage = friendlyAIErrorMessage(raw)
-                    print("[ProviKart AI] Chyba parse_order: \(raw)")
-                    print("[ProviKart AI] Detail: \(error)")
+                    if !error.isCancellation {
+                        Log.ai.error("parse_order selhalo: \(String(describing: error), privacy: .public)")
+                    }
                 }
             }
         }
@@ -625,15 +626,16 @@ private struct AIOrderFlowView: View {
                     } else {
                         let msg = response.error ?? "Nepodařilo se vytvořit objednávku."
                         errorMessage = friendlyAIErrorMessage(msg)
-                        print("[ProviKart AI] Chyba create_order: \(msg)")
+                        Log.ai.notice("create_order – server odmítl: \(msg, privacy: .public)")
                     }
                 }
             } catch {
                 await MainActor.run {
                     isCreating = false
                     errorMessage = friendlyAIErrorMessage(error.localizedDescription)
-                    print("[ProviKart AI] Chyba create_order: \(error.localizedDescription)")
-                    print("[ProviKart AI] Detail: \(error)")
+                    if !error.isCancellation {
+                        Log.ai.error("create_order selhalo: \(String(describing: error), privacy: .public)")
+                    }
                 }
             }
         }

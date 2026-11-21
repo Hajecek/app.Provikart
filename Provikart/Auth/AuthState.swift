@@ -88,7 +88,7 @@ final class AuthState: ObservableObject {
                 isLoggedIn = false
                 currentUser = nil
                 authToken = nil
-                print("[AuthState] Odmítnuto přihlášení – nepodporovaná role: \(user.role ?? "nil")")
+                Log.auth.notice("Odmítnuto přihlášení – nepodporovaná role: \(user.role ?? "nil", privacy: .public)")
                 return
             }
             sessionExpiredNotice = nil
@@ -114,7 +114,7 @@ final class AuthState: ObservableObject {
 
     /// Úmyslně neodhlašuje. Dřív HTTP 401/403 shazovalo přihlášení uprostřed používání.
     func invalidateSessionDueToAuthFailure() {
-        print("[AuthState] HTTP auth selhání – relace se ponechává, neodhlašuji")
+        Log.auth.debug("HTTP auth selhání – relace se ponechává")
     }
 
     func clearSessionExpiredNotice() {
@@ -124,15 +124,19 @@ final class AuthState: ObservableObject {
     /// Aktualizuje uloženého uživatele (např. po načtení profilu/plánu ze serveru).
     /// Sloučí s existujícím uživatelem, aby se nepřepsala pole, která API nevrací (např. profile_image).
     func refreshCurrentUser(_ user: UserInfo) {
+        let previousSummary = currentUser?.logSummary
         if let existing = currentUser {
             currentUser = UserInfo(merging: user, existing: existing)
         } else {
             currentUser = user
         }
-        currentUser?.logToConsole()
+        // Obnova běží periodicky – logovat jen když se profil opravdu změnil.
+        if currentUser?.logSummary != previousSummary {
+            currentUser?.logToConsole()
+        }
 
         if !UserRole(apiValue: currentUser?.role).isSupportedInApp {
-            print("[AuthState] Role po obnovení profilu není podporovaná: \(currentUser?.role ?? "nil")")
+            Log.auth.notice("Role po obnovení profilu není podporovaná: \(self.currentUser?.role ?? "nil", privacy: .public)")
             sessionExpiredNotice = Self.unsupportedRoleNoticeText
             setLoggedIn(false)
         }

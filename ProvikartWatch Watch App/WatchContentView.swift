@@ -9,6 +9,7 @@ import SwiftUI
 
 struct WatchContentView: View {
     @ObservedObject var sessionManager: WatchSessionManager
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var commission: WatchCommissionResponse?
     @State private var commissionGoal: Double?
@@ -102,7 +103,9 @@ struct WatchContentView: View {
                 }
             }
         }
-        .task {
+        // Polling jen při aktivní scéně (zápěstí dole = pauza, po zvednutí hned obnovit).
+        .task(id: scenePhase == .active) {
+            guard scenePhase == .active else { return }
             await loadManagerReportsCount()
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
@@ -162,7 +165,9 @@ struct WatchContentView: View {
                 }
             }
         }
-        .task {
+        // Polling jen při aktivní scéně (zápěstí dole = pauza, po zvednutí hned obnovit).
+        .task(id: scenePhase == .active) {
+            guard scenePhase == .active else { return }
             await loadCommission()
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 30_000_000_000)

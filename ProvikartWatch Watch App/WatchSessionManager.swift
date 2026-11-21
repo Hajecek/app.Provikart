@@ -8,6 +8,9 @@
 import Foundation
 import Combine
 import WatchConnectivity
+import os
+
+private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "cz.provikart.watch", category: "Watch")
 
 final class WatchSessionManager: NSObject, ObservableObject {
     static let shared = WatchSessionManager()
@@ -45,7 +48,7 @@ final class WatchSessionManager: NSObject, ObservableObject {
             self.profileImageURL = URL(string: urlStr)
         }
         super.init()
-        print("[WC-Watch] Init – token: \(authToken != nil ? "nalezen" : "žádný")")
+        log.debug("Init – token: \(self.authToken != nil ? "nalezen" : "žádný", privacy: .public)")
     }
 
     var isAuthenticated: Bool {
@@ -59,25 +62,25 @@ final class WatchSessionManager: NSObject, ObservableObject {
 
     func activate() {
         guard WCSession.isSupported() else {
-            print("[WC-Watch] WatchConnectivity není podporováno")
+            log.debug("WatchConnectivity není podporováno")
             return
         }
         WCSession.default.delegate = self
         WCSession.default.activate()
-        print("[WC-Watch] WCSession aktivována")
+        log.debug("WCSession aktivována")
     }
 
     /// Aktivně požádá iPhone o token (sendMessage s replyHandler).
     func requestTokenFromPhone() {
         let session = WCSession.default
         guard session.activationState == .activated else {
-            print("[WC-Watch] WCSession není aktivní")
+            log.debug("WCSession není aktivní")
             tryAppGroupFallback()
             return
         }
 
         guard session.isReachable else {
-            print("[WC-Watch] iPhone není dosažitelný, zkouším App Group fallback")
+            log.debug("iPhone není dosažitelný, zkouším App Group fallback")
             tryAppGroupFallback()
             return
         }
@@ -87,11 +90,11 @@ final class WatchSessionManager: NSObject, ObservableObject {
                 DispatchQueue.main.async {
                     self.authToken = token.isEmpty ? nil : token
                     self.updateUserInfo(from: response)
-                    print("[WC-Watch] Token přijat přes sendMessage: \(token.isEmpty ? "prázdný" : "OK")")
+                    log.debug("Token přijat přes sendMessage: \(token.isEmpty ? "prázdný" : "OK", privacy: .public)")
                 }
             }
         }, errorHandler: { error in
-            print("[WC-Watch] Chyba sendMessage: \(error.localizedDescription)")
+            log.error("sendMessage selhal: \(error.localizedDescription, privacy: .public)")
             DispatchQueue.main.async { self.tryAppGroupFallback() }
         })
     }
@@ -101,9 +104,9 @@ final class WatchSessionManager: NSObject, ObservableObject {
         guard !isAuthenticated else { return }
         if let token = UserDefaults(suiteName: appGroupIdentifier)?.string(forKey: "widget_auth_token"), !token.isEmpty {
             self.authToken = token
-            print("[WC-Watch] Token načten z App Group fallback")
+            log.debug("Token načten z App Group fallback")
         } else {
-            print("[WC-Watch] App Group fallback: žádný token")
+            log.debug("App Group fallback: žádný token")
         }
     }
 
@@ -134,10 +137,10 @@ final class WatchSessionManager: NSObject, ObservableObject {
 extension WatchSessionManager: WCSessionDelegate {
     func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
         if let error = error {
-            print("[WC-Watch] Aktivace selhala: \(error.localizedDescription)")
+            log.error("Aktivace selhala: \(error.localizedDescription, privacy: .public)")
             return
         }
-        print("[WC-Watch] Aktivace dokončena, stav: \(activationState.rawValue), reachable: \(session.isReachable)")
+        log.debug("Aktivace dokončena, stav: \(activationState.rawValue, privacy: .public), reachable: \(session.isReachable, privacy: .public)")
 
         // 1) applicationContext (přijde i bez běžícího iPhone)
         let context = session.receivedApplicationContext
@@ -145,14 +148,14 @@ extension WatchSessionManager: WCSessionDelegate {
             DispatchQueue.main.async {
                 self.authToken = token
                 self.updateUserInfo(from: context)
-                print("[WC-Watch] Token z applicationContext: přijat")
+                log.debug("Token z applicationContext: přijat")
             }
             return
         }
 
         // 2) Pokud máme token z init (App Group / local), nemusíme dál
         if isAuthenticated {
-            print("[WC-Watch] Token již máme z init, přeskakuji další pokusy")
+            log.debug("Token již máme z init, přeskakuji další pokusy")
             return
         }
 
@@ -167,7 +170,7 @@ extension WatchSessionManager: WCSessionDelegate {
             DispatchQueue.main.async {
                 self.authToken = token.isEmpty ? nil : token
                 self.updateUserInfo(from: applicationContext)
-                print("[WC-Watch] Token přijat přes applicationContext: \(token.isEmpty ? "odhlášení" : "přihlášení")")
+                log.debug("Token přijat přes applicationContext: \(token.isEmpty ? "odhlášení" : "přihlášení", privacy: .public)")
             }
         }
     }
@@ -195,7 +198,7 @@ extension WatchSessionManager: WCSessionDelegate {
                         object: nil,
                         userInfo: userInfo
                     )
-                    print("[WC-Watch] Provize přijata z iPhonu: \(commission) \(currency)")
+                    log.debug("Provize přijata z iPhonu")
                 }
             case "servicesCountUpdate":
                 let count = message["count"] as? Int ?? 0
@@ -205,7 +208,7 @@ extension WatchSessionManager: WCSessionDelegate {
                         object: nil,
                         userInfo: ["count": count]
                     )
-                    print("[WC-Watch] Počet služeb přijat z iPhonu: \(count)")
+                    log.debug("Počet služeb přijat z iPhonu: \(count, privacy: .public)")
                 }
             default:
                 break
@@ -214,7 +217,7 @@ extension WatchSessionManager: WCSessionDelegate {
     }
 
     func sessionReachabilityDidChange(_ session: WCSession) {
-        print("[WC-Watch] Reachability změna: \(session.isReachable)")
+        log.debug("Reachability změna: \(session.isReachable, privacy: .public)")
         if session.isReachable, !isAuthenticated {
             requestTokenFromPhone()
         }

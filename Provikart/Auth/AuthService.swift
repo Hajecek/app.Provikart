@@ -63,24 +63,14 @@ struct UserInfo: Codable {
         plan = api.plan ?? existing?.plan
     }
 
-    /// Sjednocený výpis profilu do konzole (tag [Profil]) – používá se při přihlášení i při obnovení uživatele napříč aplikací.
+    /// Krátké shrnutí profilu pro log (bez e‑mailu a osobního čísla).
+    var logSummary: String {
+        "id=\(id ?? 0) username=\(username ?? "—") role=\(role ?? "—") plan=\(plan ?? "—")"
+    }
+
+    /// Jednořádkový výpis profilu do konzole (kategorie Auth).
     func logToConsole() {
-        print("[Profil] Uživatel:")
-        print("  id: \(id ?? 0)")
-        print("  email: \(email ?? "—")")
-        print("  name: \(name ?? "—")")
-        print("  username: \(username ?? "—")")
-        print("  personal_number: \(personal_number ?? "—")")
-        print("  firstname: \(firstname ?? "—")")
-        print("  lastname: \(lastname ?? "—")")
-        print("  profile_image: \(profile_image ?? "—")")
-        if let url = profileImageURL {
-            print("  profile_image_url: \(url.absoluteString)")
-        } else {
-            print("  profile_image_url: —")
-        }
-        print("  role: \(role ?? "—")")
-        print("  plan: \(plan ?? "—")")
+        Log.auth.info("Profil: \(logSummary, privacy: .private(mask: .hash))")
     }
 }
 
@@ -149,8 +139,7 @@ final class AuthService {
             throw AuthError.invalidCredentials
         default:
             let rawBody = String(data: data, encoding: .utf8) ?? ""
-            // Pro debugging: celá odpověď do konzole
-            print("[AuthService] HTTP \(httpResponse.statusCode), tělo: \(rawBody.prefix(500))\(rawBody.count > 500 ? "…" : "")")
+            Log.auth.error("Login – HTTP \(httpResponse.statusCode, privacy: .public): \(Log.preview(rawBody), privacy: .private)")
             // Uživateli neukazujeme HTML – jen srozumitelnou zprávu
             let userMessage: String
             if rawBody.lowercased().contains("<!doctype") || rawBody.lowercased().contains("<html") {
@@ -214,7 +203,7 @@ final class AuthService {
         let role = UserRole(apiValue: rawRole)
         guard role.isSupportedInApp else {
             let trimmed = rawRole?.trimmingCharacters(in: .whitespacesAndNewlines)
-            print("[AuthService] Nepodporovaná role pro appku: \(trimmed ?? "nil")")
+            Log.auth.notice("Nepodporovaná role pro appku: \(trimmed ?? "nil", privacy: .public)")
             throw AuthError.unsupportedRole(trimmed)
         }
     }
@@ -285,13 +274,11 @@ final class AuthService {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.httpBody = "token=\(token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")".data(using: .utf8)
 
-        print("[AuthService] /auth/me – POST token=***")
         let (data, response) = try await URLSession.shared.authAwareData(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw AuthError.serverError("Neplatná odpověď serveru")
         }
 
-        let bodyPreview = String(data: data.prefix(500), encoding: .utf8) ?? "(nelze přečíst)"
 
         switch httpResponse.statusCode {
         case 200...299:
@@ -302,19 +289,18 @@ final class AuthService {
             if let user = try? JSONDecoder().decode(UserInfo.self, from: data) {
                 return user
             }
-            print("[AuthService] /auth/me – HTTP 200, ale dekódování selhalo. Tělo: \(bodyPreview)")
             do {
                 _ = try JSONDecoder().decode(LoginResponse.self, from: data)
             } catch {
-                print("[AuthService] /auth/me – chyba dekódování: \(error)")
+                Log.auth.error("/auth/me – dekódování selhalo: \(String(describing: error), privacy: .public) | \(Log.preview(data), privacy: .private)")
             }
             return nil
         case 401:
             // Token na serveru neprošel – relaci v appce nenecháváme padnout.
-            print("[AuthService] /auth/me – HTTP 401 (token server nepřijal). Tělo: \(bodyPreview)")
+            Log.auth.notice("/auth/me – HTTP 401, token server nepřijal (relace zůstává)")
             return nil
         default:
-            print("[AuthService] /auth/me – HTTP \(httpResponse.statusCode). Tělo: \(bodyPreview)")
+            Log.auth.error("/auth/me – HTTP \(httpResponse.statusCode, privacy: .public): \(Log.preview(data), privacy: .private)")
             return nil
         }
     }

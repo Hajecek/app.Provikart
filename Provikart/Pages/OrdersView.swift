@@ -228,12 +228,10 @@ struct OrdersView: View {
             .id("\(liveItem.id)-\(liveItem.statusDisplay)-\(liveItem.installation_day ?? "")-\(liveItem.installation_time ?? "")")
         }
         .task {
-            await loadOrders(silent: false)
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
-                if Task.isCancelled { break }
-                await loadOrders(silent: true)
-            }
+            await loadOrders(silent: !orders.isEmpty)
+        }
+        .liveRefresh(every: 3) {
+            await loadOrders(silent: true)
         }
         .refreshable {
             await loadOrders(silent: false)

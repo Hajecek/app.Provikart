@@ -256,7 +256,7 @@ final class UserOrdersService {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .hasPrefix("<") == true
             if startsLikeHtml {
-                print("[UserOrders] Server vrátil HTML místo JSON (404?). Raw: \(String(data: data.prefix(200), encoding: .utf8) ?? "")")
+                Log.orders.error("Objednávky – server vrátil HTML místo JSON: \(Log.preview(data, limit: 200), privacy: .private)")
                 throw UserOrdersError.serverError(200, "Server vrátil stránku místo dat. Nahrajte na server soubor user_orders.php do složky api (např. api/user_orders.php).")
             }
             do {
@@ -267,10 +267,10 @@ final class UserOrdersService {
                 return decoded.orders
             } catch let decodingError as DecodingError {
                 let detail = (decodingError as NSError).localizedDescription
-                print("[UserOrders] Decoding error: \(detail). Raw: \(String(data: data, encoding: .utf8)?.prefix(500) ?? "")")
+                Log.orders.error("Objednávky – dekódování selhalo: \(detail, privacy: .public) | \(Log.preview(data), privacy: .private)")
                 throw UserOrdersError.serverError(200, "Chyba při zpracování odpovědi: \(detail)")
             } catch {
-                print("[UserOrders] Error: \(error)")
+                Log.orders.error("Objednávky – chyba: \(String(describing: error), privacy: .public)")
                 throw UserOrdersError.serverError(200, "Chyba při zpracování odpovědi")
             }
         case 401:

@@ -17,12 +17,11 @@ final class PhoneSessionManager: NSObject, ObservableObject {
 
     func activate() {
         guard WCSession.isSupported() else {
-            print("[WC-Phone] WatchConnectivity není podporováno na tomto zařízení")
+            Log.watch.debug("WatchConnectivity není na tomto zařízení podporováno")
             return
         }
         WCSession.default.delegate = self
         WCSession.default.activate()
-        print("[WC-Phone] WCSession aktivována")
     }
 
     /// Pošle auth token + profil na hodinky.
@@ -30,7 +29,7 @@ final class PhoneSessionManager: NSObject, ObservableObject {
         guard WCSession.isSupported() else { return }
         let session = WCSession.default
         guard session.activationState == .activated else {
-            print("[WC-Phone] WCSession ještě není aktivní, token se pošle po aktivaci")
+            Log.watch.debug("WCSession ještě není aktivní – token se pošle po aktivaci")
             return
         }
 
@@ -46,9 +45,9 @@ final class PhoneSessionManager: NSObject, ObservableObject {
 
         do {
             try session.updateApplicationContext(context)
-            print("[WC-Phone] Context odeslán (\(value.isEmpty ? "odhlášení" : "přihlášení"))")
+            Log.watch.info("Kontext pro hodinky odeslán (\(value.isEmpty ? "odhlášení" : "přihlášení", privacy: .public))")
         } catch {
-            print("[WC-Phone] Chyba applicationContext: \(error.localizedDescription)")
+            Log.watch.error("Kontext pro hodinky se nepodařilo odeslat: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -74,7 +73,7 @@ final class PhoneSessionManager: NSObject, ObservableObject {
             data["commissionGoal"] = goal
         }
         session.sendMessage(data, replyHandler: nil) { error in
-            print("[WC-Phone] Chyba odesílání provize: \(error.localizedDescription)")
+            Log.watch.debug("Provizi se nepodařilo poslat na hodinky: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -89,7 +88,7 @@ final class PhoneSessionManager: NSObject, ObservableObject {
             "count": count
         ]
         session.sendMessage(data, replyHandler: nil) { error in
-            print("[WC-Phone] Chyba odesílání počtu služeb: \(error.localizedDescription)")
+            Log.watch.debug("Počet služeb se nepodařilo poslat na hodinky: \(error.localizedDescription, privacy: .public)")
         }
     }
 }
@@ -97,21 +96,21 @@ final class PhoneSessionManager: NSObject, ObservableObject {
 extension PhoneSessionManager: WCSessionDelegate {
     func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
         if let error = error {
-            print("[WC-Phone] Aktivace selhala: \(error.localizedDescription)")
+            Log.watch.error("Aktivace WCSession selhala: \(error.localizedDescription, privacy: .public)")
             return
         }
-        print("[WC-Phone] Aktivace dokončena, stav: \(activationState.rawValue)")
+        Log.watch.debug("WCSession aktivní (stav \(activationState.rawValue, privacy: .public))")
         DispatchQueue.main.async {
             self.sendCurrentTokenIfNeeded()
         }
     }
 
     func sessionDidBecomeInactive(_ session: WCSession) {
-        print("[WC-Phone] Session se stala neaktivní")
+        Log.watch.debug("WCSession neaktivní")
     }
 
     func sessionDidDeactivate(_ session: WCSession) {
-        print("[WC-Phone] Session deaktivována, reaktivuji…")
+        Log.watch.debug("WCSession deaktivována – reaktivuji")
         WCSession.default.activate()
     }
 
@@ -128,7 +127,7 @@ extension PhoneSessionManager: WCSessionDelegate {
                 reply["userRole"] = user.role ?? ""
             }
 
-            print("[WC-Phone] Hodinky žádají token → \(token.isEmpty ? "prázdný" : "odesílám")")
+            Log.watch.info("Hodinky žádají token → \(token.isEmpty ? "prázdný" : "odesílám", privacy: .public)")
             replyHandler(reply)
         }
     }

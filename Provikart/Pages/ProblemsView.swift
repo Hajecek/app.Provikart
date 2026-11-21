@@ -23,25 +23,20 @@ final class ProblemsViewModel: ObservableObject {
     var getToken: (() -> String?)?
     private let service = UserReportsService()
     private let updateService = ReportUpdateService()
-    private var pollingTask: Task<Void, Never>?
+    private let poller = LivePoller(name: "Problémy")
+    /// Pořadí requestů – starší odpověď nesmí přepsat novější (polling vs. pull‑to‑refresh).
+    private var loadGeneration = 0
 
+    /// Spustí polling (5 s). První načtení je tiché, pokud už máme data – bez probliknutí spinneru.
     func startPolling() {
-        print("[Problems] ▶️ startPolling() – spouštím periodické načítání každých 5 s")
-        pollingTask?.cancel()
-        pollingTask = Task { @MainActor in
-            await loadReports(silent: false)
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
-                if Task.isCancelled { break }
-                await loadReports(silent: true)
-            }
-            print("[Problems] ⏹ pollování ukončeno")
+        poller.start(every: 5) { [weak self] in
+            guard let self else { return }
+            await self.loadReports(silent: !self.reports.isEmpty)
         }
     }
 
     func stopPolling() {
-        pollingTask?.cancel()
-        pollingTask = nil
+        poller.stop()
     }
 
     /// Zrušení tasku / URLSession při odchodu z obrazovky — není chyba pro uživatele.
@@ -71,7 +66,6 @@ final class ProblemsViewModel: ObservableObject {
 
     func loadReports(silent: Bool = false) async {
         guard let token = getToken?(), !token.isEmpty else {
-            print("[Problems] ❌ Žádný token, přeskakuji načtení")
             reports = []
             errorMessage = nil
             isLoading = false
@@ -81,32 +75,26 @@ final class ProblemsViewModel: ObservableObject {
             errorMessage = nil
             isLoading = true
         }
-        let timeStr = { () -> String in
-            let f = DateFormatter()
-            f.dateFormat = "HH:mm:ss"
-            return f.string(from: Date())
-        }()
-        print("[Problems] 🔄 \(timeStr) – načítám reporty z API…")
+        loadGeneration += 1
+        let generation = loadGeneration
         do {
             let fetched = try await service.fetchUserReports(token: token)
-            let orderNumbers = fetched.map { $0.order_number ?? "?" }.joined(separator: ", ")
-            print("[Problems] ✅ \(timeStr) – načteno \(fetched.count) reportů: [\(orderNumbers)]")
-            objectWillChange.send()
+            guard generation == loadGeneration else { return }
+            // UserReport porovnává jen id → přiřazujeme vždy, aby se projevily i změny stavu.
             reports = fetched
+            errorMessage = nil
             isLoading = false
             let incomplete = fetched.filter { !$0.isCompleted }.count
             WidgetDataStore.saveReports(incompleteCount: incomplete)
         } catch {
-            if isCancellation(error) {
-                isLoading = false
-                return
-            }
-            print("[Problems] ❌ \(timeStr) – chyba: \(error.localizedDescription)")
+            guard generation == loadGeneration else { return }
+            isLoading = false
+            if isCancellation(error) { return }
+            Log.realtime.error("Problémy – načtení selhalo: \(error.localizedDescription, privacy: .public)")
             if !silent {
                 errorMessage = error.localizedDescription
                 reports = []
             }
-            isLoading = false
         }
     }
 }
@@ -117,6 +105,9 @@ struct ProblemsView: View {
     @EnvironmentObject private var authState: AuthState
     @Environment(\.openAddSheet) private var openAddSheet
     @StateObject private var viewModel = ProblemsViewModel()
+    @Environment(\.scenePhase) private var scenePhase
+    /// Tab zůstává v hierarchii i když není vidět – polling jen pro viditelnou obrazovku.
+    @State private var isVisible = false
     @State private var filter: ReportFilter = .incomplete
     @State private var selectedReport: UserReport?
     @State private var openEditOnAppear = false
@@ -279,6 +270,7 @@ struct ProblemsView: View {
                 await viewModel.loadReports()
             }
             .onAppear {
+                isVisible = true
                 viewModel.getToken = { [authState] in authState.authToken }
                 if authState.isLoggedIn, selectedReport == nil {
                     viewModel.startPolling()
@@ -286,20 +278,29 @@ struct ProblemsView: View {
             }
             .onChange(of: selectedReport) { _, new in
                 if new == nil {
-                    if authState.isLoggedIn { viewModel.startPolling() }
+                    if authState.isLoggedIn, isVisible { viewModel.startPolling() }
                 } else {
                     viewModel.stopPolling()
                 }
             }
             .onChange(of: authState.isLoggedIn) { _, isLoggedIn in
                 if isLoggedIn {
-                    if selectedReport == nil { viewModel.startPolling() }
+                    if selectedReport == nil, isVisible { viewModel.startPolling() }
                 } else {
                     viewModel.stopPolling()
                     viewModel.reports = []
                 }
             }
+            .onChange(of: scenePhase) { _, phase in
+                // V pozadí nepollovat; po návratu hned obnovit.
+                if phase == .active {
+                    if authState.isLoggedIn, selectedReport == nil, isVisible { viewModel.startPolling() }
+                } else {
+                    viewModel.stopPolling()
+                }
+            }
             .onDisappear {
+                isVisible = false
                 viewModel.stopPolling()
             }
         }

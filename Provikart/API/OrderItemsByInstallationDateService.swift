@@ -198,10 +198,10 @@ final class OrderItemsByInstallationDateService {
                 return decoded.items
             } catch let decodingError as DecodingError {
                 let detail = decodingError.friendlyDescription
-                print("[OrderItemsByInstallationDate] Decoding error: \(detail). Raw: \(String(data: data, encoding: .utf8)?.prefix(500) ?? "")")
+                Log.orders.error("Montáže podle data – dekódování selhalo: \(detail, privacy: .public) | \(Log.preview(data), privacy: .private)")
                 throw OrderItemsByInstallationDateError.serverError(200, "Chyba při zpracování odpovědi: \(detail)")
             } catch {
-                print("[OrderItemsByInstallationDate] Error: \(error). Raw: \(String(data: data, encoding: .utf8)?.prefix(500) ?? "")")
+                Log.orders.error("Montáže podle data – chyba: \(String(describing: error), privacy: .public) | \(Log.preview(data), privacy: .private)")
                 throw OrderItemsByInstallationDateError.serverError(200, "Chyba při zpracování odpovědi")
             }
         case 401:

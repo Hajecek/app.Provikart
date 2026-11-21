@@ -31,9 +31,9 @@ enum CommissionBackgroundRefresh {
         request.earliestBeginDate = Date(timeIntervalSinceNow: preferredRefreshInterval)
         do {
             try BGTaskScheduler.shared.submit(request)
-            print("[CommissionRefresh] Naplánováno na \(request.earliestBeginDate?.description ?? "?")")
+            Log.widget.debug("Obnova provize na pozadí naplánována")
         } catch {
-            print("[CommissionRefresh] Nepodařilo naplánovat: \(error.localizedDescription)")
+            Log.widget.error("Obnovu provize na pozadí se nepodařilo naplánovat: \(error.localizedDescription, privacy: .public)")
         }
     }
 

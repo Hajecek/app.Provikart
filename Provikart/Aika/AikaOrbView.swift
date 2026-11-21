@@ -126,7 +126,7 @@ final class AikaOrbRenderer: NSObject, MTKViewDelegate {
             let pipeline = try device.makeRenderPipelineState(descriptor: desc)
             return Shared(device: device, queue: queue, pipeline: pipeline)
         } catch {
-            print("[AIKA] Shader koule se nepodařilo zkompilovat: \(error)")
+            Log.aika.error("Shader koule se nepodařilo zkompilovat: \(String(describing: error), privacy: .public)")
             return nil
         }
     }()

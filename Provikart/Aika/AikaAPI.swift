@@ -133,9 +133,9 @@ struct AikaAPI: Sendable {
             let (data, response) = try await URLSession.shared.data(for: req)
             let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
             if let output = json?["output"] as? String { return output }
-            print("[AIKA] Nástroj \(name): HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0) bez output")
+            Log.aika.error("Nástroj \(name, privacy: .public): HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0, privacy: .public) bez output")
         } catch {
-            print("[AIKA] Nástroj \(name) selhal: \(error.localizedDescription)")
+            Log.aika.error("Nástroj \(name, privacy: .public) selhal: \(error.localizedDescription, privacy: .public)")
         }
         return #"{"error":"Nástroj teď nefunguje."}"#
     }

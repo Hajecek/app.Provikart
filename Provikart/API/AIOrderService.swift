@@ -130,13 +130,13 @@ final class AIOrderService {
         case 200:
             let cleanData = dataWithoutBOMOrWhitespace(data)
             if let nonJsonMessage = responseNotJsonMessage(data: cleanData) {
-                print("[ProviKart AI] parse_order – server nevrátil JSON: \(nonJsonMessage)")
+                Log.ai.error("parse_order – server nevrátil JSON: \(nonJsonMessage, privacy: .public)")
                 throw AIOrderError.parsingFailed(nonJsonMessage)
             }
             do {
                 let decoded = try JSONDecoder().decode(AIParseOrderResponse.self, from: cleanData)
                 if decoded.success == false, let err = decoded.error {
-                    print("[ProviKart AI] parse_order – chyba z API: \(err)")
+                    Log.ai.error("parse_order – chyba z API: \(err, privacy: .public)")
                     throw AIOrderError.parsingFailed(err)
                 }
                 return decoded
@@ -144,10 +144,7 @@ final class AIOrderService {
                 throw err
             } catch {
                 let msg = friendlyDecodingError(data: cleanData, underlying: error)
-                print("[ProviKart AI] parse_order – neplatný formát: \(msg)")
-                if let raw = String(data: cleanData.prefix(500), encoding: .utf8) {
-                    print("[ProviKart AI] Odpověď serveru (prvních 500 znaků): \(raw)")
-                }
+                Log.ai.error("parse_order – neplatný formát: \(msg, privacy: .public) | \(Log.preview(cleanData), privacy: .private)")
                 throw AIOrderError.parsingFailed(msg)
             }
         case 401:
@@ -155,7 +152,7 @@ final class AIOrderService {
         default:
             let cleanData = dataWithoutBOMOrWhitespace(data)
             let message = extractErrorFromJSON(cleanData)
-            print("[ProviKart AI] parse_order – HTTP \(http.statusCode): \(message ?? "bez zprávy")")
+            Log.ai.error("parse_order – HTTP \(http.statusCode, privacy: .public): \(message ?? "bez zprávy", privacy: .public)")
             throw AIOrderError.serverError(http.statusCode, message)
         }
     }
@@ -192,18 +189,9 @@ final class AIOrderService {
         body += "&token_api=\(token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
         request.httpBody = body.data(using: .utf8)
 
-        print("[ProviKart AI] create_order_direct – odesílám na \(addAIURLString)")
-        print("[ProviKart AI] create_order_direct – order_number: \(orderNumber), počet položek: \(items.count)")
-        if let bodyPreview = request.httpBody.flatMap({ String(data: $0, encoding: .utf8) }) {
-            let short = bodyPreview.count > 400 ? String(bodyPreview.prefix(400)) + "…" : bodyPreview
-            print("[ProviKart AI] create_order_direct – body (náhled): \(short)")
-        }
+        Log.ai.info("create_order_direct – objednávka \(orderNumber, privacy: .private), položek: \(items.count, privacy: .public)")
 
         let (data, response) = try await URLSession.shared.authAwareData(for: request)
-
-        if let raw = String(data: data, encoding: .utf8) {
-            print("[ProviKart AI] create_order_direct – odpověď serveru (HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)): \(raw.prefix(600))\(raw.count > 600 ? "…" : "")")
-        }
         guard let http = response as? HTTPURLResponse else {
             throw AIOrderError.serverError(-1, "Neplatná odpověď")
         }
@@ -212,19 +200,16 @@ final class AIOrderService {
         case 200:
             let cleanData = dataWithoutBOMOrWhitespace(data)
             if let nonJsonMessage = responseNotJsonMessage(data: cleanData) {
-                print("[ProviKart AI] create_order_direct – server nevrátil JSON: \(nonJsonMessage)")
+                Log.ai.error("create_order_direct – server nevrátil JSON: \(nonJsonMessage, privacy: .public)")
                 throw AIOrderError.parsingFailed(nonJsonMessage)
             }
             do {
                 let decoded = try JSONDecoder().decode(AICreateOrderResponse.self, from: cleanData)
-                print("[ProviKart AI] create_order_direct – dekódováno: success=\(decoded.success ?? false), order_id=\(decoded.order_id ?? -1), order_number=\(decoded.order_number ?? "—")")
+                Log.ai.info("create_order_direct – success=\(decoded.success ?? false, privacy: .public) order_id=\(decoded.order_id ?? -1, privacy: .public)")
                 return decoded
             } catch {
                 let msg = friendlyDecodingError(data: cleanData, underlying: error)
-                print("[ProviKart AI] create_order_direct – neplatný formát: \(msg)")
-                if let raw = String(data: cleanData.prefix(500), encoding: .utf8) {
-                    print("[ProviKart AI] Odpověď serveru (prvních 500 znaků): \(raw)")
-                }
+                Log.ai.error("create_order_direct – neplatný formát: \(msg, privacy: .public) | \(Log.preview(cleanData), privacy: .private)")
                 throw AIOrderError.parsingFailed(msg)
             }
         case 401:
@@ -232,7 +217,7 @@ final class AIOrderService {
         default:
             let cleanData = dataWithoutBOMOrWhitespace(data)
             let message = extractErrorFromJSON(cleanData)
-            print("[ProviKart AI] create_order_direct – HTTP \(http.statusCode): \(message ?? "bez zprávy")")
+            Log.ai.error("create_order_direct – HTTP \(http.statusCode, privacy: .public): \(message ?? "bez zprávy", privacy: .public)")
             throw AIOrderError.serverError(http.statusCode, message)
         }
     }

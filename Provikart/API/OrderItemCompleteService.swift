@@ -59,8 +59,8 @@ final class OrderItemCompleteService {
         guard let http = response as? HTTPURLResponse else {
             throw OrderItemCompleteError.serverError(-1, "Neplatná odpověď")
         }
-        if let raw = String(data: data, encoding: .utf8) {
-            print("[OrderItemComplete] HTTP \(http.statusCode) → \(raw.prefix(200))")
+        if !(200...299).contains(http.statusCode) {
+            Log.orders.error("Dokončení položky – HTTP \(http.statusCode, privacy: .public): \(Log.preview(data, limit: 200), privacy: .private)")
         }
         let decoded = try? JSONDecoder().decode(OrderItemCompleteResponse.self, from: data)
         let serverError = decoded?.error ?? extractErrorFromJSON(data)

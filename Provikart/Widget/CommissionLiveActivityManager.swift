@@ -54,7 +54,7 @@ enum CommissionLiveActivityManager {
                     pushType: nil
                 )
             } catch {
-                print("[LiveActivity] Nepodařilo se spustit: \(error.localizedDescription)")
+                Log.widget.error("Live Activity se nepodařilo spustit: \(error.localizedDescription, privacy: .public)")
             }
         }
     }

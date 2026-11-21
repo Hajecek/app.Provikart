@@ -130,13 +130,11 @@ struct DealwarsView: View {
             }
 
             await loadSeason()
-
-            // Průběžná aktualizace žebříčku (pseudo realtime).
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 12_000_000_000)
-                if Task.isCancelled { break }
-                await loadSeason(silent: true)
-            }
+        }
+        // Průběžná aktualizace žebříčku (12 s); v pozadí se pauzuje.
+        .liveRefresh(every: 12, id: selectedSeason) {
+            guard !selectedSeason.isEmpty else { return }
+            await loadSeason(silent: true)
         }
         .refreshable { await loadSeason() }
     }
@@ -344,19 +342,24 @@ struct DealwarsView: View {
                 errorMessage = nil
             }
         }
+        let requestedSeason = selectedSeason
         do {
             let payload = try await service.fetchSeason(
                 token: authState.authToken,
-                season: selectedSeason.isEmpty ? nil : selectedSeason,
+                season: requestedSeason.isEmpty ? nil : requestedSeason,
                 scope: "team"
             )
             await MainActor.run {
+                // Mezitím uživatel přepnul týden → starší odpověď zahodit.
+                guard requestedSeason == selectedSeason else { return }
                 players = payload.leaderboard
                 teamPlayers = payload.teamPlayers
                 isLoading = false
             }
         } catch {
+            if error.isCancellation { return }
             await MainActor.run {
+                guard requestedSeason == selectedSeason else { return }
                 isLoading = false
                 if !silent {
                     errorMessage = error.localizedDescription

@@ -28,7 +28,7 @@ final class ManagerProblemsViewModel: ObservableObject {
     var getToken: (() -> String?)?
     private let service = ManagerReportsService()
     private let updateService = ReportUpdateService()
-    private var pollingTask: Task<Void, Never>?
+    private let poller = LivePoller(name: "Manažer – problémy")
     private var loadTask: Task<Void, Never>?
     private var loadGeneration = 0
 
@@ -47,21 +47,19 @@ final class ManagerProblemsViewModel: ObservableObject {
     }
 
     func startPolling() {
-        pollingTask?.cancel()
-        pollingTask = Task { @MainActor in
+        let isFirstLoad = reportsByFilter.isEmpty
+        poller.start(every: 5, immediately: false) { [weak self] in
+            guard let self else { return }
+            await self.loadReports(silent: true, categories: self.selectedCategories)
+        }
+        Task { @MainActor in
             // Načti všechny kategorie najednou → přepínání filtrů je pak okamžité.
-            await loadReports(silent: false, categories: Set(ManagerReportsFilter.allCases))
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
-                if Task.isCancelled { break }
-                await loadReports(silent: true, categories: selectedCategories)
-            }
+            await loadReports(silent: !isFirstLoad, categories: Set(ManagerReportsFilter.allCases))
         }
     }
 
     func stopPolling() {
-        pollingTask?.cancel()
-        pollingTask = nil
+        poller.stop()
         loadTask?.cancel()
         loadTask = nil
     }
@@ -885,8 +883,11 @@ private struct ManagerProblemsNavigationModifier: ViewModifier {
 
 private struct ManagerProblemsLifecycleModifier: ViewModifier {
     @ObservedObject var viewModel: ManagerProblemsViewModel
+    @Environment(\.scenePhase) private var scenePhase
     @ObservedObject var authState: AuthState
     let refreshToken: UUID
+    /// Tab zůstává v hierarchii i když není vidět – polling jen pro viditelnou obrazovku.
+    @State private var isVisible = false
 
     func body(content: Content) -> some View {
         content
@@ -897,6 +898,7 @@ private struct ManagerProblemsLifecycleModifier: ViewModifier {
                 ManagerScreenBackground()
             }
             .onAppear {
+                isVisible = true
                 viewModel.getToken = { [authState] in authState.authToken }
                 if authState.isLoggedIn {
                     viewModel.startPolling()
@@ -907,13 +909,22 @@ private struct ManagerProblemsLifecycleModifier: ViewModifier {
             }
             .onChange(of: authState.isLoggedIn) { _, isLoggedIn in
                 if isLoggedIn {
-                    viewModel.startPolling()
+                    if isVisible { viewModel.startPolling() }
                 } else {
                     viewModel.stopPolling()
                     viewModel.clearReports()
                 }
             }
+            .onChange(of: scenePhase) { _, phase in
+                // V pozadí nepollovat; po návratu hned obnovit.
+                if phase == .active {
+                    if authState.isLoggedIn, isVisible { viewModel.startPolling() }
+                } else {
+                    viewModel.stopPolling()
+                }
+            }
             .onDisappear {
+                isVisible = false
                 viewModel.stopPolling()
             }
     }

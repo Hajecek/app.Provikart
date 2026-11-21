@@ -405,12 +405,8 @@ struct LoginView: View {
     }
 
     private func performLogin() {
-        print("[Login] Stisknuto Přihlásit se")
-        guard !email.isEmpty, !password.isEmpty else {
-            print("[Login] Přerušeno – prázdný e-mail nebo heslo")
-            return
-        }
-        print("[Login] Přihlašovací údaj: \(email), odesílám požadavek na API…")
+        guard !email.isEmpty, !password.isEmpty else { return }
+        Log.auth.info("Přihlašuji \(email, privacy: .private(mask: .hash))…")
         isLoading = true
         errorMessage = nil
 
@@ -420,10 +416,10 @@ struct LoginView: View {
                 await MainActor.run {
                     isLoading = false
                     authState.setLoggedIn(true, user: response.user, token: response.token)
-                    print("[Login] Úspěch – přihlášení dokončeno")
-                    print("[Login] Token: \(response.token ?? "—")")
                     if response.user == nil {
-                        print("[Login] Uživatel: (API nevrátilo objekt user)")
+                        Log.auth.notice("Přihlášení OK, ale API nevrátilo objekt user")
+                    } else {
+                        Log.auth.info("Přihlášení OK")
                     }
                 }
             } catch let error as AuthError {
@@ -431,17 +427,17 @@ struct LoginView: View {
                     isLoading = false
                     if case .unsupportedRole = error {
                         showUnsupportedRoleAlert = true
-                        print("[Login] Nepodporovaná role")
+                        Log.auth.notice("Přihlášení odmítnuto – nepodporovaná role")
                     } else {
                         errorMessage = error.localizedDescription
-                        print("[Login] Chyba: \(error.localizedDescription)")
+                        Log.auth.error("Přihlášení selhalo: \(error.localizedDescription, privacy: .public)")
                     }
                 }
             } catch {
                 await MainActor.run {
                     isLoading = false
                     errorMessage = error.localizedDescription
-                    print("[Login] Chyba: \(error.localizedDescription)")
+                    Log.auth.error("Přihlášení selhalo: \(error.localizedDescription, privacy: .public)")
                 }
             }
         }

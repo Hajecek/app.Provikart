@@ -29,12 +29,12 @@ struct ContentView: View {
                 appLoginApprovalState.startPolling(username: username, token: authState.authToken, interval: 2)
             }
         }
-        .task(priority: .background) {
-            guard authState.isLoggedIn else { return }
-            while !Task.isCancelled {
-                await validateSessionQuietly()
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
-            }
+        .task {
+            await validateSessionQuietly()
+        }
+        // Obnova profilu (role, jméno, fotka) – v pozadí se pauzuje.
+        .liveRefresh(every: 15) {
+            await validateSessionQuietly()
         }
         .onDisappear {
             appLoginApprovalState.stopPolling()
@@ -62,7 +62,7 @@ struct ContentView: View {
     /// Periodická obnova profilu. Nikdy neodhlašuje.
     private func validateSessionQuietly() async {
         let token = await MainActor.run { authState.authToken ?? "" }
-        guard !token.isEmpty else { return }
+        guard authState.isLoggedIn, !token.isEmpty else { return }
         do {
             if let user = try await authService.fetchCurrentUser(token: token) {
                 await MainActor.run {
@@ -70,7 +70,8 @@ struct ContentView: View {
                 }
             }
         } catch {
-            print("[Profil] Kontrola session: \(error.localizedDescription)")
+            guard !error.isCancellation else { return }
+            Log.auth.notice("Kontrola session selhala: \(error.localizedDescription, privacy: .public)")
         }
     }
 

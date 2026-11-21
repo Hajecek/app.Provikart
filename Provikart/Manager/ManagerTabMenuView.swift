@@ -22,7 +22,7 @@ final class ManagerPerformanceBadgeState: ObservableObject {
 
     private let service = ManagerTeamPerformanceService()
     private var didLoad = false
-    private var pollingTask: Task<Void, Never>?
+    private let poller = LivePoller(name: "Badge Výkon")
     private var tokenProvider: (() -> String?)?
 
     func refreshIfNeeded(token: String?) async {
@@ -53,20 +53,13 @@ final class ManagerPerformanceBadgeState: ObservableObject {
 
     func startPolling(tokenProvider: @escaping () -> String?) {
         self.tokenProvider = tokenProvider
-        pollingTask?.cancel()
-        pollingTask = Task { @MainActor in
-            await refresh(token: tokenProvider())
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
-                if Task.isCancelled { break }
-                await refresh(token: tokenProvider())
-            }
+        poller.start(every: 5) { [weak self] in
+            await self?.refresh(token: tokenProvider())
         }
     }
 
     func stopPolling() {
-        pollingTask?.cancel()
-        pollingTask = nil
+        poller.stop()
     }
 
     func reset() {
@@ -89,7 +82,7 @@ final class ManagerNotificationsBadgeState: ObservableObject {
 
     private let service = ManagerNotificationsService()
     private var didLoad = false
-    private var pollingTask: Task<Void, Never>?
+    private let poller = LivePoller(name: "Badge Notifikace")
     private var tokenProvider: (() -> String?)?
     private var remoteObserver: NSObjectProtocol?
 
@@ -118,20 +111,13 @@ final class ManagerNotificationsBadgeState: ObservableObject {
     func startPolling(tokenProvider: @escaping () -> String?) {
         self.tokenProvider = tokenProvider
         startObservingRemoteNotifications()
-        pollingTask?.cancel()
-        pollingTask = Task { @MainActor in
-            await refresh(token: tokenProvider())
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
-                if Task.isCancelled { break }
-                await refresh(token: tokenProvider())
-            }
+        poller.start(every: 5) { [weak self] in
+            await self?.refresh(token: tokenProvider())
         }
     }
 
     func stopPolling() {
-        pollingTask?.cancel()
-        pollingTask = nil
+        poller.stop()
         stopObservingRemoteNotifications()
     }
 
@@ -172,6 +158,7 @@ struct ManagerTabMenuView: View {
     @State private var selectedTab: ManagerTabs = .home
     @State private var problemsRefreshToken = UUID()
     @StateObject private var rdPhotoShortcut = RdPhotoShortcut()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -251,18 +238,36 @@ struct ManagerTabMenuView: View {
             onTakePhoto: { rdPhotoShortcut.requestCamera() }
         ))
         .task {
-            performanceBadge.startPolling { [authState] in authState.authToken }
-            notificationsBadge.startPolling { [authState] in authState.authToken }
+            startBadgePolling()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // V pozadí badge nepollovat; po návratu hned obnovit.
+            if phase == .active {
+                startBadgePolling()
+            } else {
+                stopBadgePolling()
+            }
         }
         .onChange(of: authState.isLoggedIn) { _, isLoggedIn in
             if !isLoggedIn {
+                stopBadgePolling()
                 performanceBadge.reset()
                 notificationsBadge.reset()
             }
         }
         .onDisappear {
-            performanceBadge.stopPolling()
-            notificationsBadge.stopPolling()
+            stopBadgePolling()
         }
+    }
+
+    private func startBadgePolling() {
+        guard authState.isLoggedIn else { return }
+        performanceBadge.startPolling { [authState] in authState.authToken }
+        notificationsBadge.startPolling { [authState] in authState.authToken }
+    }
+
+    private func stopBadgePolling() {
+        performanceBadge.stopPolling()
+        notificationsBadge.stopPolling()
     }
 }
