@@ -48,6 +48,8 @@ final class AikaCallEngine: ObservableObject {
     /// Trénink: obchodník právě zvoní / čeká, až se otevřou dveře.
     @Published private(set) var ringing = false
     private var doorPlayer: AVAudioPlayer?
+    /// Token z posledního startu – pro přepnutí do tréninku, o které požádá sama Aika.
+    private var lastAppToken: String?
 
     private var conversation: Conversation?
     private var api: AikaAPI?
@@ -65,6 +67,7 @@ final class AikaCallEngine: ObservableObject {
     func start(token appToken: String?, mode newMode: AikaMode? = nil) {
         guard !inCall else { return }
         if let newMode { mode = newMode }
+        lastAppToken = appToken
         callStartedAt = Date()
         callEndedAt = nil
         guard let token = AikaConfig.token(from: appToken), !token.isEmpty else {
@@ -294,6 +297,10 @@ final class AikaCallEngine: ObservableObject {
 
     private func handleToolCall(_ call: ClientToolCallEvent, generation gen: Int) {
         guard gen == generation, let api else { return }
+        if call.toolName == "prepnout_do_treninku" {
+            handleSwitchToTraining(call, generation: gen)
+            return
+        }
         if !toolNames.isEmpty && !toolNames.contains(call.toolName) {
             Log.aika.info("Neznámý nástroj \(call.toolName, privacy: .public) – přeposílám serveru")
         }
@@ -316,6 +323,27 @@ final class AikaCallEngine: ObservableObject {
             }
         }
         applyAgentState()
+    }
+
+    /// Aika potvrdila přepnutí do tréninku: odpoví nástroji, dořekne větu a pak se hovor přepne.
+    private func handleSwitchToTraining(_ call: ClientToolCallEvent, generation gen: Int) {
+        let params = (try? call.getParameters()) ?? [:]
+        let phase = AikaTrainingPhase(rawValue: params["faze"] as? String ?? "") ?? .nominace
+        if let conv = conversation {
+            let result = #"{"ok":true,"faze":"\#(phase.rawValue)","zprava":"Přepínám do tréninku."}"#
+            Task { try? await conv.sendToolResult(for: call.toolCallId, result: result) }
+        }
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            var waited = 0
+            while waited < 30, let self, gen == self.generation, self.agentState == .speaking {
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                waited += 1
+            }
+            guard let self, gen == self.generation, self.inCall else { return }
+            self.switchPhase(phase, token: self.lastAppToken)
+            self.switchMode(.trenink, token: self.lastAppToken)
+        }
     }
 
     // MARK: - Konec / chyby
