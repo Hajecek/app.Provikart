@@ -49,17 +49,6 @@ struct AikaView: View {
             .ignoresSafeArea()
 
             VStack(spacing: 6) {
-                VStack(spacing: 8) {
-                    modeSwitch
-                    if engine.mode == .trenink {
-                        phaseSwitch
-                            .transition(.opacity.combined(with: .move(edge: .top)))
-                    }
-                }
-                .animation(.snappy(duration: 0.28), value: engine.mode)
-                .padding(.top, 4)
-                .padding(.horizontal, 16)
-
                 Spacer(minLength: 0)
 
                 Button {
@@ -73,6 +62,18 @@ struct AikaView: View {
                 .accessibilityLabel(engine.inCall ? "Aika" : (engine.mode == .trenink ? "Začít trénink se zákazníkem" : "Začít hovor s Aikou"))
 
                 Spacer(minLength: 0)
+
+                // Volby dole na dosah palce: fáze tréninku (jen v Tréninku) nad přepínačem Asistent | Trénink
+                VStack(spacing: 8) {
+                    if engine.mode == .trenink {
+                        phaseSwitch
+                            .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    }
+                    modeSwitch
+                }
+                .animation(.snappy(duration: 0.28), value: engine.mode)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 10)
             }
 
             if let notice = engine.notice {
@@ -86,7 +87,7 @@ struct AikaView: View {
                         .background(Color(red: 26 / 255, green: 29 / 255, blue: 58 / 255), in: RoundedRectangle(cornerRadius: 12))
                         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color(red: 1, green: 107 / 255, blue: 129 / 255).opacity(0.4)))
                         .padding(.horizontal, 20)
-                        .padding(.bottom, 44)
+                        .padding(.bottom, 130)
                         .onTapGesture { engine.notice = nil }
                 }
                 .transition(.opacity)
@@ -146,7 +147,7 @@ struct AikaView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar(keepsTabBar ? .visible : .hidden, for: .tabBar)
         .sheet(isPresented: $showTranscript) { transcriptSheet }
-        .onAppear { engine.start(token: authState.authToken) }
+        // Hovor se nespouští sám – nejdřív si vybereš režim / fázi a klepneš na kouli.
         .onDisappear { engine.stop() }
     }
 

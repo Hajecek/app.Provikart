@@ -36,7 +36,7 @@ struct NationalManagerTabMenuView: View {
 
             Tab(value: .aika) {
                 NavigationStack {
-                    // Hovor se spustí při otevření záložky a ukončí při odchodu z ní.
+                    // Hovor se spustí klepnutím na kouli a ukončí při odchodu ze záložky.
                     // Spodní menu se schová, zpět vede tlačítko „Domů“ v horní liště.
                     AikaView(onClose: { selectedTab = .dashboard })
                         .environmentObject(authState)
